@@ -8,7 +8,7 @@ rem  Baja el codigo desde GitHub y lo publica en Cloudflare.
 rem
 rem  Uso:
 rem    instalar-delywa.bat            instala la ultima version (rama main)
-rem    instalar-delywa.bat v2.0.0     instala una version especifica (tag)
+rem    instalar-delywa.bat v2.0.0     instala una version especifica
 rem ============================================================
 
 set "REPO_URL=https://github.com/gocabletech-dotcom/delywa.git"
@@ -66,7 +66,7 @@ if "%VERSION%"=="" goto :ultima
 git -C "%APP_DIR%" checkout --force "%VERSION%"
 if errorlevel 1 (
   echo   No existe la version "%VERSION%" en GitHub. Versiones disponibles:
-  git -C "%APP_DIR%" tag --list
+  git -C "%APP_DIR%" branch -r --list "origin/v*"
   goto :error
 )
 goto :dependencias
