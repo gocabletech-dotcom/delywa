@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const [primerAcceso, setPrimerAcceso] = useState(false);
+
+  // Mientras la plataforma no tenga administrador, ofrecer crearlo.
+  useEffect(() => {
+    fetch("/api/auth/setup", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => setPrimerAcceso(Boolean(data.disponible)))
+      .catch(() => setPrimerAcceso(false));
+  }, []);
 
   // Read reason from URL query param: /login?reason=inactivity
   const reason = new URLSearchParams(window.location.search).get("reason");
@@ -58,6 +67,20 @@ export default function LoginPage() {
               data-testid="banner-inactivity-logout"
             >
               Tu sesión se cerró por inactividad mientras el negocio estaba cerrado.
+            </div>
+          )}
+
+          {primerAcceso && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4 text-sm text-green-900" data-testid="banner-primer-acceso">
+              <p className="mb-2">Esta plataforma todavía no tiene administrador.</p>
+              <Button
+                type="button"
+                className="w-full bg-[#25D366] hover:bg-[#25D366]/90"
+                onClick={() => setLocation("/primer-acceso")}
+                data-testid="button-primer-acceso"
+              >
+                Crear usuario administrador
+              </Button>
             </div>
           )}
 
