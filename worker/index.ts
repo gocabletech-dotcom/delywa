@@ -1,29 +1,37 @@
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
-import type { Env } from "./env";
+import type { AppEnv, Env } from "./env";
 import { getDb } from "./db";
+import { deleteExpiredSessions, sessionMiddleware } from "./lib/session";
+import { authRoutes } from "./routes/auth";
+import { userRoutes } from "./routes/users";
 
-const app = new Hono<{ Bindings: Env }>();
+export const app = new Hono<AppEnv>();
+
+app.onError((err, c) => {
+  // Solo método, ruta y error: nunca el cuerpo de la respuesta ni datos de clientes.
+  console.error(`[error] ${c.req.method} ${new URL(c.req.url).pathname}:`, err);
+  return c.json({ message: "Error interno del servidor" }, 500);
+});
 
 app.get("/api/health", async (c) => {
-  const db = getDb(c.env.DB);
-  const row = await db.get<{ tablas: number }>(
+  const row = await getDb(c.env.DB).get<{ tablas: number }>(
     sql`SELECT count(*) AS tablas FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations'`,
   );
   return c.json({ ok: true, servicio: "delywa", tablas: row?.tablas ?? 0 });
 });
 
-// Las rutas de negocio se agregan por módulo en la capa 2.
-app.all("/api/*", (c) => c.json({ message: "Endpoint aún no migrado" }, 501));
+app.use("/api/*", sessionMiddleware);
+app.route("/", authRoutes);
+app.route("/", userRoutes);
 
-app.onError((err, c) => {
-  console.error(`[error] ${c.req.method} ${new URL(c.req.url).pathname}:`, err);
-  return c.json({ message: "Error interno del servidor" }, 500);
-});
+// Los módulos restantes se agregan por capas.
+app.all("/api/*", (c) => c.json({ message: "Endpoint aún no migrado" }, 501));
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledController, _env: Env, _ctx: ExecutionContext) {
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(deleteExpiredSessions(env.DB));
     // Recordatorio de comprobantes de transferencia: se implementa en la capa 4.
   },
 } satisfies ExportedHandler<Env>;

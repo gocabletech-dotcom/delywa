@@ -25,6 +25,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ username, password }),
       });
 
@@ -62,11 +63,12 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Usuario</Label>
+              <Label htmlFor="username">Correo</Label>
               <Input
                 id="username"
                 type="text"
-                placeholder="Tu usuario"
+                placeholder="tu@correo.com"
+                autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value.toLowerCase())}
                 required

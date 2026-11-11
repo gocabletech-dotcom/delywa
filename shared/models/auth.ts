@@ -43,3 +43,10 @@ export type UserSucursal = typeof userSucursales.$inferSelect;
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+/** Intentos fallidos de inicio de sesión, para limitar ataques de fuerza bruta. */
+export const loginIntentos = sqliteTable("login_intentos", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  clave: text("clave").notNull(), // "user:<correo>" o "ip:<dirección>"
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (table) => [index("login_intentos_clave_fecha_idx").on(table.clave, table.fecha)]);

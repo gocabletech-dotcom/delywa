@@ -33,6 +33,7 @@ import NegocioSucursalesPage from "@/pages/negocio/sucursales";
 import NegocioEmpleadosPage from "@/pages/negocio/empleados";
 import EmpleadoPortalPage from "@/pages/empleado-portal";
 import LoginPage from "@/pages/login";
+import PrimerAccesoPage from "@/pages/primer-acceso";
 import PrivacyPolicy from "@/pages/privacy";
 import DeletionStatusPage from "@/pages/deletion-status";
 import DataDeletionPage from "@/pages/data-deletion";
@@ -54,6 +55,7 @@ function Router() {
       <Route path="/terms" component={TermsPage} />
       <Route path="/contact" component={ContactPage} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/primer-acceso" component={PrimerAccesoPage} />
       
       {/* Chat Web Público (sin restricciones de Meta) */}
       <Route path="/pedir/:codigo" component={PedirPage} />

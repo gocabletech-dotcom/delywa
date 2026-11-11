@@ -1,6 +1,6 @@
 {
   "include": ["worker/**/*", "shared/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"],
+  "exclude": ["node_modules", "dist", "**/__tests__/**"],
   "compilerOptions": {
     "noEmit": true,
     "target": "ES2022",
