@@ -1,3 +1,4 @@
+import "./columns";
 import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, numeric, unique, index, primaryKey } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";

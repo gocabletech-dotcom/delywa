@@ -144,7 +144,4 @@ export async function deleteUser(db: Db, userId: string): Promise<void> {
   await db.delete(users).where(eq(users.id, userId));
 }
 
-export function isUniqueViolation(error: unknown): boolean {
-  const message = error instanceof Error ? `${error.message} ${(error as { cause?: Error }).cause?.message ?? ""}` : String(error);
-  return message.includes("UNIQUE constraint failed");
-}
+export { isUniqueViolation } from "../lib/d1";

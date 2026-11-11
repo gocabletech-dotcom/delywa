@@ -5,6 +5,8 @@ import { getDb } from "./db";
 import { deleteExpiredSessions, sessionMiddleware } from "./lib/session";
 import { authRoutes } from "./routes/auth";
 import { userRoutes } from "./routes/users";
+import { negocioRoutes } from "./routes/negocios";
+import { catalogoRoutes } from "./routes/catalogos";
 
 export const app = new Hono<AppEnv>();
 
@@ -24,6 +26,8 @@ app.get("/api/health", async (c) => {
 app.use("/api/*", sessionMiddleware);
 app.route("/", authRoutes);
 app.route("/", userRoutes);
+app.route("/", negocioRoutes);
+app.route("/", catalogoRoutes);
 
 // Los módulos restantes se agregan por capas.
 app.all("/api/*", (c) => c.json({ message: "Endpoint aún no migrado" }, 501));
