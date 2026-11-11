@@ -1,0 +1,45 @@
+import { sql } from "drizzle-orm";
+import { sqliteTable, text, integer, numeric, unique, index, primaryKey } from "drizzle-orm/sqlite-core";
+
+// Sesiones del servidor (cookie firmada -> fila en D1).
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    sid: text("sid").primaryKey(),
+    sess: text("sess", { mode: "json" }).notNull(),
+    expire: integer("expire", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)]
+);
+
+// User storage table.
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  email: text("email").unique(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  profileImageUrl: text("profile_image_url"),
+  whatsappNumero: text("whatsapp_numero"),
+  password: text("password"),
+  role: text("role").default("pending"),
+  colmadoId: integer("colmado_id"),
+  deliveryId: integer("delivery_id"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`),
+});
+
+/** Branches explicitly assigned to a staff member. An empty set keeps the
+ * legacy colmadoId access until the owner configures branch permissions. */
+export const userSucursales = sqliteTable("user_sucursales", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  colmadoId: integer("colmado_id").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.colmadoId] }),
+  index("user_sucursales_colmado_idx").on(table.colmadoId),
+]);
+
+export type UserSucursal = typeof userSucursales.$inferSelect;
+
+export type UpsertUser = typeof users.$inferInsert;
+export type User = typeof users.$inferSelect;
