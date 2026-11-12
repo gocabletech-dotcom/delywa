@@ -2,7 +2,7 @@
 // Pruebas con D1 local en memoria, IA y WhatsApp simulados: no se llama a OpenAI ni a Meta.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { chatWebSesiones, colmados, deliveries, pedidos, whatsappConversaciones, whatsappMensajes } from "@shared/schema";
+import { chatWebSesiones, colmados, deliveries, diccionarioJerga, jergaAprendizaje, pedidos, whatsappConversaciones, whatsappMensajes } from "@shared/schema";
 import { createTestApp } from "./helpers";
 import { ia } from "../chat/adaptador";
 import { http } from "../lib/whatsapp";
@@ -25,7 +25,9 @@ beforeAll(async () => {
     planId: 1, horaApertura: "00:00", horaCierre: "23:59", costoDelivery: "50" }).returning();
   ia.crear = () => ({ chat: { completions: { create: async (args: any) => {
     const ultimo = String(args.messages.at(-1).content).toLowerCase();
-    const datos = ultimo.includes("pan")
+    const datos = ultimo.includes("una fr")
+      ? { respuesta: "Anotada una Presidente bien fría 🍺", productos: [{ nombre: "Cerveza Presidente", monto: 150, cantidad: 1, jergaOriginal: "una fria" }], crearPedido: false }
+      : ultimo.includes("pan")
       ? { respuesta: "Anotado: 2 panes. ¿A qué dirección te lo enviamos?", productos: [{ nombre: "Pan", monto: 50, cantidad: 2, jergaOriginal: "pan" }], crearPedido: false }
       : { respuesta: "¡Hola! ¿Qué deseas pedir?", productos: null, crearPedido: false };
     return { choices: [{ message: { content: JSON.stringify(datos) } }] };
@@ -62,6 +64,14 @@ describe("chat del colmado en la página", () => {
     await c().request("POST", `/api/chat-colmado/sesion/${sessionId}/mensaje`, { texto: "dame 2 pan" });
     const nuevos = (await c().request("GET", `/api/chat-colmado/sesion/${sessionId}/mensajes?despues=${primeros.at(-1).id}`)).json.mensajes;
     expect(nuevos.map((x: any) => x.contenido)).toEqual(["dame 2 pan", "Anotado: 2 panes. ¿A qué dirección te lo enviamos?"]);
+  });
+
+  it("aprende la jerga igual que por WhatsApp y alimenta el diccionario del país", async () => {
+    await c().request("POST", `/api/chat-colmado/sesion/${sessionId}/mensaje`, { texto: "mándame una fría" });
+    const propia = await t.db.select().from(diccionarioJerga).where(eq(diccionarioJerga.colmadoId, colmado.id));
+    expect(propia.map((j) => [j.jerga, j.productoIdentificado])).toContainEqual(["una fria", "Cerveza Presidente"]);
+    const pais = await t.db.select().from(jergaAprendizaje).where(eq(jergaAprendizaje.colmadoId, colmado.id));
+    expect(pais.map((j) => j.jerga)).toContain("una fria");
   });
 
   it("nadie se hace pasar por un repartidor desde la página", async () => {
