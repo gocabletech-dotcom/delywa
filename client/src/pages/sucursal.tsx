@@ -32,6 +32,7 @@ export default function SucursalPage() {
   if (isError || !data) return <div className="min-h-screen flex items-center justify-center p-6 text-center"><div><h1 className="text-2xl font-bold">Sucursal no encontrada</h1><p className="text-gray-500 mt-2">El enlace puede estar vencido o desactivado.</p></div></div>;
 
   const publicSlug = data.slug || slug;
+  const esColmado = ["colmado", "colmadon"].includes(data.tipoNegocio);
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <section className="w-full max-w-md bg-white rounded-2xl shadow-sm border overflow-hidden">
@@ -45,9 +46,10 @@ export default function SucursalPage() {
         <div className="p-6 space-y-4">
           <div className="flex gap-3 text-gray-700"><MapPin className="text-primary shrink-0" size={20} /><span>{data.direccion}{data.ciudad ? `, ${data.ciudad}` : ""}{data.provincia ? `, ${data.provincia}` : ""}</span></div>
           <div className="flex gap-3 text-gray-700"><Phone className="text-primary shrink-0" size={20} /><span>{data.whatsappNumero}</span></div>
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <Link href={`/pedir/${publicSlug}`}><Button className="w-full"><ShoppingBag size={17} className="mr-2" /> Pedir ahora</Button></Link>
-            <Link href={`/menu/${publicSlug}`}><Button variant="outline" className="w-full"><UtensilsCrossed size={17} className="mr-2" /> Ver menú</Button></Link>
+          {/* Los colmados se piden hablando, como por WhatsApp: no hay menú. */}
+          <div className={`grid gap-3 pt-2 ${esColmado ? "grid-cols-1" : "grid-cols-2"}`}>
+            <Link href={`/pedir/${publicSlug}`}><Button className="w-full"><ShoppingBag size={17} className="mr-2" /> {esColmado ? "Escribir al colmado" : "Pedir ahora"}</Button></Link>
+            {!esColmado && <Link href={`/menu/${publicSlug}`}><Button variant="outline" className="w-full"><UtensilsCrossed size={17} className="mr-2" /> Ver menú</Button></Link>}
           </div>
         </div>
       </section>

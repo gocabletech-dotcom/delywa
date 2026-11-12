@@ -5,6 +5,7 @@ import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { requireAdmin, requireAuth, requireBusinessAccess } from "../lib/auth";
 import { isUniqueViolation } from "../lib/d1";
+import { claveDebil } from "../lib/claves";
 import {
   aplicarPlantillaMenu, assignColmadoOwner, createColmado, createSucursal, deleteColmado, enrichColmadoWithMoneda,
   getAllColmados, getColmado, getPais, getSucursalesByOwner, isOwnerOfColmado, setColmadoEstado, toSafeColmado,
@@ -277,7 +278,7 @@ negocioRoutes.post("/api/colmados/:id/owner", requireAuth, async (c) => {
   if (typeof email !== "string" || !email.trim() || typeof password !== "string" || !password || typeof firstName !== "string" || !firstName.trim()) {
     return c.json({ error: "Se requiere email, contraseña y nombre" }, 400);
   }
-  if (password.length < 6) return c.json({ error: "La contraseña debe tener mínimo 6 caracteres" }, 400);
+  { const debil = await claveDebil(password); if (debil) return c.json({ error: debil }, 400); }
   const db = getDb(c.env.DB);
   if (!(await getColmado(db, colmadoId))) return c.json({ error: "Negocio no encontrado" }, 404);
   if (await getUserByEmail(db, email)) return c.json({ error: "Ya existe un usuario con este email" }, 409);

@@ -28,7 +28,7 @@ echo.
 
 rem ---------- 1. Requisitos ----------
 set "PASO=verificar requisitos"
-echo [1/7] Verificando requisitos...
+echo [1/8] Verificando requisitos...
 where git >nul 2>&1
 if errorlevel 1 (
   echo   FALTA Git. Instalalo desde https://git-scm.com/download/win y vuelve a correr este archivo.
@@ -49,7 +49,7 @@ echo   Git y Node.js %NODE_MAJOR% encontrados.
 rem ---------- 2. Codigo desde GitHub ----------
 set "PASO=bajar el codigo de GitHub"
 echo.
-echo [2/7] Bajando el codigo desde GitHub...
+echo [2/8] Bajando el codigo desde GitHub...
 if exist "%APP_DIR%\.git" goto :actualizar
 if not exist "%USERPROFILE%\Delywa" mkdir "%USERPROFILE%\Delywa"
 git clone "%REPO_URL%" "%APP_DIR%"
@@ -86,14 +86,32 @@ echo   Codigo listo: %INSTALADA%
 rem ---------- 3. Dependencias ----------
 set "PASO=instalar dependencias (npm ci)"
 echo.
-echo [3/7] Instalando dependencias (puede tardar unos minutos)...
+echo [3/8] Instalando dependencias (puede tardar unos minutos)...
 call npm ci --legacy-peer-deps --no-audit --no-fund
 if errorlevel 1 goto :error
 
-rem ---------- 4. Sesion de Cloudflare ----------
+rem ---------- 4. Pruebas ----------
+rem Pruebas automaticas con una base LOCAL y temporal: nunca tocan produccion.
+rem Si alguna falla, NO se publica (como en FoodPOS).
+set "PASO=correr las pruebas"
+echo.
+echo [4/8] Corriendo las pruebas automaticas (tardan unos 3 a 5 minutos)...
+call npx vitest run
+if not errorlevel 1 goto :pruebas_ok
+echo.
+echo   *** Alguna prueba fallo: por seguridad NO se va a publicar. ***
+echo   Copia el error de arriba y mandaselo a Claude.
+echo   Solo en una emergencia puedes escribir PUBLICAR para seguir de todos modos.
+set "SEGUIR="
+set /p "SEGUIR=  Escribe PUBLICAR o presiona Enter para salir: "
+if /I not "%SEGUIR%"=="PUBLICAR" goto :error
+echo   Sigues bajo tu responsabilidad.
+:pruebas_ok
+
+rem ---------- 5. Sesion de Cloudflare ----------
 set "PASO=iniciar sesion en Cloudflare"
 echo.
-echo [4/7] Verificando la sesion de Cloudflare...
+echo [5/8] Verificando la sesion de Cloudflare...
 call npx wrangler whoami > "%TEMP%\delywa_whoami.txt" 2>&1
 if errorlevel 1 goto :login
 findstr /I /C:"not authenticated" "%TEMP%\delywa_whoami.txt" >nul
@@ -107,25 +125,25 @@ call npx wrangler login
 if errorlevel 1 goto :error
 
 :build
-rem ---------- 5. Compilar ----------
+rem ---------- 6. Compilar ----------
 set "PASO=compilar el frontend"
 echo.
-echo [5/7] Compilando...
+echo [6/8] Compilando...
 call npm run build
 if errorlevel 1 goto :error
 
-rem ---------- 6. Base de datos ----------
+rem ---------- 7. Base de datos ----------
 set "PASO=aplicar migraciones en D1"
 echo.
-echo [6/7] Aplicando migraciones en la base de datos %D1_NAME%...
+echo [7/8] Aplicando migraciones en la base de datos %D1_NAME%...
 echo   Si pregunta "Ok to proceed?", escribe  y  y presiona Enter.
 call npx wrangler d1 migrations apply %D1_NAME% --remote
 if errorlevel 1 goto :error
 
-rem ---------- 7. Publicar ----------
+rem ---------- 8. Publicar ----------
 set "PASO=publicar el Worker"
 echo.
-echo [7/7] Publicando en Cloudflare...
+echo [8/8] Publicando en Cloudflare...
 call npx wrangler deploy
 if errorlevel 1 goto :error
 

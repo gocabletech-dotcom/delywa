@@ -132,6 +132,8 @@ describe("inicio de sesión", () => {
     const blocked = await c.request("POST", "/api/auth/login", { username: ADMIN.email, password: ADMIN.password });
     expect(blocked.status).toBe(429);
     expect(Number(blocked.headers.get("Retry-After"))).toBeGreaterThan(0);
+    // La cuenta no queda bloqueada: desde otra conexión el dueño entra.
+    expect((await t.client().request("POST", "/api/auth/login", { username: ADMIN.email, password: ADMIN.password }, { "CF-Connecting-IP": "10.1.1.1" })).status).toBe(200);
     await t.db.delete(loginIntentos);
     expect((await c.request("POST", "/api/auth/login", { username: ADMIN.email, password: ADMIN.password })).status).toBe(200);
   });
@@ -152,7 +154,7 @@ describe("roles y sucursales", () => {
     expect((await a.request("GET", "/api/user/role")).json).toMatchObject({ role: "colmado_owner", sucursales: [principal.id, sucursal.id] });
 
     // El dueño no puede asignar sucursales ajenas ni crear roles no permitidos.
-    const nuevo = { email: "Emp@Delywa.test", password: "emp12345", firstName: "Eva", role: "operador_sucursal" };
+    const nuevo = { email: "Emp@Delywa.test", password: "empleada-segura-12", firstName: "Eva", role: "operador_sucursal" };
     expect((await a.request("POST", "/api/negocio/usuarios", { ...nuevo, sucursalIds: [ajeno.id] })).status).toBe(400);
     expect((await a.request("POST", "/api/negocio/usuarios", { ...nuevo, role: "platform_admin", sucursalIds: [sucursal.id] })).status).toBe(400);
     const creado = await a.request("POST", "/api/negocio/usuarios", { ...nuevo, sucursalIds: [sucursal.id, ajeno.id] });
@@ -166,7 +168,7 @@ describe("roles y sucursales", () => {
 
     // El empleado solo ve su sucursal y no gestiona usuarios.
     const e = t.client();
-    await e.request("POST", "/api/auth/login", { username: "emp@delywa.test", password: "emp12345" });
+    await e.request("POST", "/api/auth/login", { username: "emp@delywa.test", password: "empleada-segura-12" });
     expect((await e.request("GET", "/api/user/role")).json).toMatchObject({ role: "operador_sucursal", sucursales: [sucursal.id] });
     expect((await e.request("GET", "/api/negocio/usuarios-sucursales")).status).toBe(403);
     expect((await e.request("POST", "/api/negocio/usuarios", { ...nuevo, email: "x@x.test", sucursalIds: [sucursal.id] })).status).toBe(403);
@@ -220,5 +222,15 @@ describe("roles y sucursales", () => {
   it("los endpoints no migrados responden 501", async () => {
     expect((await t.client().request("GET", "/api/pedidos")).status).toBe(501);
     expect(await t.db.select().from(users)).not.toHaveLength(0);
+  });
+});
+
+describe("contraseñas nuevas", () => {
+  it("rechaza cortas, obvias y filtradas", async () => {
+    const { claveDebil } = await import("../lib/claves");
+    expect(await claveDebil("corta")).toMatch(/al menos 10/);
+    expect(await claveDebil("1234567890abc")).toMatch(/fácil de adivinar/);
+    expect(await claveDebil("mango-filtrado-2024")).toMatch(/filtraciones/);
+    expect(await claveDebil("mi perro come mango")).toBeNull();
   });
 });

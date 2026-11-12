@@ -10,6 +10,7 @@ import {
 } from "../lib/integraciones";
 import { graphUrl, http, versionGraphValida } from "../lib/whatsapp";
 import { verificarTurnstile } from "../lib/turnstile";
+import { correoListo, enviarCorreo, plantillaCorreo } from "../lib/correo";
 
 // Panel de plataforma → Integraciones: llaves de OpenAI, Meta y Turnstile.
 // Solo platform_admin. Los secretos nunca se devuelven completos.
@@ -30,7 +31,7 @@ async function cuerpo(c: Context<AppEnv>): Promise<Record<string, any>> {
 
 /** Revisa un valor antes de guardarlo; devuelve el mensaje de error o null si sirve. */
 function validar(campo: NombreCampo, valor: string): string | null {
-  if (valor.length > 2000 || /\s/.test(valor)) return "no puede tener espacios ni ser tan largo";
+  if (valor.length > 2000 || (campo !== "correo_desde" && /\s/.test(valor))) return "no puede tener espacios ni ser tan largo";
   switch (campo) {
     case "meta_app_id":
     case "meta_config_id":
@@ -42,6 +43,9 @@ function validar(campo: NombreCampo, valor: string): string | null {
         ? null : "debe ser la dirección de OpenAI de tu AI Gateway (https://gateway.ai.cloudflare.com/v1/…/…/openai)";
     case "whatsapp_verify_token":
       return valor.length >= 16 ? null : "debe tener al menos 16 caracteres";
+    case "correo_desde":
+      return /^(?:[^<>\r\n]{1,60}<[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>|[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)$/.test(valor)
+        ? null : "debe ser un correo, por ejemplo: DelyWa <no-responder@delywa.com>";
     case "turnstile_activo":
       return "se activa con el botón «Probar y activar»";
     default:
@@ -133,6 +137,7 @@ integracionRoutes.put("/api/admin/integraciones", async (c) => {
     throw err;
   }
   // Llaves de Turnstile nuevas: se apaga hasta probarlas, para que nadie quede fuera del login.
+  c.set("bitacoraDetalle", `Cambió: ${cambios.map(([campo, v]) => `${CAMPOS[campo].etiqueta}${v === null ? " (quitada)" : ""}`).join(", ")}`);
   if (hayTurnstile) await guardar(db, crudo(c), `${PREFIJO}turnstile_activo`, false, null, CAMPOS.turnstile_activo.etiqueta);
   olvidarCache(c.env);
   return c.json(await estado(c));
@@ -176,6 +181,17 @@ integracionRoutes.post("/api/admin/integraciones/probar-meta", async (c) => {
     return c.json({ ok: false, mensaje: `Meta rechazó el ID o la clave secreta (código ${res.status}).` });
   } catch {
     return c.json({ ok: false, mensaje: "No se pudo contactar a Meta." });
+  }
+});
+
+integracionRoutes.post("/api/admin/integraciones/probar-correo", async (c) => {
+  const env = await envEfectivo(crudo(c));
+  if (!correoListo(env)) return c.json({ ok: false, mensaje: "Faltan la clave de Resend y el remitente." });
+  try {
+    await enviarCorreo(env, { para: c.var.user.email!, asunto: "Prueba de correo de DelyWa", html: plantillaCorreo("¡El correo funciona!", "<p>Si te llegó este mensaje, DelyWa ya puede mandar correos: recuperar contraseña, código de registro y avisos.</p>") });
+    return c.json({ ok: true, mensaje: `Correo de prueba enviado a ${c.var.user.email}. Revisa tu bandeja (y la carpeta de spam).` });
+  } catch (err) {
+    return c.json({ ok: false, mensaje: err instanceof Error ? err.message : "No se pudo enviar." });
   }
 });
 

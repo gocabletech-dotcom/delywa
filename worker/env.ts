@@ -5,6 +5,8 @@ import type { Integraciones } from "./lib/integraciones";
 export interface Env {
   DB: D1Database;
   UPLOADS: R2Bucket;
+  /** Respaldos diarios de la base (bucket delywa-respaldos). Si falta, no se respalda. */
+  RESPALDOS?: R2Bucket;
   ASSETS: Fetcher;
   PUBLIC_URL: string;
   /** Cola de avisos entrantes de WhatsApp. Si falta, el webhook los atiende él mismo. */
@@ -39,5 +41,7 @@ export type AppEnv = {
     session: Session;
     /** Usuario autenticado; lo carga requireAuth. */
     user: User;
+    /** Texto extra para la bitácora (por ejemplo, qué llaves se cambiaron). */
+    bitacoraDetalle?: string;
   };
 };

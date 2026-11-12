@@ -4,11 +4,15 @@ import { configuracionSistema } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAuth } from "../lib/auth";
+import { claveDebil } from "../lib/claves";
+import { correoListo, SOPORTE } from "../lib/correo";
+import { cerrarSesionesDe, mandarEnlaceRecuperacion, revisarEquipo, usarEnlaceRecuperacion, usuarioDeId } from "../lib/cuenta";
+import { anotar } from "../lib/seguridad";
 import { timingSafeEqual, verifyAgainstDummy, verifyPassword } from "../lib/password";
 import { turnstileDelLogin, verificarTurnstile } from "../lib/turnstile";
-import { clearLoginFailures, loginBlockedFor, recordLoginFailure } from "../lib/rate-limit";
+import { LOGIN, borrarEventos, contarEventos, loginBlockedFor, permitirEvento, recordLoginFailure, registrarEvento } from "../lib/rate-limit";
 import {
-  countPlatformAdmins, createUser, getAccessibleColmadoIds, getUserByEmail, getUserById,
+  countPlatformAdmins, createUser, updateUser, getAccessibleColmadoIds, getUserByEmail, getUserById,
   isUniqueViolation, normalizeEmail, toPublicUser,
 } from "../storage/users";
 
@@ -24,18 +28,24 @@ authRoutes.post("/api/auth/login", async (c) => {
   if (!username || !password) return c.json({ error: "Usuario o contraseña incorrectos" }, 401);
 
   const db = getDb(c.env.DB);
-  const ip = c.req.header("CF-Connecting-IP");
-  const blockedFor = await loginBlockedFor(db, username, ip);
-  if (blockedFor > 0) {
-    c.header("Retry-After", String(blockedFor));
-    const minutos = Math.ceil(blockedFor / 60);
-    return c.json({ error: `Demasiados intentos. Intenta de nuevo en ${minutos} minuto${minutos === 1 ? "" : "s"}.` }, 429);
-  }
+  const ip = c.req.header("CF-Connecting-IP") ?? "sin-ip";
+  const claveIp = `login:ip:${ip}`, claveFallos = `loginf:${ip}:${username}`, claveCorreo = `loginfe:${username}`;
 
-  // Turnstile (si la plataforma lo activó): se comprueba antes de mirar la contraseña.
+  // 1. Freno por conexión (todos los intentos) y por conexión + correo (solo fallos). La cuenta nunca se bloquea.
+  const intentosIp = await contarEventos(db, claveIp, LOGIN.ventanaIpMs);
+  if (intentosIp >= LOGIN.maxPorIp) return c.json({ error: "Demasiados intentos desde esta conexión. Espera unos minutos y vuelve a intentar." }, 429);
+  const fallos = await contarEventos(db, claveFallos, LOGIN.ventanaFallosMs);
+  if (fallos >= LOGIN.maxFallosIpCorreo) {
+    c.header("Retry-After", String(LOGIN.ventanaFallosMs / 1000));
+    return c.json({ error: "Demasiados intentos fallidos con ese correo desde esta conexión. Espera 15 minutos." }, 429);
+  }
+  await registrarEvento(db, claveIp);
+
+  // 2. Turnstile solo cuando hace falta: después de 3 fallos o muchos intentos desde la conexión.
   const turnstile = turnstileDelLogin(c.env);
-  if (turnstile && !(await verificarTurnstile(turnstile.secreto, body?.turnstileToken, ip))) {
-    return c.json({ error: "Completa la verificación de seguridad e intenta de nuevo.", turnstile: true }, 400);
+  if (turnstile && (fallos >= LOGIN.fallosParaTurnstile || intentosIp >= LOGIN.intentosIpParaTurnstile)
+    && !(await verificarTurnstile(turnstile.secreto, body?.turnstileToken, ip))) {
+    return c.json({ error: "Confirma que no eres un robot y vuelve a tocar Iniciar Sesión.", turnstile: true, siteKey: turnstile.siteKey }, 403);
   }
 
   const user = await getUserByEmail(db, username);
@@ -44,11 +54,15 @@ authRoutes.post("/api/auth/login", async (c) => {
   else await verifyAgainstDummy(password);
 
   if (!user || !valid) {
-    await recordLoginFailure(db, username, ip);
+    await registrarEvento(db, claveFallos, claveCorreo);
+    // Muchos fallos contra un mismo correo (desde cualquier conexión): cada intento tarda más.
+    const fallosCorreo = await contarEventos(db, claveCorreo, 60 * 60 * 1000);
+    const espera = Math.min(LOGIN.esperaBaseMs + fallosCorreo * LOGIN.esperaPorFalloMs, 4000);
+    if (espera > 0 && LOGIN.esperaPorFalloMs > 0) await new Promise((r) => setTimeout(r, espera));
     return c.json({ error: "Usuario o contraseña incorrectos" }, 401);
   }
 
-  await clearLoginFailures(db, username);
+  await borrarEventos(db, claveFallos);
   const session = c.var.session;
   session.regenerate();
   session.data = {
@@ -59,6 +73,8 @@ authRoutes.post("/api/auth/login", async (c) => {
     lastActivity: Date.now(),
   };
   session.touch();
+  await revisarEquipo(c, db, user);
+  await anotar(db, { userId: user.id, usuario: user.email, rol: user.role, colmadoId: user.colmadoId, accion: "Inicio de sesión", ip });
   return c.json({
     success: true,
     role: user.role,
@@ -67,7 +83,43 @@ authRoutes.post("/api/auth/login", async (c) => {
   });
 });
 
-/** Público: la clave del sitio de Turnstile para dibujar la verificación en el login (solo si está activo). */
+// ---------- ¿Olvidaste tu contraseña? ----------
+
+const RESPUESTA_RECUPERAR = "Si existe una cuenta con ese correo, te mandamos un enlace para poner una contraseña nueva. Revisa tu bandeja y la carpeta de spam.";
+
+/** Público: ¿se puede recuperar la contraseña por correo? (el login muestra o esconde el enlace). */
+authRoutes.get("/api/auth/recuperar", (c) => c.json({ disponible: correoListo(c.env) }));
+
+authRoutes.post("/api/auth/recuperar", async (c) => {
+  if (!correoListo(c.env)) return c.json({ error: `La recuperación por correo todavía no está activada. Escríbenos a ${SOPORTE}.` }, 503);
+  const body = await c.req.json().catch(() => null);
+  const email = typeof body?.email === "string" ? normalizeEmail(body.email) : "";
+  if (!EMAIL_RE.test(email)) return c.json({ error: "Escribe tu correo." }, 400);
+  const db = getDb(c.env.DB);
+  const ip = c.req.header("CF-Connecting-IP") ?? "sin-ip";
+  if (!(await permitirEvento(db, `recuperar:${ip}`, 5, 60 * 60 * 1000))) return c.json({ error: "Demasiados intentos desde esta conexión. Espera una hora." }, 429);
+  // Por correo, 3 por hora; de más, se responde igual sin mandar nada (no se revela si la cuenta existe).
+  if (await permitirEvento(db, `recuperar:${email}`, 3, 60 * 60 * 1000)) await mandarEnlaceRecuperacion(c, db, await getUserByEmail(db, email));
+  return c.json({ ok: true, mensaje: RESPUESTA_RECUPERAR });
+});
+
+authRoutes.post("/api/auth/recuperar/cambiar", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const db = getDb(c.env.DB);
+  const ip = c.req.header("CF-Connecting-IP") ?? "sin-ip";
+  if (!(await permitirEvento(db, `recuperarc:${ip}`, 20, 60 * 60 * 1000))) return c.json({ error: "Demasiados intentos. Espera una hora." }, 429);
+  const debil = await claveDebil(body?.password);
+  if (debil) return c.json({ error: debil }, 400);
+  const userId = await usarEnlaceRecuperacion(db, typeof body?.token === "string" ? body.token : "");
+  if (!userId) return c.json({ error: "El enlace venció o ya se usó. Pide uno nuevo desde «¿Olvidaste tu contraseña?»." }, 400);
+  await updateUser(db, userId, { password: body.password });
+  await cerrarSesionesDe(db, userId);
+  const user = await usuarioDeId(db, userId);
+  await anotar(db, { userId, usuario: user?.email, rol: user?.role, colmadoId: user?.colmadoId, accion: "Cambió su contraseña con el enlace del correo", ip });
+  return c.json({ ok: true, mensaje: "Listo. Ya puedes entrar con tu contraseña nueva." });
+});
+
+/** Público: la clave del sitio de Turnstile (el login la muestra solo cuando el servidor la pide). */
 authRoutes.get("/api/auth/turnstile", (c) => {
   const t = turnstileDelLogin(c.env);
   return c.json(t ? { activo: true, siteKey: t.siteKey } : { activo: false });
@@ -156,6 +208,7 @@ authRoutes.post("/api/auth/setup", async (c) => {
   if (!EMAIL_RE.test(email) || !firstName || password.length < 10) {
     return c.json({ error: "Nombre, correo válido y contraseña de mínimo 10 caracteres son obligatorios" }, 400);
   }
+  { const debil = await claveDebil(password); if (debil) return c.json({ error: debil }, 400); }
 
   try {
     const user = await createUser(db, { idPrefix: "admin", email, password, firstName, role: "platform_admin" });

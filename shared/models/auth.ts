@@ -77,3 +77,79 @@ export const aceptacionesLegales = sqliteTable("aceptaciones_legales", {
   userAgent: text("user_agent"),
   fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (table) => [index("aceptaciones_legales_user_idx").on(table.userId), index("aceptaciones_legales_colmado_idx").on(table.colmadoId)]);
+
+// ============ Seguridad (v2.15.0, traído de FoodPOS) ============
+
+const AHORA = sql`(cast(unixepoch('subsec') * 1000 as integer))`;
+
+/** Errores del servidor (30 días). Con 5 o más en 10 minutos se avisa por correo a la plataforma. */
+export const errores = sqliteTable("errores", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ref: text("ref").notNull(),
+  origen: text("origen").notNull().default("api"),
+  metodo: text("metodo"),
+  ruta: text("ruta"),
+  mensaje: text("mensaje"),
+  pila: text("pila"),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(AHORA).notNull(),
+}, (t) => [index("errores_fecha_idx").on(t.fecha)]);
+
+/** Bitácora: quién hizo qué (180 días). Nunca guarda contraseñas ni el cuerpo de las peticiones. */
+export const bitacora = sqliteTable("bitacora", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("user_id"),
+  usuario: text("usuario"),
+  rol: text("rol"),
+  colmadoId: integer("colmado_id"),
+  accion: text("accion").notNull(),
+  detalle: text("detalle"),
+  ip: text("ip"),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(AHORA).notNull(),
+}, (t) => [index("bitacora_fecha_idx").on(t.fecha), index("bitacora_colmado_idx").on(t.colmadoId, t.fecha)]);
+
+/** Enlaces de "olvidé mi contraseña" (30 minutos, un solo uso). Se guarda solo la huella del enlace. */
+export const recuperaciones = sqliteTable("recuperaciones", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: text("user_id").notNull(),
+  expira: integer("expira", { mode: "timestamp_ms" }).notNull(),
+  usado: integer("usado", { mode: "boolean" }).notNull().default(false),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(AHORA).notNull(),
+});
+
+/** Código de 6 números que se manda al correo antes de crear un negocio (20 minutos, 5 intentos). */
+export const codigosCorreo = sqliteTable("codigos_correo", {
+  email: text("email").primaryKey(),
+  codigoHash: text("codigo_hash").notNull(),
+  expira: integer("expira", { mode: "timestamp_ms" }).notNull(),
+  intentos: integer("intentos").notNull().default(0),
+});
+
+/** Equipos desde los que entró cada usuario (cookie delywa_disp). Uno nuevo genera un aviso por correo. */
+export const dispositivos = sqliteTable("dispositivos", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: text("user_id").notNull(),
+  nombre: text("nombre"),
+  creado: integer("creado", { mode: "timestamp_ms" }).default(AHORA).notNull(),
+  visto: integer("visto", { mode: "timestamp_ms" }).default(AHORA).notNull(),
+}, (t) => [index("dispositivos_user_idx").on(t.userId)]);
+
+/** Avisos por correo ya enviados (para no repetirlos), p. ej. "prueba:3d:<negocio>:<fecha>". */
+export const avisosEnviados = sqliteTable("avisos_enviados", {
+  clave: text("clave").primaryKey(),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(AHORA).notNull(),
+});
+
+/** Respaldo diario de la base en R2, hecho por partes en el cron. */
+export const respaldos = sqliteTable("respaldos", {
+  dia: text("dia").primaryKey(), // AAAA-MM-DD (UTC)
+  estado: text("estado").notNull().default("en_curso"), // en_curso, listo, fallido
+  tablas: text("tablas", { mode: "json" }).$type<string[]>().notNull(),
+  tablaActual: integer("tabla_actual").notNull().default(0),
+  ultimoRowid: integer("ultimo_rowid").notNull().default(0),
+  parte: integer("parte").notNull().default(0),
+  filas: integer("filas").notNull().default(0),
+  bytes: integer("bytes").notNull().default(0),
+  inicio: integer("inicio", { mode: "timestamp_ms" }).default(AHORA).notNull(),
+  fin: integer("fin", { mode: "timestamp_ms" }),
+  error: text("error"),
+});

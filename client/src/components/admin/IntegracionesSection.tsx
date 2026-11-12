@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Brain, Check, Copy, Loader2, MessageSquare, Save, ShieldCheck } from "lucide-react";
+import { AlertCircle, Brain, Check, Copy, Loader2, Mail, MessageSquare, Save, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 
@@ -63,8 +63,15 @@ const GRUPOS: Array<{ titulo: string; descripcion: string; icono: typeof Brain; 
     prueba: "probar-meta",
   },
   {
+    titulo: "Correo (Resend)",
+    descripcion: "Para «¿Olvidaste tu contraseña?», el código al registrar un negocio, el aviso de equipo nuevo, el aviso de fin de prueba y el aviso de errores. Plan gratis de Resend: 3,000 correos al mes.",
+    icono: Mail,
+    campos: ["resend_clave", "correo_desde"],
+    prueba: "probar-correo",
+  },
+  {
     titulo: "Protección del login (Cloudflare Turnstile)",
-    descripcion: "Pide una verificación «¿eres una persona?» al iniciar sesión. Solo se activa después de una prueba exitosa, para que nadie quede fuera por un error en las claves.",
+    descripcion: "Pide la verificación «¿eres una persona?» después de 3 intentos fallidos de entrar, y al registrar un negocio. Solo se activa después de una prueba exitosa, para que nadie quede fuera por un error en las claves.",
     icono: ShieldCheck,
     campos: ["turnstile_site_key", "turnstile_secret_key"],
   },
@@ -79,6 +86,8 @@ const AYUDA: Record<string, string> = {
   whatsapp_verify_token: "Ya se creó uno al azar. Solo cámbialo si Meta ya tiene otro.",
   whatsapp_access_token: "Opcional. Solo para negocios que no conectaron su propio número.",
   meta_graph_version: "Opcional. Si lo dejas vacío se usa v24.0.",
+  resend_clave: "resend.com → API Keys → Create API Key (permiso «Sending access»). Empieza con re_.",
+  correo_desde: "Debe ser de un dominio verificado en Resend, por ejemplo: DelyWa <no-responder@delywa.com>",
   turnstile_site_key: "Cloudflare → Turnstile → tu widget → Clave del sitio.",
   turnstile_secret_key: "En el mismo widget → Clave secreta.",
 };

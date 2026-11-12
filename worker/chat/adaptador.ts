@@ -35,7 +35,9 @@ import { getPlantillaZip } from "../routes/plataforma";
 // atender peticiones. Cada petición lleva su propio contexto, porque en un
 // Worker varias peticiones se intercalan dentro del mismo proceso.
 
-type Contexto = { env: Env; db: Db; origen: string; manejadores: Map<string, Manejador>; pendientes: Promise<unknown>[]; demoraMs?: [number, number]; colmadoId?: number };
+type Contexto = { env: Env; db: Db; origen: string; manejadores: Map<string, Manejador>; pendientes: Promise<unknown>[]; demoraMs?: [number, number]; colmadoId?: number;
+  /** DELYWA: el cliente escribe desde el chat de la página, no por WhatsApp (ver routes/chat-colmado.ts). */
+  canalWeb?: { sessionId: string; telefono: string } };
 type Manejador = (req: any, res: any) => any;
 const contexto = new AsyncLocalStorage<Contexto>();
 
@@ -55,7 +57,7 @@ type Registrar = {
 export type AppLike = { get: Registrar; post: Registrar };
 
 /** Ejecuta una función del motor (no un manejador de ruta) con el contexto de la petición. */
-export async function conContexto<T>(base: Pick<Contexto, "env" | "db" | "origen" | "demoraMs">, fn: () => Promise<T>): Promise<T> {
+export async function conContexto<T>(base: Pick<Contexto, "env" | "db" | "origen" | "demoraMs" | "colmadoId" | "canalWeb">, fn: () => Promise<T>): Promise<T> {
   const pendientes: Promise<unknown>[] = [];
   const actual: Contexto = { ...base, manejadores: new Map(), pendientes };
   try {
@@ -142,7 +144,16 @@ export const openaiWhisper: any = clienteIA;
 
 // ---------- WhatsApp y utilidades ----------
 
-export function sendWhatsAppMessageSmart(colmado: any, to: string, text: string, skipWindowCheck = false): Promise<boolean> {
+export async function sendWhatsAppMessageSmart(colmado: any, to: string, text: string, skipWindowCheck = false): Promise<boolean> {
+  // DELYWA: si el cliente escribe desde el chat de la página, la respuesta le llega ahí y no por WhatsApp.
+  const web = ctx().canalWeb;
+  if (web && soloDigitos(to) === web.telefono) {
+    await ctx().db.batch([
+      ctx().db.insert(chatWebMensajes).values({ sessionId: web.sessionId, rol: "assistant", contenido: String(text) }),
+      ctx().db.update(chatWebSesiones).set({ fechaUltimaActividad: new Date() }).where(eq(chatWebSesiones.sessionId, web.sessionId)),
+    ]);
+    return true;
+  }
   return enviarWhatsApp(ctx().env, colmado, to, text, { omitirVentana: skipWindowCheck });
 }
 
@@ -209,7 +220,13 @@ export const storage = {
   // Pedidos
   getPedidoById: (id: number) => getPedidoById(ctx().db, Number(id)),
   getPedidosByClienteWhatsapp: (colmadoId: number, whatsapp: string) => getPedidosByClienteWhatsapp(ctx().db, colmadoId, whatsapp),
-  createPedido: (data: any) => createPedido(ctx().db, data),
+  async createPedido(data: any) {
+    const pedido = await createPedido(ctx().db, data);
+    // DELYWA: el pedido hecho desde el chat de la página queda ligado a esa sesión (avisos de estado y comprobante).
+    const web = ctx().canalWeb;
+    if (web) await ctx().db.update(chatWebSesiones).set({ pedidoId: pedido.id, estado: "pedido_creado" }).where(eq(chatWebSesiones.sessionId, web.sessionId));
+    return pedido;
+  },
   updatePedidoEstado: (id: number, estado: string, motivo?: string) => updatePedidoEstado(ctx().db, id, estado, motivo),
   updatePedidoMetodoPago: (id: number, metodoPago: string) => updateMetodoPago(ctx().db, id, metodoPago),
   updateVueltoEntregado: (id: number, monto: number, usuario?: string) => updateVuelto(ctx().db, id, monto, usuario),
@@ -355,6 +372,8 @@ export const storage = {
   // Repartidores
   getDeliveriesByColmado: (colmadoId: number) => getDeliveriesByColmado(ctx().db, colmadoId),
   async getDeliveryByWhatsapp(numero: string) {
+    // DELYWA: en el chat de la página el número no está verificado; nadie puede hacerse pasar por un repartidor.
+    if (ctx().canalWeb) return undefined;
     const digitos = soloDigitos(numero);
     if (!digitos) return undefined;
     return (await ctx().db.select().from(deliveries)).find((d) => soloDigitos(d.whatsappNumero) === digitos);

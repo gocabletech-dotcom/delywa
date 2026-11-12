@@ -20,12 +20,30 @@ export default function LoginPage() {
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [reinicioTurnstile, setReinicioTurnstile] = useState(0);
 
+  // «¿Olvidaste tu contraseña?» (solo si la plataforma activó el correo).
+  const [recuperarDisponible, setRecuperarDisponible] = useState(false);
+  const [mostrarRecuperar, setMostrarRecuperar] = useState(false);
+  const [correoRecuperar, setCorreoRecuperar] = useState("");
+  const [enviandoRecuperar, setEnviandoRecuperar] = useState(false);
+  const [avisoRecuperar, setAvisoRecuperar] = useState<string | null>(null);
   useEffect(() => {
-    fetch("/api/auth/turnstile", { credentials: "include" })
-      .then((res) => res.json())
-      .then((data) => setTurnstileSiteKey(data.activo && data.siteKey ? data.siteKey : null))
-      .catch(() => setTurnstileSiteKey(null));
+    fetch("/api/auth/recuperar").then((r) => r.json()).then((d) => setRecuperarDisponible(Boolean(d.disponible))).catch(() => undefined);
   }, []);
+  const pedirRecuperacion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEnviandoRecuperar(true);
+    try {
+      const r = await fetch("/api/auth/recuperar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: correoRecuperar }) });
+      const d = await r.json().catch(() => ({}));
+      setAvisoRecuperar(d.mensaje || d.error || "Intenta de nuevo.");
+    } catch {
+      setAvisoRecuperar("Error de conexión. Intenta de nuevo.");
+    } finally {
+      setEnviandoRecuperar(false);
+    }
+  };
+
+  // La verificación aparece solo cuando el servidor la pide (después de varios intentos fallidos).
 
   // Mientras la plataforma no tenga administrador, ofrecer crearlo.
   useEffect(() => {
@@ -61,6 +79,7 @@ export default function LoginPage() {
         window.location.href = "/admin";
       } else {
         toast({ title: "Error", description: data.error || "Credenciales incorrectas", variant: "destructive" });
+        if (data.turnstile && data.siteKey) setTurnstileSiteKey(data.siteKey);
         // Cada verificación sirve una sola vez: se pide otra para el próximo intento.
         if (turnstileSiteKey) setReinicioTurnstile((n) => n + 1);
       }
@@ -141,6 +160,25 @@ export default function LoginPage() {
               Iniciar Sesión
             </Button>
           </form>
+
+          {recuperarDisponible && (
+            <div className="mt-4 text-center text-sm">
+              {!mostrarRecuperar ? (
+                <button type="button" className="text-[#128C7E] underline" onClick={() => { setMostrarRecuperar(true); setCorreoRecuperar(username); }} data-testid="link-olvide-clave">
+                  ¿Olvidaste tu contraseña?
+                </button>
+              ) : (
+                <form onSubmit={pedirRecuperacion} className="space-y-2 text-left border rounded-lg p-3 bg-gray-50" data-testid="form-recuperar">
+                  <Label htmlFor="correo-recuperar">Tu correo</Label>
+                  <Input id="correo-recuperar" type="email" value={correoRecuperar} onChange={(e) => setCorreoRecuperar(e.target.value.toLowerCase())} required />
+                  <Button type="submit" variant="outline" className="w-full" disabled={enviandoRecuperar}>
+                    {enviandoRecuperar ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}Mandarme un enlace para cambiarla
+                  </Button>
+                  {avisoRecuperar && <p className="text-sm text-gray-600">{avisoRecuperar}</p>}
+                </form>
+              )}
+            </div>
+          )}
 
           <div className="mt-4 text-center">
             <Button 

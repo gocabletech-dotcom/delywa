@@ -18,7 +18,11 @@
       "migrations_dir": "migrations"
     }
   ],
-  "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "delywa-uploads" }],
+  "r2_buckets": [
+    { "binding": "UPLOADS", "bucket_name": "delywa-uploads" },
+    // Respaldo diario de la base. Lo crea "npm run build" (scripts/preparar-cloudflare.mjs) si no existe.
+    { "binding": "RESPALDOS", "bucket_name": "delywa-respaldos" }
+  ],
   // Cola de avisos entrantes de WhatsApp. La crea "npm run build" (scripts/preparar-cloudflare.mjs) si no existe.
   "queues": {
     "producers": [{ "binding": "COLA_WEBHOOKS", "queue": "delywa-webhooks" }],

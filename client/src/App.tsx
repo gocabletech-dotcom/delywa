@@ -35,6 +35,7 @@ import EmpleadoPortalPage from "@/pages/empleado-portal";
 import LoginPage from "@/pages/login";
 import PrimerAccesoPage from "@/pages/primer-acceso";
 import LegalPage from "@/pages/legal";
+import RecuperarPage from "@/pages/recuperar";
 import DeletionStatusPage from "@/pages/deletion-status";
 import DataDeletionPage from "@/pages/data-deletion";
 import ContactPage from "@/pages/contact";
@@ -55,6 +56,7 @@ function Router() {
       <Route path="/terms" component={() => <LegalPage seccion="terminos" />} />
       <Route path="/contact" component={ContactPage} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/recuperar" component={RecuperarPage} />
       <Route path="/primer-acceso" component={PrimerAccesoPage} />
       
       {/* Chat Web Público (sin restricciones de Meta) */}

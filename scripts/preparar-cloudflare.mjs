@@ -44,6 +44,26 @@ if (!lista.ok) {
   else publicarSinCola(`No se pudo crear la cola ${COLA}:\n${creada.salida.slice(-600)}\n`);
 }
 
+// ---------- Bucket de respaldos (R2, plan gratis hasta 10 GB) ----------
+const BUCKET = "delywa-respaldos";
+function publicarSinRespaldos(motivo) {
+  const ruta = new URL("../wrangler.jsonc", import.meta.url);
+  const texto = readFileSync(ruta, "utf8");
+  const sin = texto.replace(/,\n\s*\/\/ Respaldo diario de la base[^\n]*\n\s*\{ "binding": "RESPALDOS"[^\n]*\}/, "");
+  if (sin !== texto) writeFileSync(ruta, sin);
+  console.log(`[preparar] ${motivo} Se publica sin respaldos diarios; todo lo demás funciona igual.`);
+}
+const buckets = wrangler(["r2", "bucket", "list"]);
+if (!buckets.ok) {
+  publicarSinRespaldos("No se pudo consultar R2 (sin sesión o sin conexión).");
+} else if (buckets.salida.includes(BUCKET)) {
+  console.log(`[preparar] El bucket ${BUCKET} ya existe.`);
+} else {
+  const creado = wrangler(["r2", "bucket", "create", BUCKET]);
+  if (creado.ok) console.log(`[preparar] Bucket ${BUCKET} creado.`);
+  else publicarSinRespaldos(`No se pudo crear el bucket ${BUCKET}:\n${creado.salida.slice(-600)}\n`);
+}
+
 // ---------- Clave maestra ----------
 // Se crea una sola vez. Nunca se reemplaza: si cambiara, las llaves guardadas en
 // el panel ya no se podrían leer y habría que escribirlas de nuevo.

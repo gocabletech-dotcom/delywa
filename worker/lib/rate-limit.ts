@@ -51,3 +51,32 @@ export async function permitirEvento(db: Db, clave: string, maximo: number, vent
   await db.insert(loginIntentos).values({ clave });
   return true;
 }
+
+// ---------- Inicio de sesión (como FoodPOS v65) ----------
+// Ya no se bloquea la CUENTA: con 5 fallos cualquiera podía dejar fuera al dueño a propósito.
+// Se frena la CONEXIÓN que falla y cada intento contra un mismo correo tarda un poco más.
+
+export const LOGIN = {
+  /** Intentos (buenos o malos) por conexión cada 10 minutos. */
+  maxPorIp: 30, ventanaIpMs: 10 * 60 * 1000,
+  /** Fallos por conexión y correo cada 15 minutos. */
+  maxFallosIpCorreo: 5, ventanaFallosMs: 15 * 60 * 1000,
+  /** Desde cuántos fallos se pide la verificación de Turnstile (si está activa). */
+  fallosParaTurnstile: 3, intentosIpParaTurnstile: 10,
+  /** Espera extra por cada fallo contra el correo en la última hora (tope 4 s). Las pruebas la ponen en 0. */
+  esperaPorFalloMs: 250, esperaBaseMs: 400,
+};
+
+export async function contarEventos(db: Db, clave: string, ventanaMs: number): Promise<number> {
+  const [fila] = await db.select({ total: sql<number>`count(*)` }).from(loginIntentos)
+    .where(and(eq(loginIntentos.clave, clave), gt(loginIntentos.fecha, new Date(Date.now() - ventanaMs))));
+  return Number(fila?.total || 0);
+}
+
+export async function registrarEvento(db: Db, ...claves: string[]): Promise<void> {
+  if (claves.length) await db.insert(loginIntentos).values(claves.map((clave) => ({ clave })));
+}
+
+export async function borrarEventos(db: Db, clave: string): Promise<void> {
+  await db.delete(loginIntentos).where(eq(loginIntentos.clave, clave));
+}

@@ -1,0 +1,9 @@
+# Encabezados de seguridad para las páginas de DelyWa (Cloudflare los aplica a los archivos estáticos).
+# Las respuestas de la API los ponen desde el Worker (worker/lib/seguridad.ts).
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000
+  X-Frame-Options: SAMEORIGIN
+  Permissions-Policy: geolocation=(self), camera=(self), microphone=(self), payment=(), usb=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://connect.facebook.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://challenges.cloudflare.com https://*.facebook.com; media-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https://*.facebook.com; frame-ancestors 'self'

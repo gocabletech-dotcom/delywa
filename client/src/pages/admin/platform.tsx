@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Loader2, Store, Users, Package, DollarSign, Settings, LogOut, MessageSquare, Save, X, Plus, Edit, ChevronDown, ChevronRight, MapPin, Phone, Trash2, Building2, Percent, Crown, Image, Video, Download, Tag, FileText, LayoutGrid, BookOpen, Sparkles, Check, AlertCircle, Ban, Play, Truck, Brain, Globe, KeyRound } from "lucide-react";
+import { Loader2, Store, Users, Package, DollarSign, Settings, LogOut, MessageSquare, Save, X, Plus, Edit, ChevronDown, ChevronRight, MapPin, Phone, Trash2, Building2, Percent, Crown, Image, Video, Download, Tag, FileText, LayoutGrid, BookOpen, Sparkles, Check, AlertCircle, Ban, Play, Truck, Brain, Globe, KeyRound, ShieldCheck } from "lucide-react";
+import { SeguridadSection } from "@/components/admin/SeguridadSection";
 import { IntegracionesSection } from "@/components/admin/IntegracionesSection";
 import { SolicitudesNegocioSection } from "@/components/admin/SolicitudesNegocioSection";
 import { JergaAprendidaPanel } from "@/components/admin/JergaAprendidaPanel";
@@ -193,7 +194,7 @@ function whatsappPlaceholder(pais: { codigo: string; prefijoCelular: string } | 
   return `Ej: ${prefix}${getPhoneExample(pais.codigo)}`;
 }
 
-type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones" | "solicitudes";
+type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones" | "solicitudes" | "seguridad";
 
 const tiposNegocioLocal = [
   { value: "colmado", label: "Colmado" },
@@ -3557,6 +3558,7 @@ export default function PlatformAdminPage() {
     { id: "solicitudes" as SectionType, label: "Solicitudes", icon: Check },
     { id: "negocios" as SectionType, label: "Negocios", icon: Store },
     { id: "integraciones" as SectionType, label: "Integraciones", icon: KeyRound },
+    { id: "seguridad" as SectionType, label: "Seguridad", icon: ShieldCheck },
   ];
 
   return (
@@ -3655,6 +3657,7 @@ export default function PlatformAdminPage() {
               {activeSection === "negocios" && renderNegociosSection()}
               {activeSection === "integraciones" && <IntegracionesSection />}
               {activeSection === "solicitudes" && <SolicitudesNegocioSection />}
+              {activeSection === "seguridad" && <SeguridadSection />}
             </>
           )}
         </main>

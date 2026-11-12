@@ -57,6 +57,13 @@
       "when": 1794510327271,
       "tag": "0007_jerga_compartida",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794512123526,
+      "tag": "0008_seguridad",
+      "breakpoints": true
     }
   ]
 }

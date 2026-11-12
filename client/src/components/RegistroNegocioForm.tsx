@@ -25,6 +25,9 @@ export function RegistroNegocioForm() {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState(false);
+  // Si la plataforma activó el correo, primero llega un código de 6 números.
+  const [codigoEnviadoA, setCodigoEnviadoA] = useState<string | null>(null);
+  const [codigo, setCodigo] = useState("");
 
   useEffect(() => {
     fetch("/api/registro-negocio/opciones", { credentials: "include" })
@@ -41,7 +44,7 @@ export function RegistroNegocioForm() {
     setDatos((d) => ({ ...d, [campo]: e.target.value }));
 
   const pais = opciones?.paises.find((p) => String(p.id) === datos.paisId);
-  const faltaVerificacion = Boolean(opciones?.turnstileSiteKey && !token);
+  const faltaVerificacion = Boolean(opciones?.turnstileSiteKey && !token && !codigoEnviadoA);
 
   const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,10 +57,16 @@ export function RegistroNegocioForm() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...datos, paisId: Number(datos.paisId), aceptaTerminos: acepta, turnstileToken: token ?? undefined }),
+        body: JSON.stringify({ ...datos, paisId: Number(datos.paisId), aceptaTerminos: acepta, turnstileToken: token ?? undefined, codigo: codigoEnviadoA ? codigo : undefined }),
       });
       const data = await r.json().catch(() => ({}));
+      if (r.ok && data.codigoEnviado) {
+        setCodigoEnviadoA(data.correo);
+        setCodigo("");
+        return;
+      }
       if (!r.ok) {
+        if (data.codigoVencido) setCodigoEnviadoA(null);
         setError(data.error || "No se pudo crear el negocio.");
         if (opciones?.turnstileSiteKey) setReinicio((n) => n + 1);
         return;
@@ -142,10 +151,17 @@ export function RegistroNegocioForm() {
           <a href="/legal#dpa" target="_blank" rel="noopener" className="text-primary underline">Acuerdo de tratamiento de datos (DPA)</a>.
         </span>
       </label>
-      {opciones?.turnstileSiteKey && <TurnstileWidget siteKey={opciones.turnstileSiteKey} onToken={setToken} reinicio={reinicio} />}
+      {codigoEnviadoA && (
+        <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3" data-testid="paso-codigo">
+          <Label htmlFor="reg-codigo">Te mandamos un código de 6 números a {codigoEnviadoA}</Label>
+          <Input id="reg-codigo" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))} placeholder="123456" data-testid="input-codigo" />
+          <button type="button" className="text-sm text-primary underline" onClick={() => { setCodigoEnviadoA(null); setCodigo(""); }}>Enviar otro código</button>
+        </div>
+      )}
+      {!codigoEnviadoA && opciones?.turnstileSiteKey && <TurnstileWidget siteKey={opciones.turnstileSiteKey} onToken={setToken} reinicio={reinicio} />}
       {error && <p className="text-sm text-red-600" data-testid="registro-error">{error}</p>}
       <Button type="submit" className="w-full h-12 rounded-full text-lg font-bold" disabled={enviando || !opciones || faltaVerificacion} data-testid="button-crear-negocio">
-        {enviando && <Loader2 className="w-5 h-5 animate-spin mr-2" />}Crear mi negocio
+        {enviando && <Loader2 className="w-5 h-5 animate-spin mr-2" />}{codigoEnviadoA ? "Confirmar código y crear mi negocio" : "Crear mi negocio"}
       </Button>
       <p className="text-xs text-center text-gray-400">Revisamos cada negocio antes de activarlo.</p>
     </form>

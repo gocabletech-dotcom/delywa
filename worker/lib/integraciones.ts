@@ -27,6 +27,8 @@ export const CAMPOS = {
   turnstile_site_key: { secreto: false, etiqueta: "Clave del sitio de Turnstile" },
   turnstile_secret_key: { secreto: true, etiqueta: "Clave secreta de Turnstile" },
   turnstile_activo: { secreto: false, etiqueta: "Turnstile activo en el login" },
+  resend_clave: { secreto: true, etiqueta: "Clave de Resend (API key)" },
+  correo_desde: { secreto: false, etiqueta: "Remitente de los correos" },
 } satisfies Record<string, Campo>;
 
 export type NombreCampo = keyof typeof CAMPOS;

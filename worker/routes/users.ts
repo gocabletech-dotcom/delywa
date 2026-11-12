@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAdmin, requireAuth } from "../lib/auth";
+import { claveDebil } from "../lib/claves";
 import { getSucursalesByOwner } from "../storage/colmados";
 import {
   createUser, deleteUser, getAllUsers, getStaffForOwner, getUserByEmail, getUserById, getUserSucursalIds,
@@ -31,11 +32,12 @@ userRoutes.post("/api/negocio/usuarios", requireAuth, async (c) => {
   const { email, password, firstName, lastName, role, sucursalIds } = body;
   const rolesValidos = ["admin_pedidos", "operador_sucursal"];
   if (
-    typeof email !== "string" || !email.trim() || typeof password !== "string" || password.length < 6 ||
+    typeof email !== "string" || !email.trim() || typeof password !== "string" ||
     typeof firstName !== "string" || !firstName.trim() || !rolesValidos.includes(role)
   ) {
-    return c.json({ error: "Nombre, correo, contraseña de 6 caracteres y rol válido son obligatorios" }, 400);
+    return c.json({ error: "Nombre, correo, contraseña y rol válido son obligatorios" }, 400);
   }
+  { const debil = await claveDebil(password); if (debil) return c.json({ error: debil }, 400); }
   const db = getDb(c.env.DB);
   const ownedIds = new Set((await getSucursalesByOwner(db, owner.id)).map((branch) => branch.id));
   const selectedIds: number[] = Array.isArray(sucursalIds)
@@ -86,8 +88,9 @@ userRoutes.patch("/api/negocio/usuarios/:userId", requireAuth, async (c) => {
   if ((role === "colmado_owner") !== (target.id === owner.id)) {
     return c.json({ error: "No puedes cambiar ese rol" }, 400);
   }
-  if (password !== undefined && password !== "" && (typeof password !== "string" || password.length < 6)) {
-    return c.json({ error: "La nueva contraseña debe tener mínimo 6 caracteres" }, 400);
+  if (password !== undefined && password !== "") {
+    const debil = await claveDebil(password);
+    if (debil) return c.json({ error: debil }, 400);
   }
   if (!Array.isArray(sucursalIds) || sucursalIds.length === 0 || sucursalIds.some((id: unknown) => !ownedIds.has(Number(id)))) {
     return c.json({ error: "Debes asignar al menos una sucursal válida" }, 400);

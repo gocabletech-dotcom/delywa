@@ -100,13 +100,13 @@ describe("negocios", () => {
   });
 
   it("crea los dueños y limita lo que cada uno puede cambiar", async () => {
-    const owner = await admin.request("POST", `/api/colmados/${cafe.id}/owner`, { email: "cafe@delywa.test", password: "cafe1234", firstName: "Carla" });
+    const owner = await admin.request("POST", `/api/colmados/${cafe.id}/owner`, { email: "cafe@delywa.test", password: "cafe-clave-segura", firstName: "Carla" });
     expect(owner.status).toBe(201);
     expect(owner.json.user).not.toHaveProperty("password");
-    expect((await admin.request("POST", `/api/colmados/${cafe.id}/owner`, { email: "cafe@delywa.test", password: "cafe1234", firstName: "X" })).status).toBe(409);
-    await admin.request("POST", `/api/colmados/${otro.id}/owner`, { email: "otro@delywa.test", password: "otro1234", firstName: "Omar" });
-    duenoCafe = await login("cafe@delywa.test", "cafe1234");
-    duenoOtro = await login("otro@delywa.test", "otro1234");
+    expect((await admin.request("POST", `/api/colmados/${cafe.id}/owner`, { email: "cafe@delywa.test", password: "cafe-clave-segura", firstName: "X" })).status).toBe(409);
+    await admin.request("POST", `/api/colmados/${otro.id}/owner`, { email: "otro@delywa.test", password: "otro-clave-segura", firstName: "Omar" });
+    duenoCafe = await login("cafe@delywa.test", "cafe-clave-segura");
+    duenoOtro = await login("otro@delywa.test", "otro-clave-segura");
 
     const ok = await duenoCafe.request("PATCH", `/api/colmados/${cafe.id}`, { nombre: "Café Ñapa", costoDelivery: 75, colorPrimario: "#ff0000", diasServicio: ["lunes", "martes"] });
     expect(ok.status).toBe(200);

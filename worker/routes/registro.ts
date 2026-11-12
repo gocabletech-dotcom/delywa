@@ -12,6 +12,10 @@ import { createColmado } from "../storage/colmados";
 import { getAllPlanes } from "../storage/catalogos";
 import { createUser, getUserByEmail, normalizeEmail } from "../storage/users";
 import { VERSION_LEGAL } from "../data/legal";
+import { claveDebil } from "../lib/claves";
+import { correoListo } from "../lib/correo";
+import { mandarCodigoRegistro, revisarCodigoRegistro } from "../lib/cuenta";
+import { anotar } from "../lib/seguridad";
 
 // Registro público de negocios desde la página principal.
 // El negocio nace APAGADO ("pendiente_revision"): no recibe pedidos, el bot no responde
@@ -65,6 +69,7 @@ registroRoutes.get("/api/registro-negocio/opciones", async (c) => {
     paises: listaPaises,
     tipos: tipos.length ? tipos : TIPOS_REGISTRO.map((slug) => ({ slug, nombre: "Colmado" })),
     turnstileSiteKey: turnstile?.siteKey ?? null,
+    verificaCorreo: correoListo(c.env),
     versionLegal: VERSION_LEGAL,
   });
 });
@@ -74,8 +79,10 @@ registroRoutes.post("/api/registro-negocio", async (c) => {
   const db = getDb(c.env.DB);
   const ip = c.req.header("CF-Connecting-IP");
 
+  const codigo = typeof body.codigo === "string" ? body.codigo.replace(/\D/g, "").slice(0, 6) : "";
+  // Con código de correo, el código ya prueba que es una persona; sin él se pide Turnstile (si está activo).
   const turnstile = turnstileDelLogin(c.env);
-  if (turnstile && !(await verificarTurnstile(turnstile.secreto, body.turnstileToken, ip))) {
+  if (!codigo && turnstile && !(await verificarTurnstile(turnstile.secreto, body.turnstileToken, ip))) {
     return c.json({ error: "Completa la verificación de seguridad e intenta de nuevo.", turnstile: true }, 400);
   }
 
@@ -89,7 +96,7 @@ registroRoutes.post("/api/registro-negocio", async (c) => {
 
   if (!nombreNegocio || !nombre || !direccion) return c.json({ error: "Completa el nombre del negocio, tu nombre y la dirección." }, 400);
   if (!EMAIL_RE.test(correo)) return c.json({ error: "El correo no es válido." }, 400);
-  if (password.length < 10 || password.length > 200) return c.json({ error: "La contraseña debe tener al menos 10 caracteres." }, 400);
+  { const debil = await claveDebil(password); if (debil) return c.json({ error: debil }, 400); }
   if (!TIPOS_REGISTRO.includes(tipoNegocio)) return c.json({ error: "Ese tipo de negocio todavía no se puede registrar." }, 400);
   if (body.aceptaTerminos !== true) return c.json({ error: "Debes aceptar los términos, la política de privacidad y el acuerdo de tratamiento de datos." }, 400);
 
@@ -97,6 +104,30 @@ registroRoutes.post("/api/registro-negocio", async (c) => {
   if (!pais) return c.json({ error: "Elige el país del negocio." }, 400);
   const whatsappNumero = telefonoConPais(texto(body.telefono, 30), pais.prefijoCelular);
   if (!whatsappNumero) return c.json({ error: "El teléfono no es válido. Escríbelo con todos sus dígitos." }, 400);
+
+  if (await getUserByEmail(db, correo)) return c.json({ error: "Ya existe una cuenta con ese correo. Inicia sesión." }, 409);
+  { const [ya] = await db.select({ id: colmados.id }).from(colmados).where(eq(colmados.whatsappNumero, whatsappNumero));
+    if (ya) return c.json({ error: "Ese número de teléfono ya tiene un negocio registrado." }, 409); }
+
+  // Si la plataforma activó los correos: primero se manda un código de 6 números y luego se crea el negocio con él.
+  if (correoListo(c.env)) {
+    if (!codigo) {
+      if (!(await permitirEvento(db, `regcodigo:${ip ?? "sin-ip"}`, 6, HORA)) || !(await permitirEvento(db, `regcodigo:${correo}`, 4, HORA))) {
+        return c.json({ error: "Ya se mandaron varios códigos. Espera una hora o escríbenos a soporte@delywa.com." }, 429);
+      }
+      try {
+        await mandarCodigoRegistro(c.env, db, correo, nombre, nombreNegocio);
+      } catch (err) {
+        console.error("[registro] Código no enviado:", err instanceof Error ? err.message : err);
+        return c.json({ error: "No se pudo mandar el código a ese correo. Revísalo o intenta en unos minutos." }, 502);
+      }
+      return c.json({ codigoEnviado: true, correo });
+    }
+    const r = await revisarCodigoRegistro(db, correo, codigo);
+    if (r === "vencido") return c.json({ error: "El código venció o no existe. Toca «Enviar otro código».", codigoVencido: true }, 400);
+    if (r === "muchos") return c.json({ error: "Demasiados códigos equivocados. Toca «Enviar otro código».", codigoVencido: true }, 429);
+    if (r === "equivocado") return c.json({ error: `Código equivocado. Revisa el correo que te mandamos a ${correo}.` }, 400);
+  }
 
   // Máximo 5 registros por IP cada hora (evita que llenen la plataforma de solicitudes falsas).
   if (!(await permitirEvento(db, `registro:${ip ?? "sin-ip"}`, 5, HORA))) {
@@ -131,6 +162,7 @@ registroRoutes.post("/api/registro-negocio", async (c) => {
     session.regenerate();
     session.data = { userId: user.id, userRole: "colmado_owner", colmadoId: colmado.id, deliveryId: null, lastActivity: Date.now() };
     session.touch();
+    await anotar(db, { userId: user.id, usuario: correo, rol: "colmado_owner", colmadoId: colmado.id, accion: "Registro de negocio desde la página", detalle: `${nombreNegocio} · aceptó términos v${VERSION_LEGAL}${correoListo(c.env) ? " · correo verificado" : ""}`, ip: ip ?? null });
     return c.json({ success: true, colmadoId: colmado.id, estado: colmado.estado }, 201);
   } catch (err) {
     // Si algo falló a medias, no queda una cuenta sin negocio.

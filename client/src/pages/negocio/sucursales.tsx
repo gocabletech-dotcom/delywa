@@ -411,7 +411,7 @@ export default function SucursalesPage() {
                             <div><Label>Nombre *</Label><Input value={editingUser.firstName || ""} onChange={(e) => setEditingUser({ ...editingUser, firstName: e.target.value })} /></div>
                             <div><Label>Apellido</Label><Input value={editingUser.lastName || ""} onChange={(e) => setEditingUser({ ...editingUser, lastName: e.target.value })} /></div>
                             <div><Label>Correo *</Label><Input type="email" value={editingUser.email || ""} onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })} /></div>
-                            <div><Label>Nueva contraseña (opcional)</Label><Input type="password" minLength={6} placeholder="Dejar vacía para conservarla" value={editingUser.password} onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })} /></div>
+                            <div><Label>Nueva contraseña (opcional)</Label><Input type="password" minLength={10} placeholder="Dejar vacía para conservarla (mínimo 10)" value={editingUser.password} onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })} /></div>
                             <div><Label>Rol</Label><select disabled={editingUser.role === "colmado_owner"} className="w-full h-10 rounded-md border px-3 text-sm disabled:bg-gray-100" value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}><option value="colmado_owner">Administrador general</option><option value="admin_pedidos">Administrador de pedidos</option><option value="operador_sucursal">Operador de sucursal</option><option value="delivery">Repartidor</option></select></div>
                           </div>
                           <div>
@@ -444,7 +444,7 @@ export default function SucursalesPage() {
                 <div><Label>Nombre *</Label><Input name="firstName" required value={userForm.firstName} onChange={(e) => setUserForm({ ...userForm, firstName: e.target.value })} /></div>
                 <div><Label>Apellido</Label><Input name="lastName" value={userForm.lastName} onChange={(e) => setUserForm({ ...userForm, lastName: e.target.value })} /></div>
                 <div><Label>Correo de acceso *</Label><Input name="email" required type="email" autoComplete="email" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} /></div>
-                <div><Label>Contraseña temporal * (mínimo 6 caracteres)</Label><Input name="password" required type="password" minLength={6} autoComplete="new-password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} /></div>
+                <div><Label>Contraseña temporal * (mínimo 10 caracteres)</Label><Input name="password" required type="password" minLength={10} autoComplete="new-password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} /></div>
                 <div><Label>Tipo de rol</Label>
                   <select name="role" className="w-full h-10 rounded-md border px-3 text-sm" value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
                     <option value="admin_pedidos">Administrador de pedidos</option>

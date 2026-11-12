@@ -167,6 +167,11 @@ export default function MenuGraficoPage() {
     enabled: !!codigo,
   });
 
+  // Los colmados no tienen menú: se piden hablando, como por WhatsApp.
+  useEffect(() => {
+    if (colmado && ["colmado", "colmadon"].includes(colmado.tipoNegocio)) window.location.replace(`/pedir/${codigo}`);
+  }, [colmado, codigo]);
+
   const { data: productos = [], isLoading: loadingProductos } = useQuery<MenuProducto[]>({
     queryKey: ["menu-grafico-productos", colmado?.id],
     queryFn: async () => {

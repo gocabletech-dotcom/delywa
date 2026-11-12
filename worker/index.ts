@@ -24,8 +24,14 @@ import { generadorRoutes } from "./routes/generadores";
 import { integracionRoutes } from "./routes/integraciones";
 import { registroRoutes } from "./routes/registro";
 import { jergaAprendidaRoutes } from "./routes/jerga-aprendida";
+import { chatColmadoRoutes } from "./routes/chat-colmado";
+import { seguridadRoutes } from "./routes/seguridad";
+import { borrarRespaldosViejos, iniciarRespaldo, pasoRespaldo } from "./lib/respaldo";
+import { avisosFinDePrueba } from "./lib/avisos";
+import { olvidarEquiposViejos } from "./lib/cuenta";
 import { avisarCambios, tiempoRealRoutes } from "./routes/tiempo-real";
 import { envEfectivo } from "./lib/integraciones";
+import { bitacoraCambios, cabecerasSeguridad, limpiarSeguridad, registrarError } from "./lib/seguridad";
 import { procesarAviso, webhookRoutes, type AvisoWebhook } from "./routes/webhooks";
 
 export { SalaNegocio } from "./sala-negocio";
@@ -34,9 +40,15 @@ export const app = new Hono<AppEnv>();
 
 app.onError((err, c) => {
   // Solo método, ruta y error: nunca el cuerpo de la respuesta ni datos de clientes.
-  console.error(`[error] ${c.req.method} ${new URL(c.req.url).pathname}:`, err);
-  return c.json({ message: "Error interno del servidor" }, 500);
+  const ref = crypto.randomUUID().slice(0, 8);
+  const ruta = new URL(c.req.url).pathname;
+  console.error(`[error] ref ${ref} ${c.req.method} ${ruta}:`, err);
+  const tarea = registrarError(c.env, { ref, metodo: c.req.method, ruta, error: err });
+  try { c.executionCtx.waitUntil(tarea); } catch { /* pruebas */ }
+  return c.json({ message: "Error interno del servidor", ref }, 500);
 });
+
+app.use("*", cabecerasSeguridad);
 
 app.get("/api/health", async (c) => {
   const row = await getDb(c.env.DB).get<{ tablas: number }>(
@@ -52,6 +64,7 @@ app.use("/api/*", async (c, next) => {
 });
 app.use("/api/*", sessionMiddleware);
 app.use("/api/*", avisarCambios);
+app.use("/api/*", bitacoraCambios);
 app.route("/", authRoutes);
 app.route("/", userRoutes);
 app.route("/", negocioRoutes);
@@ -73,6 +86,8 @@ app.route("/", generadorRoutes);
 app.route("/", integracionRoutes);
 app.route("/", registroRoutes);
 app.route("/", jergaAprendidaRoutes);
+app.route("/", chatColmadoRoutes);
+app.route("/", seguridadRoutes);
 app.route("/", tiempoRealRoutes);
 
 // Los módulos restantes se agregan por capas.
@@ -85,6 +100,17 @@ export default {
     ctx.waitUntil(deleteExpiredSessions(env.DB));
     ctx.waitUntil(enviarRecordatoriosComprobante(env));
     ctx.waitUntil(limpiarSubidasPendientes(env));
+    // Tareas diarias (hora UTC; el cron corre cada 5 minutos).
+    const ahora = new Date(_event.scheduledTime || Date.now());
+    const hora = ahora.getUTCHours(), primeraVuelta = ahora.getUTCMinutes() < 5;
+    ctx.waitUntil((async () => {
+      // 09:00 UTC (5:00 a.m. en RD): empieza el respaldo del día; cada vuelta copia una parte.
+      if (hora === 9 && primeraVuelta) await iniciarRespaldo(env);
+      await pasoRespaldo(env);
+      if (hora === 3 && primeraVuelta) { await limpiarSeguridad(env); await borrarRespaldosViejos(env); await olvidarEquiposViejos(getDb(env.DB)); }
+      // 14:00 UTC (10:00 a.m. en RD): aviso de fin de prueba gratis.
+      if (hora === 14 && primeraVuelta) await avisosFinDePrueba(env);
+    })().catch((err) => console.error("[cron] Tarea diaria falló:", err instanceof Error ? err.message : err)));
   },
   /** Cola de avisos de WhatsApp: cada mensaje del cliente lo atiende el bot aquí, sin hacer esperar a Meta. */
   async queue(batch: MessageBatch<unknown>, envBase: Env) {

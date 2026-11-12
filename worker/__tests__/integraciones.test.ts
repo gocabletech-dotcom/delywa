@@ -157,12 +157,17 @@ describe("Turnstile en el login", () => {
     expect(salientes.at(-1)!.url).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
     expect((await t.client().request("GET", "/api/auth/turnstile")).json).toEqual({ activo: true, siteKey: "0x4AAAAAAAsitio" });
 
-    // Sin token: rechazado antes de mirar la contraseña.
-    expect((await login("dueno@delywa.test", "dueno1234")).r.status).toBe(400);
+    // Se pide solo después de 3 fallos desde la conexión.
+    const h = { "CF-Connecting-IP": "10.7.7.7" };
+    expect((await t.client().request("POST", "/api/auth/login", { username: "dueno@delywa.test", password: "dueno1234" }, h)).status).toBe(200);
+    for (let i = 0; i < 3; i++) await t.client().request("POST", "/api/auth/login", { username: "dueno@delywa.test", password: "mala" }, h);
+    const pide = await t.client().request("POST", "/api/auth/login", { username: "dueno@delywa.test", password: "dueno1234" }, h);
+    expect(pide.status).toBe(403);
+    expect(pide.json).toMatchObject({ turnstile: true, siteKey: "0x4AAAAAAAsitio" });
     respuesta = () => new Response(JSON.stringify({ success: false }), { status: 200 });
-    expect((await login("dueno@delywa.test", "dueno1234", { turnstileToken: "falso" })).r.status).toBe(400);
+    expect((await t.client().request("POST", "/api/auth/login", { username: "dueno@delywa.test", password: "dueno1234", turnstileToken: "falso" }, h)).status).toBe(403);
     respuesta = () => new Response(JSON.stringify({ success: true }), { status: 200 });
-    expect((await login("dueno@delywa.test", "dueno1234", { turnstileToken: "real" })).r.status).toBe(200);
+    expect((await t.client().request("POST", "/api/auth/login", { username: "dueno@delywa.test", password: "dueno1234", turnstileToken: "real" }, h)).status).toBe(200);
   });
 
   it("cambiar las claves lo apaga hasta volver a probar", async () => {
