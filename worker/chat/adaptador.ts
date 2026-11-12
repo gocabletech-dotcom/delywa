@@ -114,7 +114,9 @@ export function enSegundoPlano(tarea: Promise<unknown>): void {
 }
 
 /** El negocio que atiende esta petición: decide qué llave de OpenAI se usa. */
-function recordarNegocio<T extends { id: number } | undefined>(colmado: T): T {
+function recordarNegocio<T extends { id: number; estado?: string } | undefined>(colmado: T): T | undefined {
+  // Un negocio apagado (en revisión, rechazado o inactivo) no existe para el bot ni para el chat web.
+  if (colmado && colmado.estado && colmado.estado !== "activo") return undefined;
   const actual = contexto.getStore();
   if (actual && colmado && actual.colmadoId === undefined) actual.colmadoId = colmado.id;
   return colmado;

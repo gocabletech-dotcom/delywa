@@ -43,6 +43,13 @@
       "when": 1794486593707,
       "tag": "0005_subidas_pendientes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794509254734,
+      "tag": "0006_registro_negocio",
+      "breakpoints": true
     }
   ]
 }

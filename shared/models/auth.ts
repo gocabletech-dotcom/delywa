@@ -62,3 +62,18 @@ export const subidasPendientes = sqliteTable("subidas_pendientes", {
   expiraEn: integer("expira_en", { mode: "timestamp_ms" }).notNull(),
   fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (table) => [index("subidas_pendientes_ip_fecha_idx").on(table.ip, table.fechaCreacion)]);
+
+/**
+ * Constancia de que el dueño aceptó los términos, la privacidad y el DPA al registrar su negocio:
+ * qué documento, qué versión, cuándo y desde qué IP. Se guarda aunque luego cambie el texto.
+ */
+export const aceptacionesLegales = sqliteTable("aceptaciones_legales", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("user_id").notNull(),
+  colmadoId: integer("colmado_id"),
+  documento: text("documento").notNull(), // terminos, privacidad, dpa
+  version: text("version").notNull(),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (table) => [index("aceptaciones_legales_user_idx").on(table.userId), index("aceptaciones_legales_colmado_idx").on(table.colmadoId)]);

@@ -21,7 +21,7 @@ export const chatWebRoutes = new Hono<AppEnv>();
 chatWebRoutes.get("/api/chat-web/colmado/:codigo", async (c) => {
   const db = getDb(c.env.DB);
   const colmado = await getColmadoByCodigo(db, c.req.param("codigo"));
-  if (!colmado) return c.json({ error: "Negocio no encontrado" }, 404);
+  if (!colmado || colmado.estado !== "activo") return c.json({ error: "Negocio no encontrado" }, 404);
   const pais = colmado.paisId ? await getPais(db, colmado.paisId) : undefined;
   return c.json({
     id: colmado.id, nombre: colmado.nombre, logo: colmado.logo, colorPrimario: colmado.colorPrimario,
@@ -41,7 +41,7 @@ chatWebRoutes.get("/api/chat-web/colmado/:codigo", async (c) => {
 chatWebRoutes.get("/api/chat-web/menu/:codigo", async (c) => {
   const db = getDb(c.env.DB);
   const colmado = await getColmadoByCodigo(db, c.req.param("codigo"));
-  if (!colmado) return c.json({ error: "Negocio no encontrado" }, 404);
+  if (!colmado || colmado.estado !== "activo") return c.json({ error: "Negocio no encontrado" }, 404);
   const usaMenu = (colmado.tecnologiasHabilitadas as { link_pedido?: boolean } | null)?.link_pedido === true || tieneMenuPermitido(colmado.tipoNegocio);
   const productosPorCategoria: Record<string, MenuProducto[]> = {};
   let categorias: string[] = [];

@@ -22,6 +22,7 @@ import { whatsappRoutes } from "./routes/whatsapp";
 import { chatWebRoutes } from "./routes/chat-web";
 import { generadorRoutes } from "./routes/generadores";
 import { integracionRoutes } from "./routes/integraciones";
+import { registroRoutes } from "./routes/registro";
 import { avisarCambios, tiempoRealRoutes } from "./routes/tiempo-real";
 import { envEfectivo } from "./lib/integraciones";
 import { procesarAviso, webhookRoutes, type AvisoWebhook } from "./routes/webhooks";
@@ -69,6 +70,7 @@ app.route("/", chatWebRoutes);
 app.route("/", webhookRoutes);
 app.route("/", generadorRoutes);
 app.route("/", integracionRoutes);
+app.route("/", registroRoutes);
 app.route("/", tiempoRealRoutes);
 
 // Los módulos restantes se agregan por capas.

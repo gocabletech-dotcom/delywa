@@ -34,10 +34,9 @@ import NegocioEmpleadosPage from "@/pages/negocio/empleados";
 import EmpleadoPortalPage from "@/pages/empleado-portal";
 import LoginPage from "@/pages/login";
 import PrimerAccesoPage from "@/pages/primer-acceso";
-import PrivacyPolicy from "@/pages/privacy";
+import LegalPage from "@/pages/legal";
 import DeletionStatusPage from "@/pages/deletion-status";
 import DataDeletionPage from "@/pages/data-deletion";
-import TermsPage from "@/pages/terms";
 import ContactPage from "@/pages/contact";
 import PedirPage from "@/pages/pedir";
 import MenuGraficoPage from "@/pages/menu-grafico";
@@ -49,10 +48,11 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
-      <Route path="/privacy" component={PrivacyPolicy} />
+      <Route path="/legal" component={() => <LegalPage />} />
+      <Route path="/privacy" component={() => <LegalPage seccion="privacidad" />} />
       <Route path="/deletion-status/:code" component={DeletionStatusPage} />
       <Route path="/data-deletion" component={DataDeletionPage} />
-      <Route path="/terms" component={TermsPage} />
+      <Route path="/terms" component={() => <LegalPage seccion="terminos" />} />
       <Route path="/contact" component={ContactPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/primer-acceso" component={PrimerAccesoPage} />

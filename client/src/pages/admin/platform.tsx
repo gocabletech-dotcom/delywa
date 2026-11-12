@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Loader2, Store, Users, Package, DollarSign, Settings, LogOut, MessageSquare, Save, X, Plus, Edit, ChevronDown, ChevronRight, MapPin, Phone, Trash2, Building2, Percent, Crown, Image, Video, Download, Tag, FileText, LayoutGrid, BookOpen, Sparkles, Check, AlertCircle, Ban, Play, Truck, Brain, Globe, KeyRound } from "lucide-react";
 import { IntegracionesSection } from "@/components/admin/IntegracionesSection";
+import { SolicitudesNegocioSection } from "@/components/admin/SolicitudesNegocioSection";
 import promoVideo1 from "@assets/generated_videos/complete_delivery_flow_sequence.mp4";
 import promoVideo2 from "@assets/generated_videos/delywa_logo_with_slogan.mp4";
 import promoVideoFull1 from "@assets/generated_videos/customer_types_order_ai_responds.mp4";
@@ -191,7 +192,7 @@ function whatsappPlaceholder(pais: { codigo: string; prefijoCelular: string } | 
   return `Ej: ${prefix}${getPhoneExample(pais.codigo)}`;
 }
 
-type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones";
+type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones" | "solicitudes";
 
 const tiposNegocioLocal = [
   { value: "colmado", label: "Colmado" },
@@ -2063,15 +2064,15 @@ export default function PlatformAdminPage() {
                           size="sm"
                           onClick={() => toggleEstadoMutation.mutate({ 
                             negocioId: negocio.id, 
-                            estado: negocio.estado === "inactivo" ? "activo" : "inactivo" 
+                            estado: negocio.estado !== "activo" ? "activo" : "inactivo" 
                           })}
-                          className={negocio.estado === "inactivo" 
+                          className={negocio.estado !== "activo" 
                             ? "text-green-600 hover:text-green-700 hover:bg-green-50" 
                             : "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"}
                           disabled={toggleEstadoMutation.isPending}
                           data-testid={`button-toggle-estado-${negocio.id}`}
                         >
-                          {negocio.estado === "inactivo" ? (
+                          {negocio.estado !== "activo" ? (
                             <>
                               <Play className="w-4 h-4 mr-1" />
                               Activar
@@ -3552,6 +3553,7 @@ export default function PlatformAdminPage() {
     { id: "productos-restringidos" as SectionType, label: "Productos Restringidos", icon: Ban },
     { id: "paises" as SectionType, label: "Países", icon: Globe },
     { id: "planes" as SectionType, label: "Planes", icon: Crown },
+    { id: "solicitudes" as SectionType, label: "Solicitudes", icon: Check },
     { id: "negocios" as SectionType, label: "Negocios", icon: Store },
     { id: "integraciones" as SectionType, label: "Integraciones", icon: KeyRound },
   ];
@@ -3646,6 +3648,7 @@ export default function PlatformAdminPage() {
               {activeSection === "planes" && renderPlanesSection()}
               {activeSection === "negocios" && renderNegociosSection()}
               {activeSection === "integraciones" && <IntegracionesSection />}
+              {activeSection === "solicitudes" && <SolicitudesNegocioSection />}
             </>
           )}
         </main>

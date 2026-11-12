@@ -16,7 +16,7 @@ import {
 import { createOrUpdateMetodosPago, getAllPlanes, getMetodosPago, getPlatformStats } from "../storage/catalogos";
 
 const TIPOS_SIN_MENU = ["colmado", "colmadon"];
-const ESTADOS_NEGOCIO = ["activo", "inactivo", "suspendido"];
+const ESTADOS_NEGOCIO = ["activo", "inactivo", "suspendido", "pendiente_revision", "rechazado"];
 const ESTADOS_SUSCRIPCION = ["activa", "en_gracia", "suspendida"];
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 

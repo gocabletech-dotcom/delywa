@@ -56,6 +56,7 @@ export default function NegocioLayout({
     logo: string | null;
     tipoNegocio: string;
     colorPrimario: string | null;
+    estado?: string;
   }>({
     queryKey: ["colmado", colmadoId],
     queryFn: async () => {
@@ -355,6 +356,16 @@ export default function NegocioLayout({
 
         {/* Page Content — extra bottom padding on mobile for bottom nav */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden pb-20 lg:pb-0">
+          {colmadoData?.estado === "pendiente_revision" && (
+            <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="banner-en-revision">
+              <b>Tu negocio está en revisión.</b> Estamos verificando tus datos. Mientras tanto puedes preparar tu menú y tu configuración; cuando lo activemos empezarás a recibir pedidos y mensajes.
+            </div>
+          )}
+          {colmadoData?.estado === "rechazado" && (
+            <div className="mx-4 mt-3 shrink-0 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900" data-testid="banner-rechazado">
+              <b>No pudimos aprobar tu negocio.</b> Escríbenos a soporte@delywa.com para revisar tu solicitud.
+            </div>
+          )}
           {children}
         </div>
       </div>

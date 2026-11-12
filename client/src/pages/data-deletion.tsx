@@ -71,7 +71,7 @@ export default function DataDeletionPage() {
                     <h3 className="font-medium">Opción 3: Por correo electrónico</h3>
                   </div>
                   <p className="text-gray-700 ml-2">
-                    Envía un correo a <strong>soporte@delywa.app</strong> con:
+                    Envía un correo a <strong>soporte@delywa.com</strong> con:
                   </p>
                   <ul className="list-disc list-inside text-gray-700 ml-4 mt-1">
                     <li>Asunto: "Solicitud de eliminación de datos"</li>
@@ -98,7 +98,7 @@ export default function DataDeletionPage() {
                 Puedes verificar el estado de tu solicitud visitando:
               </p>
               <div className="mt-2 p-3 bg-gray-100 rounded font-mono text-sm">
-                delywa.app/deletion-status/[tu-código]
+                delywa.com/deletion-status/[tu-código]
               </div>
             </section>
 

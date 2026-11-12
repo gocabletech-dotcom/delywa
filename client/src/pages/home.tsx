@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
+import { RegistroNegocioForm } from "@/components/RegistroNegocioForm";
 
 // Assets
 import heroImage from "@assets/generated_images/delivery_driver_on_motorcycle_in_dominican_republic_street.png";
@@ -83,12 +84,11 @@ export default function Home() {
               Iniciar Sesión
             </Button>
             <a
-              href={WA_SALES}
-              target="_blank"
-              rel="noopener noreferrer"
+              href="#crear-negocio"
               className="inline-flex items-center justify-center bg-primary hover:bg-primary/90 text-white rounded-full px-6 h-10 text-sm font-medium"
+              data-testid="link-crear-negocio"
             >
-              Empieza Gratis
+              Crear mi negocio
             </a>
           </div>
 
@@ -115,13 +115,11 @@ export default function Home() {
               Iniciar Sesión
             </Button>
             <a
-              href={WA_SALES}
-              target="_blank"
-              rel="noopener noreferrer"
+              href="#crear-negocio"
               className="inline-flex items-center justify-center bg-primary text-white w-full rounded-full h-10 text-sm font-medium"
               onClick={() => setIsMenuOpen(false)}
             >
-              Empieza Gratis
+              Crear mi negocio
             </a>
           </div>
         )}
@@ -145,9 +143,7 @@ export default function Home() {
 
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
                 <a
-                  href={WA_SALES}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href="#crear-negocio"
                   className="inline-flex items-center justify-center bg-primary hover:bg-primary/90 text-white h-14 px-8 rounded-full text-lg shadow-lg shadow-green-200 transition-all hover:-translate-y-1 font-semibold"
                 >
                   <Smartphone className="mr-2 h-5 w-5" />
@@ -565,6 +561,19 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── Crear mi negocio ────────────────────────────────────────────────── */}
+      <section id="crear-negocio" className="py-20 bg-white border-t border-gray-100 scroll-mt-24">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="max-w-xl mx-auto text-center mb-8">
+            <h2 className="text-3xl md:text-4xl font-heading font-extrabold text-brand-dark mb-3">Crea tu negocio en DelyWa</h2>
+            <p className="text-muted-foreground">Llena tus datos. Revisamos cada negocio y te activamos para que empieces a recibir pedidos.</p>
+          </div>
+          <div className="max-w-xl mx-auto bg-gray-50 border border-gray-100 rounded-3xl p-6 md:p-8 shadow-sm">
+            <RegistroNegocioForm />
+          </div>
+        </div>
+      </section>
+
       {/* ── CTA Final ──────────────────────────────────────────────────────── */}
       <section className="py-24 bg-primary relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
@@ -577,17 +586,20 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href={WA_SALES}
-              target="_blank"
-              rel="noopener noreferrer"
+              href="#crear-negocio"
               className="inline-flex items-center justify-center bg-white text-primary hover:bg-gray-100 text-lg h-14 px-8 rounded-full font-bold shadow-xl"
             >
               <Smartphone className="mr-2 h-5 w-5" />
               Registrar mi Negocio Gratis
             </a>
-            <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/10 text-lg h-14 px-8 rounded-full font-bold">
+            <a
+              href={WA_SALES}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center border-2 border-white text-white hover:bg-white/10 text-lg h-14 px-8 rounded-full font-bold"
+            >
               Hablar con Ventas
-            </Button>
+            </a>
           </div>
         </div>
       </section>
@@ -601,8 +613,9 @@ export default function Home() {
             </div>
             <div className="flex gap-8 text-sm text-gray-500">
               <a href="#como-funciona" className="hover:text-primary">Cómo funciona</a>
-              <a href="/terms" className="hover:text-primary">Términos</a>
-              <a href="/privacy" className="hover:text-primary">Privacidad</a>
+              <a href="/legal#terminos" className="hover:text-primary">Términos</a>
+              <a href="/legal#privacidad" className="hover:text-primary">Privacidad</a>
+              <a href="/legal#dpa" className="hover:text-primary">DPA</a>
               <a href="/contact" className="hover:text-primary">Contacto</a>
             </div>
             <p className="text-sm text-gray-400">

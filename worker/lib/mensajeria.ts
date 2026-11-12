@@ -26,6 +26,8 @@ async function dentroDeVentana24h(db: Db, colmadoId: number, to: string): Promis
 export async function enviarWhatsApp(
   env: Env, colmado: Colmado, to: string, texto: string, opciones: { omitirVentana?: boolean } = {},
 ): Promise<boolean> {
+  // Un negocio apagado (en revisión, rechazado o inactivo) no envía nada.
+  if (colmado.estado && colmado.estado !== "activo") return false;
   const canal = canalDelNegocio(env, colmado);
   if (!canal || !to) return false;
   if (canal.tipo === "evolution") return enviarTextoEvolution(canal.evolution, to, texto);
