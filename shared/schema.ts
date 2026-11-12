@@ -286,6 +286,8 @@ export const asistencias = sqliteTable("asistencias", {
   fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (t) => [
   index("asistencias_empleado_fecha_idx").on(t.empleadoId, t.entrada),
+  // Una sola jornada abierta por empleado.
+  uniqueIndex("asistencias_abierta_uq").on(t.empleadoId).where(sql`salida IS NULL`),
 ]);
 
 export const nominas = sqliteTable("nominas", {

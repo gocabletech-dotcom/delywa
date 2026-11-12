@@ -29,6 +29,13 @@
       "when": 1794450835377,
       "tag": "0003_saldo_abierto_unico",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794451525508,
+      "tag": "0004_asistencia_abierta_unica",
+      "breakpoints": true
     }
   ]
 }

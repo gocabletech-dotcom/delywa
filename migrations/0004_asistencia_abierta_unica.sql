@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `asistencias_abierta_uq` ON `asistencias` (`empleado_id`) WHERE salida IS NULL;
