@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, useParams } from "wouter";
+import { LlaveIANegocio } from "@/components/admin/IntegracionesSection";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -376,6 +377,8 @@ export default function NegocioEditarPage() {
           </Card>
 
         </form>
+        {/* Fuera del formulario: tiene sus propios botones de guardar y probar. */}
+        {negocioId && <div className="mt-4"><LlaveIANegocio colmadoId={negocioId} /></div>}
       </main>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-3 z-40 shadow-lg">

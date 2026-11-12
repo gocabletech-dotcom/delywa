@@ -11,8 +11,16 @@ export const http = { fetch: (url: string, init?: RequestInit) => fetch(url, ini
  * Versión de la Graph API. El original usaba v18.0, que Meta retiró en enero de 2026.
  * Se puede cambiar sin tocar código con la variable META_GRAPH_VERSION.
  */
+let versionPanel: string | undefined;
+/** La versión elegida en el panel de plataforma (la fija envEfectivo en cada petición). */
+export function fijarVersionGraph(version: string | undefined): void {
+  versionPanel = version;
+}
+export const versionGraphValida = (v: unknown): v is string => typeof v === "string" && /^v\d+\.\d+$/.test(v);
+
 export function graphUrl(ruta: string): string {
-  const version = /^v\d+\.\d+$/.test(process.env.META_GRAPH_VERSION ?? "") ? process.env.META_GRAPH_VERSION : "v24.0";
+  const candidata = versionPanel || process.env.META_GRAPH_VERSION;
+  const version = versionGraphValida(candidata) ? candidata : "v24.0";
   return `https://graph.facebook.com/${version}/${ruta.replace(/^\/+/, "")}`;
 }
 

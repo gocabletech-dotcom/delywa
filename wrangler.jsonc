@@ -24,6 +24,9 @@
     "producers": [{ "binding": "COLA_WEBHOOKS", "queue": "delywa-webhooks" }],
     "consumers": [{ "queue": "delywa-webhooks", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 1 }]
   },
+  // Tiempo real del panel: una sala (Durable Object con SQLite, incluido en el plan gratis) por sucursal.
+  "durable_objects": { "bindings": [{ "name": "SALAS", "class_name": "SalaNegocio" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SalaNegocio"] }],
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": { "PUBLIC_URL": "https://delywa.com" },
   "observability": { "enabled": true }

@@ -10,6 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import { businessTheme } from "@/lib/temaNegocio";
+import { useTiempoReal } from "@/hooks/use-tiempo-real";
 
 type ActiveNav =
    | "dashboard" | "conversaciones" | "clientes" | "pedidos" | "cocina"
@@ -46,6 +47,8 @@ export default function NegocioLayout({
   });
 
   const colmadoId = roleData?.colmadoId;
+  // Pedidos y mensajes nuevos aparecen al instante (además de la recarga periódica).
+  useTiempoReal(colmadoId);
 
   const { data: colmadoData } = useQuery<{
     id: number;

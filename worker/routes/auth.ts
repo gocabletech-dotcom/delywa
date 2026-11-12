@@ -5,6 +5,7 @@ import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAuth } from "../lib/auth";
 import { timingSafeEqual, verifyAgainstDummy, verifyPassword } from "../lib/password";
+import { turnstileDelLogin, verificarTurnstile } from "../lib/turnstile";
 import { clearLoginFailures, loginBlockedFor, recordLoginFailure } from "../lib/rate-limit";
 import {
   countPlatformAdmins, createUser, getAccessibleColmadoIds, getUserByEmail, getUserById,
@@ -29,6 +30,12 @@ authRoutes.post("/api/auth/login", async (c) => {
     c.header("Retry-After", String(blockedFor));
     const minutos = Math.ceil(blockedFor / 60);
     return c.json({ error: `Demasiados intentos. Intenta de nuevo en ${minutos} minuto${minutos === 1 ? "" : "s"}.` }, 429);
+  }
+
+  // Turnstile (si la plataforma lo activó): se comprueba antes de mirar la contraseña.
+  const turnstile = turnstileDelLogin(c.env);
+  if (turnstile && !(await verificarTurnstile(turnstile.secreto, body?.turnstileToken, ip))) {
+    return c.json({ error: "Completa la verificación de seguridad e intenta de nuevo.", turnstile: true }, 400);
   }
 
   const user = await getUserByEmail(db, username);
@@ -58,6 +65,12 @@ authRoutes.post("/api/auth/login", async (c) => {
     colmadoId: user.colmadoId,
     message: `Bienvenido ${user.firstName || username}`,
   });
+});
+
+/** Público: la clave del sitio de Turnstile para dibujar la verificación en el login (solo si está activo). */
+authRoutes.get("/api/auth/turnstile", (c) => {
+  const t = turnstileDelLogin(c.env);
+  return c.json(t ? { activo: true, siteKey: t.siteKey } : { activo: false });
 });
 
 authRoutes.get("/api/auth/session", async (c) => {

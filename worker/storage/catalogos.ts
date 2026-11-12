@@ -103,6 +103,8 @@ export async function deleteTipoNegocio(db: Db, id: number): Promise<void> {
 // ---------- Configuración del sistema ----------
 /** Claves internas que nunca se devuelven por la API. */
 export const CLAVES_PRIVADAS = new Set(["setup_code"]);
+/** Llaves de servicios (OpenAI, Meta, Turnstile): solo se leen y guardan desde /api/admin/integraciones. */
+export const esClavePrivada = (clave: string) => CLAVES_PRIVADAS.has(clave) || clave.startsWith("integracion:");
 
 export async function getConfiguracion(db: Db, clave: string): Promise<ConfiguracionSistema | undefined> {
   const [config] = await db.select().from(configuracionSistema).where(eq(configuracionSistema.clave, clave));
@@ -110,7 +112,7 @@ export async function getConfiguracion(db: Db, clave: string): Promise<Configura
 }
 export async function getAllConfiguracion(db: Db): Promise<ConfiguracionSistema[]> {
   const all = await db.select().from(configuracionSistema);
-  return all.filter((c) => !CLAVES_PRIVADAS.has(c.clave) && !c.clave.startsWith("zip_alert_cooldown"));
+  return all.filter((c) => !esClavePrivada(c.clave) && !c.clave.startsWith("zip_alert_cooldown"));
 }
 export async function upsertConfiguracion(
   db: Db,

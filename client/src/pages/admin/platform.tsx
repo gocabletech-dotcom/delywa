@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Loader2, Store, Users, Package, DollarSign, Settings, LogOut, MessageSquare, Save, X, Plus, Edit, ChevronDown, ChevronRight, MapPin, Phone, Trash2, Building2, Percent, Crown, Image, Video, Download, Tag, FileText, LayoutGrid, BookOpen, Sparkles, Check, AlertCircle, Ban, Play, Truck, Brain, Globe } from "lucide-react";
+import { Loader2, Store, Users, Package, DollarSign, Settings, LogOut, MessageSquare, Save, X, Plus, Edit, ChevronDown, ChevronRight, MapPin, Phone, Trash2, Building2, Percent, Crown, Image, Video, Download, Tag, FileText, LayoutGrid, BookOpen, Sparkles, Check, AlertCircle, Ban, Play, Truck, Brain, Globe, KeyRound } from "lucide-react";
+import { IntegracionesSection } from "@/components/admin/IntegracionesSection";
 import promoVideo1 from "@assets/generated_videos/complete_delivery_flow_sequence.mp4";
 import promoVideo2 from "@assets/generated_videos/delywa_logo_with_slogan.mp4";
 import promoVideoFull1 from "@assets/generated_videos/customer_types_order_ai_responds.mp4";
@@ -190,7 +191,7 @@ function whatsappPlaceholder(pais: { codigo: string; prefijoCelular: string } | 
   return `Ej: ${prefix}${getPhoneExample(pais.codigo)}`;
 }
 
-type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template";
+type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones";
 
 const tiposNegocioLocal = [
   { value: "colmado", label: "Colmado" },
@@ -3552,6 +3553,7 @@ export default function PlatformAdminPage() {
     { id: "paises" as SectionType, label: "Países", icon: Globe },
     { id: "planes" as SectionType, label: "Planes", icon: Crown },
     { id: "negocios" as SectionType, label: "Negocios", icon: Store },
+    { id: "integraciones" as SectionType, label: "Integraciones", icon: KeyRound },
   ];
 
   return (
@@ -3643,6 +3645,7 @@ export default function PlatformAdminPage() {
               {activeSection === "paises" && renderPaisesSection()}
               {activeSection === "planes" && renderPlanesSection()}
               {activeSection === "negocios" && renderNegociosSection()}
+              {activeSection === "integraciones" && <IntegracionesSection />}
             </>
           )}
         </main>

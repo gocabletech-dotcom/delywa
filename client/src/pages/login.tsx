@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
@@ -14,6 +15,17 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [primerAcceso, setPrimerAcceso] = useState(false);
+  // Verificación de Cloudflare Turnstile, solo si la plataforma la activó.
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [reinicioTurnstile, setReinicioTurnstile] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/auth/turnstile", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => setTurnstileSiteKey(data.activo && data.siteKey ? data.siteKey : null))
+      .catch(() => setTurnstileSiteKey(null));
+  }, []);
 
   // Mientras la plataforma no tenga administrador, ofrecer crearlo.
   useEffect(() => {
@@ -28,6 +40,10 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (turnstileSiteKey && !turnstileToken) {
+      toast({ title: "Falta la verificación", description: "Espera a que aparezca la marca verde de verificación.", variant: "destructive" });
+      return;
+    }
     setIsLoading(true);
 
     try {
@@ -35,7 +51,7 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, turnstileToken: turnstileToken ?? undefined }),
       });
 
       const data = await res.json();
@@ -45,6 +61,8 @@ export default function LoginPage() {
         window.location.href = "/admin";
       } else {
         toast({ title: "Error", description: data.error || "Credenciales incorrectas", variant: "destructive" });
+        // Cada verificación sirve una sola vez: se pide otra para el próximo intento.
+        if (turnstileSiteKey) setReinicioTurnstile((n) => n + 1);
       }
     } catch (error) {
       toast({ title: "Error", description: "Error de conexión", variant: "destructive" });
@@ -110,10 +128,13 @@ export default function LoginPage() {
                 data-testid="input-password"
               />
             </div>
+            {turnstileSiteKey && (
+              <TurnstileWidget siteKey={turnstileSiteKey} onToken={setTurnstileToken} reinicio={reinicioTurnstile} />
+            )}
             <Button 
               type="submit" 
               className="w-full bg-[#25D366] hover:bg-[#25D366]/90"
-              disabled={isLoading}
+              disabled={isLoading || Boolean(turnstileSiteKey && !turnstileToken)}
               data-testid="button-submit-login"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}

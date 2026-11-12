@@ -17,6 +17,8 @@ function splitStatements(file: string, sql: string): string[] {
 export async function createTestApp() {
   const proxy = await getPlatformProxy<Env>({ configPath: `${root}wrangler.jsonc`, persist: false });
   const env = proxy.env;
+  // Las salas de tiempo real no funcionan fuera de Cloudflare; las pruebas que las usan ponen una simulada.
+  (env as any).SALAS = undefined;
   for (const file of readdirSync(`${root}migrations`).filter((f) => f.endsWith(".sql")).sort()) {
     for (const statement of splitStatements(file, readFileSync(`${root}migrations/${file}`, "utf8"))) {
       const sql = statement.trim().replace(/;$/, "");

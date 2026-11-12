@@ -7,7 +7,7 @@ import { requireAdmin, requireAuth, requireBusinessAccess } from "../lib/auth";
 import { isUniqueViolation, isValidZipPattern } from "../lib/d1";
 import { getColmado } from "../storage/colmados";
 import {
-  cancelarSuscripcion, CLAVES_PRIVADAS, countColmadosByPlan, createPais, createPlan, createSuscripcion, createTipoNegocio,
+  cancelarSuscripcion, esClavePrivada, countColmadosByPlan, createPais, createPlan, createSuscripcion, createTipoNegocio,
   deletePais, deletePlan, deleteTipoNegocio, getAllConfiguracion, getAllPaises, getAllPlanes, getConfiguracion, getPlan,
   getPlanesActivos, getSuscripcionActiva, getSuscripcionesProximasAVencer, getTipoNegocioBySlug, getTiposNegocio,
   getTiposNegocioActivos, updatePais, updatePlan, updateTipoNegocio, type InsertPlan,
@@ -49,7 +49,7 @@ catalogoRoutes.get("/api/configuracion", requireAuth, requireAdmin, async (c) =>
 
 catalogoRoutes.get("/api/configuracion/:clave", requireAuth, requireAdmin, async (c) => {
   const clave = c.req.param("clave");
-  const config = CLAVES_PRIVADAS.has(clave) ? undefined : await getConfiguracion(getDb(c.env.DB), clave);
+  const config = esClavePrivada(clave) ? undefined : await getConfiguracion(getDb(c.env.DB), clave);
   return config ? c.json(config) : c.json({ error: "Configuración no encontrada" }, 404);
 });
 

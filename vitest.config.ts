@@ -23,7 +23,8 @@ export default defineConfig({
         },
       },
       {
-        resolve: { alias },
+        // "cloudflare:workers" solo existe dentro de Cloudflare; en las pruebas se usa un sustituto.
+        resolve: { alias: { ...alias, "cloudflare:workers": path.resolve(__dirname, "worker", "__tests__", "cloudflare-workers.ts") } },
         test: {
           name: "worker",
           environment: "node",

@@ -21,7 +21,12 @@ import { limpiarSubidasPendientes, uploadRoutes } from "./routes/uploads";
 import { whatsappRoutes } from "./routes/whatsapp";
 import { chatWebRoutes } from "./routes/chat-web";
 import { generadorRoutes } from "./routes/generadores";
+import { integracionRoutes } from "./routes/integraciones";
+import { avisarCambios, tiempoRealRoutes } from "./routes/tiempo-real";
+import { envEfectivo } from "./lib/integraciones";
 import { procesarAviso, webhookRoutes, type AvisoWebhook } from "./routes/webhooks";
+
+export { SalaNegocio } from "./sala-negocio";
 
 export const app = new Hono<AppEnv>();
 
@@ -38,7 +43,13 @@ app.get("/api/health", async (c) => {
   return c.json({ ok: true, servicio: "delywa", tablas: row?.tablas ?? 0 });
 });
 
+// Llaves configuradas en el panel de plataforma: se aplican encima de los secretos de Cloudflare.
+app.use("/api/*", async (c, next) => {
+  c.env = await envEfectivo(c.env);
+  await next();
+});
 app.use("/api/*", sessionMiddleware);
+app.use("/api/*", avisarCambios);
 app.route("/", authRoutes);
 app.route("/", userRoutes);
 app.route("/", negocioRoutes);
@@ -57,19 +68,23 @@ app.route("/", whatsappRoutes);
 app.route("/", chatWebRoutes);
 app.route("/", webhookRoutes);
 app.route("/", generadorRoutes);
+app.route("/", integracionRoutes);
+app.route("/", tiempoRealRoutes);
 
 // Los módulos restantes se agregan por capas.
 app.all("/api/*", (c) => c.json({ message: "Endpoint aún no migrado" }, 501));
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+  async scheduled(_event: ScheduledController, envBase: Env, ctx: ExecutionContext) {
+    const env = await envEfectivo(envBase);
     ctx.waitUntil(deleteExpiredSessions(env.DB));
     ctx.waitUntil(enviarRecordatoriosComprobante(env));
     ctx.waitUntil(limpiarSubidasPendientes(env));
   },
   /** Cola de avisos de WhatsApp: cada mensaje del cliente lo atiende el bot aquí, sin hacer esperar a Meta. */
-  async queue(batch: MessageBatch<unknown>, env: Env) {
+  async queue(batch: MessageBatch<unknown>, envBase: Env) {
+    const env = await envEfectivo(envBase);
     for (const mensaje of batch.messages) {
       try {
         await procesarAviso(env, mensaje.body as AvisoWebhook);

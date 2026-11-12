@@ -1,4 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { llaveOpenAI } from "../lib/integraciones";
+import { avisarNegocio } from "../lib/tiempo-real";
 import OpenAI from "openai";
 import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import {
@@ -32,7 +34,7 @@ import { getPlantillaZip } from "../routes/plataforma";
 // atender peticiones. Cada petición lleva su propio contexto, porque en un
 // Worker varias peticiones se intercalan dentro del mismo proceso.
 
-type Contexto = { env: Env; db: Db; origen: string; manejadores: Map<string, Manejador>; pendientes: Promise<unknown>[]; demoraMs?: [number, number] };
+type Contexto = { env: Env; db: Db; origen: string; manejadores: Map<string, Manejador>; pendientes: Promise<unknown>[]; demoraMs?: [number, number]; colmadoId?: number };
 type Manejador = (req: any, res: any) => any;
 const contexto = new AsyncLocalStorage<Contexto>();
 
@@ -54,9 +56,14 @@ export type AppLike = { get: Registrar; post: Registrar };
 /** Ejecuta una función del motor (no un manejador de ruta) con el contexto de la petición. */
 export async function conContexto<T>(base: Pick<Contexto, "env" | "db" | "origen" | "demoraMs">, fn: () => Promise<T>): Promise<T> {
   const pendientes: Promise<unknown>[] = [];
-  const r = await contexto.run({ ...base, manejadores: new Map(), pendientes }, fn);
-  await Promise.allSettled(pendientes);
-  return r;
+  const actual: Contexto = { ...base, manejadores: new Map(), pendientes };
+  try {
+    return await contexto.run(actual, fn);
+  } finally {
+    await Promise.allSettled(pendientes);
+    // El bot pudo crear un pedido o guardar mensajes: los paneles abiertos se recargan.
+    await avisarNegocio(base.env, actual.colmadoId, ["todo"]);
+  }
 }
 
 class Respuesta {
@@ -82,9 +89,14 @@ export async function ejecutar(
   if (!manejador) return { status: 404, body: { error: "Ruta no encontrada" } };
   const res = new Respuesta();
   const pendientes = base.pendientes ?? [];
-  await contexto.run({ ...base, manejadores, pendientes }, () => manejador({ body: req.body ?? {}, params: req.params ?? {}, query: req.query ?? {}, headers: {}, session: req.session ?? {} }, res));
+  const actual: Contexto = { ...base, manejadores, pendientes };
+  await contexto.run(actual, () => manejador({ body: req.body ?? {}, params: req.params ?? {}, query: req.query ?? {}, headers: {}, session: req.session ?? {} }, res));
   // Trabajo en segundo plano de la petición principal (avisos al negocio): se termina antes de responder.
-  if (!base.pendientes) await Promise.allSettled(pendientes);
+  if (!base.pendientes) {
+    await Promise.allSettled(pendientes);
+    // Un mensaje del chat web puede crear o cambiar un pedido: se avisa al panel del negocio.
+    if (ruta.startsWith("POST ")) await avisarNegocio(base.env, actual.colmadoId, ["todo"]);
+  }
   return res.enviada ? { status: res.codigo, body: res.cuerpo } : { status: 500, body: { error: "Sin respuesta" } };
 }
 
@@ -101,18 +113,27 @@ export function enSegundoPlano(tarea: Promise<unknown>): void {
   ctx().pendientes.push(tarea.catch((err) => console.error("[chat] Tarea en segundo plano falló:", err instanceof Error ? err.message : err)));
 }
 
+/** El negocio que atiende esta petición: decide qué llave de OpenAI se usa. */
+function recordarNegocio<T extends { id: number } | undefined>(colmado: T): T {
+  const actual = contexto.getStore();
+  if (actual && colmado && actual.colmadoId === undefined) actual.colmadoId = colmado.id;
+  return colmado;
+}
+
 // ---------- IA ----------
 
 /** Las pruebas reemplazan esta fábrica por una IA simulada; así no se gasta saldo ni se llama a OpenAI. */
 export const ia = {
-  crear(env: Env): OpenAI {
-    if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY no está configurada");
+  crear(env: Env, colmadoId?: number): OpenAI {
+    // La llave propia del negocio (si la tiene) o la de la plataforma, ambas configurables en el panel.
+    const apiKey = llaveOpenAI(env, colmadoId);
+    if (!apiKey) throw new Error("La llave de OpenAI no está configurada (Plataforma → Integraciones)");
     // AI_GATEWAY_URL (opcional) hace pasar las llamadas por Cloudflare AI Gateway: caché, límites y registro de costos.
-    return new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: env.AI_GATEWAY_URL || undefined, timeout: 30_000, maxRetries: 1 });
+    return new OpenAI({ apiKey, baseURL: env.AI_GATEWAY_URL || undefined, timeout: 30_000, maxRetries: 1 });
   },
 };
 
-const clienteIA = { chat: { completions: { create: (args: any) => ia.crear(ctx().env).chat.completions.create(args) } }, audio: { transcriptions: { create: (args: any) => ia.crear(ctx().env).audio.transcriptions.create(args) } } };
+const clienteIA = { chat: { completions: { create: (args: any) => ia.crear(ctx().env, ctx().colmadoId).chat.completions.create(args) } }, audio: { transcriptions: { create: (args: any) => ia.crear(ctx().env, ctx().colmadoId).audio.transcriptions.create(args) } } };
 export const openai: any = clienteIA;
 export const openaiWhisper: any = clienteIA;
 
@@ -166,7 +187,7 @@ const crearPlantillaJerga = (data: any) => createPlantillaJerga(ctx().db, {
   });
 
 export const storage = {
-  getColmado: (id: number) => getColmado(ctx().db, Number(id)),
+  getColmado: async (id: number) => recordarNegocio(await getColmado(ctx().db, Number(id))),
   getPais: (id: number) => getPais(ctx().db, id),
   getMenuProductos: (colmadoId: number) => getMenuProductos(ctx().db, colmadoId),
   getMetodosPago: (colmadoId: number) => getMetodosPago(ctx().db, colmadoId),
@@ -315,11 +336,11 @@ export const storage = {
 
   async getColmadoByPhoneNumberId(phoneNumberId: string) {
     const [c] = await ctx().db.select().from(colmados).where(eq(colmados.whatsappPhoneNumberId, String(phoneNumberId)));
-    return c;
+    return recordarNegocio(c);
   },
   async getColmadoByEvolutionInstance(instancia: string) {
     const [c] = await ctx().db.select().from(colmados).where(eq(colmados.evolutionInstanceName, String(instancia)));
-    return c;
+    return recordarNegocio(c);
   },
   /** Cada aviso de Meta se procesa una sola vez, aunque Meta lo reenvíe. */
   async claimMetaWebhookEvent(eventId: string): Promise<boolean> {
