@@ -6,7 +6,8 @@ import { getDb, type Db } from "../db";
 import { requireAuth, requireBusinessAccess } from "../lib/auth";
 import { ADMINISTRADORES, esRepartidorDelPedido, nombreUsuario, puedeOperar } from "../lib/permisos";
 import { cerrarConversacionDelPedido, escapeHtml, notificarCliente, urlPublica, whatsappDisponible } from "../lib/mensajeria";
-import { needsSavedAddress, resolveDeliveryAddress } from "../lib/deliveryAddress";
+import { needsSavedAddress } from "../lib/deliveryAddress";
+import { cambiarEstadoPedido, conDireccionUtil, coordenadasDelPedido } from "../lib/pedido-servicio";
 import { calcularMetricasDistanciaPedido, parseCoordinatePair, type CoordinatePair } from "../lib/orderDistance";
 import { calcularEtaSencilla, extraerCoordenadas, geocodificarDireccion } from "../lib/routeOptimizer";
 import { soloDigitos } from "../lib/telefono";
@@ -44,35 +45,6 @@ async function cargarPedidoOperable(db: Db, user: AppEnv["Variables"]["user"], i
 }
 
 // ---------- Dirección y distancia de cada pedido ----------
-
-const geocodeFallidoHasta = new Map<number, number>();
-
-type Fuente = { direccionTexto?: string | null; latitud?: string | null; longitud?: string | null };
-
-/** Los pedidos viejos pueden traer solo un código postal; la dirección completa vive en el perfil del cliente. */
-function conDireccionUtil(pedido: Pedido, fuentes: { cliente?: Fuente; conversacion?: Fuente }) {
-  if (!needsSavedAddress(pedido.clienteUbicacion) && parseCoordinatePair(pedido.clienteLatitud, pedido.clienteLongitud)) return pedido;
-  const d = resolveDeliveryAddress({
-    pedidoUbicacion: pedido.clienteUbicacion, pedidoLatitud: pedido.clienteLatitud, pedidoLongitud: pedido.clienteLongitud,
-    conversacion: fuentes.conversacion ?? null, cliente: fuentes.cliente ?? null,
-  });
-  return { ...pedido, clienteUbicacion: d.direccion, clienteLatitud: d.latitud, clienteLongitud: d.longitud };
-}
-
-async function coordenadasDelPedido(db: Db, pedido: Pick<Pedido, "id" | "clienteUbicacion" | "clienteLatitud" | "clienteLongitud">): Promise<CoordinatePair | null> {
-  const coords = parseCoordinatePair(pedido.clienteLatitud, pedido.clienteLongitud);
-  if (coords) return coords;
-  const direccion = pedido.clienteUbicacion?.trim() || "";
-  if (!direccion || needsSavedAddress(direccion)) return null;
-  if ((geocodeFallidoHasta.get(pedido.id) ?? 0) > Date.now()) return null;
-  const geo = await geocodificarDireccion(direccion);
-  if (!geo) {
-    geocodeFallidoHasta.set(pedido.id, Date.now() + 15 * 60 * 1000);
-    return null;
-  }
-  await updatePedidoCoordenadas(db, pedido.id, geo.lat, geo.lon);
-  return { latitud: geo.lat, longitud: geo.lon };
-}
 
 pedidoRoutes.get("/api/colmados/:id/pedidos", requireAuth, requireBusinessAccess(), async (c) => {
   const db = getDb(c.env.DB);
@@ -113,24 +85,6 @@ pedidoRoutes.get("/api/colmados/:id/cocina/pedidos", requireAuth, requireBusines
 
 // ---------- Cambio de estado ----------
 
-function mensajeDeEstado(pedido: Pedido, estado: string, simbolo: string, trackingUrl: string, repartidor: string): string {
-  const total = `${simbolo}${num(pedido.total).toLocaleString("es-DO")}`;
-  switch (estado) {
-    case "en_camino":
-      return `🚴 ¡Tu pedido #${pedido.id} está en camino!${repartidor ? `\n🧑 Repartidor: *${repartidor}*` : ""}\n\nTotal: ${total}\n\n📍 Sigue tu pedido en tiempo real:\n${trackingUrl}\n\n¡Gracias por tu preferencia! 🙌`;
-    case "llegando":
-      return `🏠 ¡El delivery está llegando a tu puerta! Tu pedido #${pedido.id} ya casi está ahí. 🛵`;
-    case "entregado":
-      return pedido.tipoEntrega === "pickup"
-        ? `✅ ¡Pedido #${pedido.id} entregado en el negocio!\n\n¡Gracias por pasar a recoger tu compra! Esperamos que la disfrutes. 🛒`
-        : `✅ ¡Pedido #${pedido.id} entregado!\n\n¡Gracias por tu compra! Esperamos que disfrutes tu pedido. 🛒\n\n¿Tienes alguna duda? Escríbenos.`;
-    case "cancelado":
-      return `❌ Tu pedido #${pedido.id} ha sido cancelado. Pedimos disculpas por los inconvenientes. Si tienes alguna pregunta, no dudes en escribirnos. 🙏`;
-    default:
-      return "";
-  }
-}
-
 pedidoRoutes.patch("/api/pedidos/:id/estado", requireAuth, async (c) => {
   const db = getDb(c.env.DB);
   const id = Number(c.req.param("id"));
@@ -146,55 +100,10 @@ pedidoRoutes.patch("/api/pedidos/:id/estado", requireAuth, async (c) => {
     (ESTADOS_REPARTIDOR.includes(estado) && esRepartidorDelPedido(user, antes));
   if (!autorizado) return c.json({ error: "No tienes permiso para operar esta sucursal" }, 403);
 
-  if (antes.estado === "fusionado") {
-    return c.json({
-      error: `El Pedido #${id} está incluido en el Pedido #${antes.fusionadoEnPedidoId} y no se puede actualizar por separado.`,
-      reason: "pedido_fusionado",
-    }, 409);
-  }
-  if (antes.tipoEntrega === "pickup" && ["en_camino", "llegando"].includes(estado)) {
-    return c.json({ error: "Los pedidos pickup se entregan en el negocio y no pasan por delivery.", reason: "pedido_pickup" }, 400);
-  }
-  if (estado === "en_preparacion" && antes.estado !== "pendiente") {
-    return c.json({ error: "El pedido debe estar confirmado antes de enviarlo a cocina.", reason: "pedido_no_confirmado" }, 409);
-  }
-  if (estado === "listo" && antes.estado !== "en_preparacion") {
-    return c.json({ error: "Cocina debe iniciar la preparación antes de marcar el pedido como listo.", reason: "preparacion_no_iniciada" }, 409);
-  }
-  if (estado === "en_camino" && antes.estado !== "listo") {
-    return c.json({ error: "Cocina debe marcar el pedido como listo antes de iniciar la entrega.", reason: "pedido_no_listo" }, 409);
-  }
-  if (["en_camino", "llegando"].includes(estado) && !antes.deliveryId) {
-    return c.json({ error: "Debes asignar un repartidor antes de marcar el pedido como en camino.", reason: "sin_delivery" }, 400);
-  }
-
-  // Los estados que ve el cliente se reclaman de forma atómica: solo la primera
-  // petición notifica, aunque el panel y el portal del repartidor lleguen a la vez.
-  let notificar = true;
-  if (["en_camino", "llegando", "entregado"].includes(estado)) {
-    notificar = await claimTransicionEstado(db, id, estado);
-  } else if (!(await updatePedidoEstado(db, id, estado, estado === "retorno" ? motivoRetorno || undefined : undefined, ["en_preparacion", "listo"].includes(estado) ? user.id : undefined))) {
-    return c.json({ error: "El pedido ya no está disponible para actualizar.", reason: "pedido_no_disponible" }, 409);
-  }
-
-  const pedido = (await getPedidoById(db, id))!;
-  const colmado = await getColmado(db, pedido.colmadoId);
-  if (colmado && notificar && antes.estado !== estado) {
-    await registrarEnVentas(db, pedido, estado, await getColmadoTimezone(db, colmado));
-  }
-  if (colmado && notificar) {
-    try {
-      const repartidor = estado === "en_camino" && pedido.deliveryId ? (await getDeliveryById(db, pedido.deliveryId))?.nombre ?? "" : "";
-      const mensaje = mensajeDeEstado(pedido, estado, await moneda(db, colmado), `${urlPublica(c.env, new URL(c.req.url).origin)}/seguimiento/${pedido.id}`, repartidor);
-      if (mensaje) {
-        // "llegando" solo va al chat web.
-        await notificarCliente(c.env, db, colmado, pedido, mensaje, { whatsapp: estado !== "llegando" });
-      }
-    } catch (err) {
-      console.error(`[pedidos] No se pudo notificar el estado del pedido #${id}:`, err);
-    }
-  }
-  if (["entregado", "cancelado", "retorno"].includes(estado)) await cerrarConversacionDelPedido(db, pedido);
+  const error = await cambiarEstadoPedido(c.env, db, antes, estado, {
+    motivoRetorno, actorId: user.id, origen: new URL(c.req.url).origin,
+  });
+  if (error) return c.json(error.body, error.status);
   return c.json({ success: true });
 });
 

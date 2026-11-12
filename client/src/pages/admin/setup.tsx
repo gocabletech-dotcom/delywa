@@ -21,6 +21,7 @@ export default function SetupPage() {
   });
   const [deliveryForm, setDeliveryForm] = useState({
     whatsappNumero: "",
+    codigoAcceso: "",
   });
 
   const registerColmadoMutation = useMutation({
@@ -200,12 +201,27 @@ export default function SetupPage() {
                     id="delivery-whatsapp"
                     placeholder="Ej: 8091234567"
                     value={deliveryForm.whatsappNumero}
-                    onChange={(e) => setDeliveryForm({ whatsappNumero: e.target.value })}
+                    onChange={(e) => setDeliveryForm({ ...deliveryForm, whatsappNumero: e.target.value })}
                     required
                     data-testid="input-whatsapp-delivery-setup"
                   />
                   <p className="text-xs text-gray-500">
                     El dueño del colmado debe haberte agregado primero con este número
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delivery-codigo">Código de acceso</Label>
+                  <Input
+                    id="delivery-codigo"
+                    placeholder="Ej: K7M2QX"
+                    value={deliveryForm.codigoAcceso}
+                    onChange={(e) => setDeliveryForm({ ...deliveryForm, codigoAcceso: e.target.value.toUpperCase() })}
+                    required
+                    maxLength={6}
+                    data-testid="input-codigo-delivery-setup"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Pídeselo al dueño del negocio. Aparece en la ficha del repartidor.
                   </p>
                 </div>
                 <div className="flex gap-2 pt-4">

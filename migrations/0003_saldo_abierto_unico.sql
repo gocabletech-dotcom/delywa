@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `saldos_delivery_abierto_uq` ON `saldos_delivery` (`delivery_id`,`colmado_id`) WHERE estado = 'pendiente';

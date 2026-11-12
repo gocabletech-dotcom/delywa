@@ -38,3 +38,29 @@ export function rangoDiaLocal(timeZone: string, date: Date = new Date()): { desd
   const siguiente = inicioDiaLocal(timeZone, new Date(desde.getTime() + DIA_MS + 2 * 60 * 60 * 1000));
   return { desde, hasta: siguiente };
 }
+
+const DIAS = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+
+/** Día de la semana ("lunes"...) del día local que contiene `date`. */
+export function diaSemanaLocal(timeZone: string, date: Date = new Date()): string {
+  const p = partes(timeZone, date);
+  return DIAS[new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay()];
+}
+
+/** Instante UTC de la hora "HH:MM" en el día local que contiene `date`. */
+export function horaLocalEnDia(timeZone: string, hhmm: string, date: Date = new Date()): Date {
+  const [h, m] = hhmm.split(":").map(Number);
+  const inicio = inicioDiaLocal(timeZone, date);
+  const aprox = new Date(inicio.getTime() + (h || 0) * 3_600_000 + (m || 0) * 60_000);
+  // Si ese día hubo cambio de horario, se ajusta con el desfase real a esa hora.
+  return new Date(aprox.getTime() - (offsetMs(timeZone, aprox) - offsetMs(timeZone, inicio)));
+}
+
+/** Clave de agrupación por día, semana (lunes) o mes en la zona del negocio. */
+export function claveAgrupacion(timeZone: string, date: Date, agrupacion: "dia" | "semana" | "mes"): string {
+  const p = partes(timeZone, date);
+  if (agrupacion === "mes") return `${p.y}-${String(p.m).padStart(2, "0")}-01`;
+  const base = new Date(Date.UTC(p.y, p.m - 1, p.d));
+  if (agrupacion === "semana") base.setUTCDate(base.getUTCDate() - ((base.getUTCDay() + 6) % 7));
+  return base.toISOString().slice(0, 10);
+}

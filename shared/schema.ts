@@ -1,6 +1,6 @@
 import "./columns";
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, numeric, unique, index, primaryKey } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, numeric, unique, index, primaryKey, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -511,6 +511,8 @@ export const saldosDelivery = sqliteTable("saldos_delivery", {
   fechaSaldado: integer("fecha_saldado", { mode: "timestamp_ms" }),
 }, (t) => [
   index("saldos_delivery_delivery_idx").on(t.deliveryId),
+  // Un solo saldo abierto por repartidor y negocio: permite sumar diferencias con un upsert atómico.
+  uniqueIndex("saldos_delivery_abierto_uq").on(t.deliveryId, t.colmadoId).where(sql`estado = 'pendiente'`),
 ]);
 
 export const insertSaldoDeliverySchema = createInsertSchema(saldosDelivery).omit({

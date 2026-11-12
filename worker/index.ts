@@ -12,6 +12,8 @@ import { menuRoutes } from "./routes/menu";
 import { pedidoRoutes } from "./routes/pedidos";
 import { clienteRoutes } from "./routes/clientes";
 import { menuGraficoRoutes } from "./routes/menu-grafico";
+import { deliveryRoutes } from "./routes/deliveries";
+import { portalRepartidorRoutes } from "./routes/portal-repartidor";
 
 export const app = new Hono<AppEnv>();
 
@@ -37,6 +39,8 @@ app.route("/", menuRoutes);
 app.route("/", pedidoRoutes);
 app.route("/", clienteRoutes);
 app.route("/", menuGraficoRoutes);
+app.route("/", deliveryRoutes);
+app.route("/", portalRepartidorRoutes);
 
 // Los módulos restantes se agregan por capas.
 app.all("/api/*", (c) => c.json({ message: "Endpoint aún no migrado" }, 501));

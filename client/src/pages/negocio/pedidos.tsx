@@ -602,7 +602,13 @@ export default function PedidosPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
+      // Sin WhatsApp integrado, se abre WhatsApp con el mensaje listo para el repartidor.
+      if (data?.necesitaEnvioManual && data.enlaceWhatsApp) {
+        window.open(data.enlaceWhatsApp, "_blank", "noopener");
+        toast({ title: "Abre WhatsApp para enviar el pedido al delivery" });
+        return;
+      }
       toast({ title: "Pedido reenviado al delivery" });
     },
     onError: (error: Error) => {
