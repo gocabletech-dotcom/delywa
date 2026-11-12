@@ -16,6 +16,20 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/client"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Librerías base en archivos aparte: el navegador las guarda y no las vuelve a bajar en cada versión.
+        // Las gráficas, los mapas y el PDF quedan dentro de las pantallas que los usan (no en la portada).
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler|wouter)[\\/]/.test(id)) return "react";
+          if (id.includes("@tanstack")) return "query";
+          if (id.includes("@radix-ui")) return "ui";
+          if (id.includes("lucide-react")) return "iconos";
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port: 5173,

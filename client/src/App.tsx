@@ -1,52 +1,81 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route } from "wouter";
+import type { ComponentType } from "react";
+
+/**
+ * Carga una pantalla aparte. Si falla porque se publicó una versión nueva mientras la página
+ * estaba abierta (los archivos viejos ya no existen), recarga una sola vez para traer la nueva.
+ */
+function lazyConReintento<T extends ComponentType<any>>(cargar: () => Promise<{ default: T }>) {
+  return lazy(() => cargar().catch((err) => {
+    const clave = "delywa-recarga-version";
+    if (!sessionStorage.getItem(clave)) {
+      sessionStorage.setItem(clave, "1");
+      window.location.reload();
+      return new Promise<{ default: T }>(() => undefined);
+    }
+    throw err;
+  }).then((m) => { sessionStorage.removeItem("delywa-recarga-version"); return m; }));
+}
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Home from "@/pages/home";
-import AdminIndex from "@/pages/admin/index";
-import SetupPage from "@/pages/admin/setup";
-import PlatformAdminPage from "@/pages/admin/platform";
-import PlansAdminPage from "@/pages/admin/plans";
-import NegocioNuevoPage from "@/pages/admin/negocio-nuevo";
-import NegocioEditarPage from "@/pages/admin/negocio-editar";
-import ManualPage from "@/pages/admin/manual";
-import AdminPedidosPage from "@/pages/admin/pedidos";
-import NegocioManualPage from "@/pages/negocio/manual";
-import NegocioDashboard from "@/pages/negocio/dashboard";
-import NegocioPedidosPage from "@/pages/negocio/pedidos";
-import NegocioCocinaPage from "@/pages/negocio/cocina";
-import NegocioDeliveriesPage from "@/pages/negocio/deliveries";
-import NegocioVentasPage from "@/pages/negocio/ventas";
-import NegocioDeliveryDashboard from "@/pages/negocio/delivery-dashboard";
-import NegocioWhatsAppConfigPage from "@/pages/negocio/whatsapp-config";
-import NegocioConversacionesPage from "@/pages/negocio/conversaciones";
-import NegocioSettingsPage from "@/pages/negocio/settings";
-import NegocioClientesPage from "@/pages/negocio/clientes";
-import NegocioMenuPage from "@/pages/negocio/menu";
-import NegocioJergaPage from "@/pages/negocio/jerga";
-import NegocioChatConfigPage from "@/pages/negocio/chat-config";
-import NegocioCuadresPage from "@/pages/negocio/cuadres";
-import NegocioZipAlertasPage from "@/pages/negocio/zip-alertas";
-import NegocioSucursalesPage from "@/pages/negocio/sucursales";
-import NegocioEmpleadosPage from "@/pages/negocio/empleados";
-import EmpleadoPortalPage from "@/pages/empleado-portal";
-import LoginPage from "@/pages/login";
-import PrimerAccesoPage from "@/pages/primer-acceso";
-import LegalPage from "@/pages/legal";
-import RecuperarPage from "@/pages/recuperar";
-import DeletionStatusPage from "@/pages/deletion-status";
-import DataDeletionPage from "@/pages/data-deletion";
-import ContactPage from "@/pages/contact";
-import PedirPage from "@/pages/pedir";
-import MenuGraficoPage from "@/pages/menu-grafico";
-import RepartidorPage from "@/pages/repartidor";
-import SeguimientoPage from "@/pages/seguimiento";
-import SucursalPage from "@/pages/sucursal";
+const NotFound = lazyConReintento(() => import("@/pages/not-found"));
+const Home = lazyConReintento(() => import("@/pages/home"));
+const AdminIndex = lazyConReintento(() => import("@/pages/admin/index"));
+const SetupPage = lazyConReintento(() => import("@/pages/admin/setup"));
+const PlatformAdminPage = lazyConReintento(() => import("@/pages/admin/platform"));
+const PlansAdminPage = lazyConReintento(() => import("@/pages/admin/plans"));
+const NegocioNuevoPage = lazyConReintento(() => import("@/pages/admin/negocio-nuevo"));
+const NegocioEditarPage = lazyConReintento(() => import("@/pages/admin/negocio-editar"));
+const ManualPage = lazyConReintento(() => import("@/pages/admin/manual"));
+const AdminPedidosPage = lazyConReintento(() => import("@/pages/admin/pedidos"));
+const NegocioManualPage = lazyConReintento(() => import("@/pages/negocio/manual"));
+const NegocioDashboard = lazyConReintento(() => import("@/pages/negocio/dashboard"));
+const NegocioPedidosPage = lazyConReintento(() => import("@/pages/negocio/pedidos"));
+const NegocioCocinaPage = lazyConReintento(() => import("@/pages/negocio/cocina"));
+const NegocioDeliveriesPage = lazyConReintento(() => import("@/pages/negocio/deliveries"));
+const NegocioVentasPage = lazyConReintento(() => import("@/pages/negocio/ventas"));
+const NegocioDeliveryDashboard = lazyConReintento(() => import("@/pages/negocio/delivery-dashboard"));
+const NegocioWhatsAppConfigPage = lazyConReintento(() => import("@/pages/negocio/whatsapp-config"));
+const NegocioConversacionesPage = lazyConReintento(() => import("@/pages/negocio/conversaciones"));
+const NegocioSettingsPage = lazyConReintento(() => import("@/pages/negocio/settings"));
+const NegocioClientesPage = lazyConReintento(() => import("@/pages/negocio/clientes"));
+const NegocioMenuPage = lazyConReintento(() => import("@/pages/negocio/menu"));
+const NegocioJergaPage = lazyConReintento(() => import("@/pages/negocio/jerga"));
+const NegocioChatConfigPage = lazyConReintento(() => import("@/pages/negocio/chat-config"));
+const NegocioCuadresPage = lazyConReintento(() => import("@/pages/negocio/cuadres"));
+const NegocioZipAlertasPage = lazyConReintento(() => import("@/pages/negocio/zip-alertas"));
+const NegocioSucursalesPage = lazyConReintento(() => import("@/pages/negocio/sucursales"));
+const NegocioEmpleadosPage = lazyConReintento(() => import("@/pages/negocio/empleados"));
+const EmpleadoPortalPage = lazyConReintento(() => import("@/pages/empleado-portal"));
+const LoginPage = lazyConReintento(() => import("@/pages/login"));
+const PrimerAccesoPage = lazyConReintento(() => import("@/pages/primer-acceso"));
+const LegalPage = lazyConReintento(() => import("@/pages/legal"));
+const RecuperarPage = lazyConReintento(() => import("@/pages/recuperar"));
+const DeletionStatusPage = lazyConReintento(() => import("@/pages/deletion-status"));
+const DataDeletionPage = lazyConReintento(() => import("@/pages/data-deletion"));
+const ContactPage = lazyConReintento(() => import("@/pages/contact"));
+const PedirPage = lazyConReintento(() => import("@/pages/pedir"));
+const MenuGraficoPage = lazyConReintento(() => import("@/pages/menu-grafico"));
+const RepartidorPage = lazyConReintento(() => import("@/pages/repartidor"));
+const SeguimientoPage = lazyConReintento(() => import("@/pages/seguimiento"));
+const SucursalPage = lazyConReintento(() => import("@/pages/sucursal"));
+
+// Capa 5: cada pantalla se descarga solo cuando se abre (el cliente que pide en un colmado
+// no baja el panel de plataforma, ni los videos de la página principal, ni los mapas).
+function Cargando() {
+  return (
+    <div className="min-h-screen flex items-center justify-center" role="status" aria-label="Cargando">
+      <div className="h-8 w-8 rounded-full border-2 border-gray-200 border-t-[#25D366] animate-spin" />
+    </div>
+  );
+}
 
 function Router() {
   return (
+    <Suspense fallback={<Cargando />}>
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/legal" component={() => <LegalPage />} />
@@ -108,6 +137,7 @@ function Router() {
       
       <Route component={NotFound} />
     </Switch>
+    </Suspense>
   );
 }
 

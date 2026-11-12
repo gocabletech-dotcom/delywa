@@ -6,6 +6,7 @@ import { getDb, type Db } from "../db";
 import { requireAdmin, requireAuth, requireBusinessAccess } from "../lib/auth";
 import { isUniqueViolation } from "../lib/d1";
 import { claveDebil } from "../lib/claves";
+import { archivosDelNegocio, borrarArchivosHuerfanos } from "../lib/archivos";
 import {
   aplicarPlantillaMenu, assignColmadoOwner, createColmado, createSucursal, deleteColmado, enrichColmadoWithMoneda,
   getAllColmados, getColmado, getPais, getSucursalesByOwner, isOwnerOfColmado, setColmadoEstado, toSafeColmado,
@@ -291,7 +292,13 @@ negocioRoutes.delete("/api/colmados/:id", requireAuth, async (c) => {
   if (c.var.user.role !== "platform_admin") {
     return c.json({ error: "Solo el administrador de la plataforma puede eliminar colmados" }, 403);
   }
-  await deleteColmado(getDb(c.env.DB), Number(c.req.param("id")));
+  const db = getDb(c.env.DB);
+  const id = Number(c.req.param("id"));
+  const archivos = Number.isInteger(id) ? await archivosDelNegocio(db, id) : [];
+  await deleteColmado(db, id);
+  // Sus fotos, logo y comprobantes se borran de R2 (si nadie más los usa).
+  const tarea = borrarArchivosHuerfanos(c.env, archivos);
+  try { c.executionCtx.waitUntil(tarea); } catch { await tarea; }
   return c.json({ success: true, message: "Colmado eliminado" });
 });
 

@@ -1,3 +1,4 @@
+import { borrarSiHuerfano } from "../lib/archivos";
 import { Hono } from "hono";
 import type { User } from "@shared/schema";
 import type { AppEnv } from "../env";
@@ -148,7 +149,13 @@ menuRoutes.patch("/api/menu/:id", requireAuth, async (c) => {
   if (inventario !== undefined) data.inventario = inventario;
   if (body.orden !== undefined && Number.isInteger(Number(body.orden))) data.orden = Number(body.orden);
   if (Object.keys(data).length === 0) return c.json(producto);
-  return c.json(await updateMenuProducto(db, producto.id, data));
+  const actualizado = await updateMenuProducto(db, producto.id, data);
+  // La foto vieja se borra si ya nadie la usa.
+  if (data.imagen !== undefined && producto.imagen && producto.imagen !== data.imagen) {
+    const tarea = borrarSiHuerfano(c.env, producto.imagen);
+    try { c.executionCtx.waitUntil(tarea); } catch { await tarea; }
+  }
+  return c.json(actualizado);
 });
 
 /** Borrar un producto. En una sucursal que lo hereda, solo se oculta allí. */
@@ -170,6 +177,8 @@ menuRoutes.delete("/api/menu/:id", requireAuth, async (c) => {
   }
   if (!(await puedeEditar(db, c.var.user, producto.colmadoId))) return c.json({ error: "No tienes permiso para eliminar este producto" }, 403);
   await deleteMenuProducto(db, producto.id);
+  const tarea = borrarSiHuerfano(c.env, producto.imagen);
+  try { c.executionCtx.waitUntil(tarea); } catch { await tarea; }
   return c.json({ success: true });
 });
 
