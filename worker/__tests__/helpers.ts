@@ -21,10 +21,12 @@ function splitStatements(file: string, sql: string): string[] {
 export const correosEnviados: Array<{ to: string[]; subject: string; html: string }> = [];
 
 export async function createTestApp() {
-  const proxy = await getPlatformProxy<Env>({ configPath: `${root}wrangler.jsonc`, persist: false });
+  const proxy = await getPlatformProxy<Env>({ configPath: `${root}wrangler.jsonc`, persist: false, remoteBindings: false });
   const env = proxy.env;
   // Las salas de tiempo real no funcionan fuera de Cloudflare; las pruebas que las usan ponen una simulada.
   (env as any).SALAS = undefined;
+  // Workers AI solo existe en Cloudflare; las pruebas que lo usan ponen uno simulado.
+  (env as any).AI = undefined;
   // Nunca se manda un correo de verdad: quedan en correosEnviados.
   correosEnviados.length = 0;
   servicioCorreo.fetch = async (_url: string, init?: RequestInit) => {

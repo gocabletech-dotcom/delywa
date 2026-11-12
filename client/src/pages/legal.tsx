@@ -6,7 +6,7 @@ import { ArrowLeft } from "lucide-react";
 // Si cambias el texto, cambia también VERSION_LEGAL (aquí y en worker/data/legal.ts):
 // cada negocio que se registra deja constancia de la versión que aceptó.
 
-export const VERSION_LEGAL = "2026-11-12";
+export const VERSION_LEGAL = "2026-11-12.2";
 const FECHA = "12 de noviembre de 2026";
 const OPERADOR = "WRMA Developer";
 const CONTACTO = "soporte@delywa.com";
@@ -16,8 +16,8 @@ type Bloque = { titulo: string; parrafos?: string[]; lista?: string[] };
 type Documento = { id: "terminos" | "privacidad" | "dpa"; titulo: string; bloques: Bloque[] };
 
 const SUBENCARGADOS = [
-  "Cloudflare, Inc. — alojamiento de la aplicación, base de datos, archivos (fotos y comprobantes), protección contra ataques y verificación Turnstile.",
-  "OpenAI, L.L.C. — inteligencia artificial que entiende y responde los mensajes del bot y transcribe notas de voz.",
+  "Cloudflare, Inc. — alojamiento de la aplicación, base de datos, archivos (fotos y comprobantes), protección contra ataques, verificación Turnstile y su inteligencia artificial (Workers AI) para pasar notas de voz a texto y entender mensajes que el bot del chat no entiende.",
+  "OpenAI, L.L.C. — inteligencia artificial del bot de WhatsApp, cuando la plataforma la tiene activada.",
   "Meta Platforms, Inc. (WhatsApp Business Platform) — envío y recepción de mensajes de WhatsApp, cuando el negocio conecta su número oficial.",
   "Proveedor de Evolution API que el propio negocio elija — solo si el negocio conecta WhatsApp por esa vía.",
   "OpenStreetMap / Nominatim y, si se activa, un proveedor de rutas — convertir direcciones en ubicaciones y calcular distancias.",
@@ -95,7 +95,7 @@ const DOCUMENTOS: Documento[] = [
         "No vendemos datos personales ni los usamos para publicidad de terceros.",
       ] },
       { titulo: "4. Inteligencia artificial", parrafos: [
-        "Los mensajes y notas de voz de los clientes se envían a OpenAI para entenderlos y redactar respuestas. Según las condiciones de OpenAI para su API, esos datos no se usan para entrenar sus modelos. Enviamos solo lo necesario para responder.",
+        "El chat de la página lo atiende un asistente automático por pasos que no usa inteligencia artificial. Solo cuando no entiende un mensaje, ese mensaje se envía a la inteligencia artificial de Cloudflare (Workers AI); las notas de voz también se pasan a texto con Workers AI. En WhatsApp, los mensajes pueden enviarse a OpenAI si la plataforma lo tiene activado. Enviamos solo lo necesario para responder.",
       ] },
       { titulo: "5. Con quién compartimos datos", parrafos: ["Solo con los proveedores que necesitamos para prestar el servicio:"], lista: SUBENCARGADOS },
       { titulo: "6. Transferencias internacionales", parrafos: [

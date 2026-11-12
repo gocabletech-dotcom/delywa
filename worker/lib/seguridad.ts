@@ -1,6 +1,6 @@
 import { and, eq, gt, lt, sql } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
-import { avisosEnviados, bitacora, errores, users } from "@shared/schema";
+import { avisosEnviados, bitacora, botNoEntendidos, errores, users } from "@shared/schema";
 import type { AppEnv, Env } from "../env";
 import { getDb, type Db } from "../db";
 import { correoListo, enviarCorreo, escHtml, plantillaCorreo } from "./correo";
@@ -87,7 +87,7 @@ export async function registrarError(env: Env, datos: { ref: string; origen?: st
   }
 }
 
-/** Limpieza diaria: errores de más de 30 días, bitácora de más de 180, avisos de más de 120. */
+/** Limpieza diaria: errores de más de 30 días, bitácora de más de 180, avisos de más de 120, frases no entendidas de más de 60. */
 export async function limpiarSeguridad(env: Env): Promise<void> {
   const db = getDb(env.DB);
   const dia = 24 * 60 * 60 * 1000;
@@ -95,5 +95,6 @@ export async function limpiarSeguridad(env: Env): Promise<void> {
     db.delete(errores).where(lt(errores.fecha, new Date(Date.now() - 30 * dia))),
     db.delete(bitacora).where(lt(bitacora.fecha, new Date(Date.now() - 180 * dia))),
     db.delete(avisosEnviados).where(and(lt(avisosEnviados.fecha, new Date(Date.now() - 120 * dia)))),
+    db.delete(botNoEntendidos).where(lt(botNoEntendidos.fecha, new Date(Date.now() - 60 * dia))),
   ]);
 }

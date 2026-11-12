@@ -5,6 +5,8 @@ import type { Integraciones } from "./lib/integraciones";
 export interface Env {
   DB: D1Database;
   UPLOADS: R2Bucket;
+  /** Workers AI: notas de voz (Whisper) y la IA de respaldo del bot del chat. */
+  AI?: Ai;
   /** Respaldos diarios de la base (bucket delywa-respaldos). Si falta, no se respalda. */
   RESPALDOS?: R2Bucket;
   ASSETS: Fetcher;

@@ -1,30 +1,33 @@
 import { Hono, type Context } from "hono";
-import { and, asc, eq, gt } from "drizzle-orm";
+import { and, asc, count, eq, gt } from "drizzle-orm";
 import { toFile } from "openai";
 import { chatWebMensajes, chatWebSesiones, paises, pedidos } from "@shared/schema";
-import type { AppEnv, Env } from "../env";
+import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { permitirEvento } from "../lib/rate-limit";
 import { soloDigitos } from "../lib/telefono";
-import { conContexto, ia } from "../chat/adaptador";
-import { processIncomingWhatsAppMessage } from "../chat/motor-whatsapp";
+import { ia } from "../chat/adaptador";
+import { anotarNotaDeVoz, atenderChat, type Entrada } from "../bot/motor";
+import { iaDisponible, transcribir } from "../bot/ia";
 import { getColmado, getPais } from "../storage/colmados";
 import { addMensaje, getOrCreateCliente, getOrCreateConversacion } from "../storage/conversaciones";
 import { getColmadoByCodigo } from "./menu-grafico";
 import { telefonoConPais } from "./registro";
 
-// Chat del colmado en la página (delywa.com/pedir/<colmado>).
-// Funciona igual que escribirle al colmado por WhatsApp: el mismo bot, la misma conversación
-// en el panel y los mismos pedidos, aunque el colmado no tenga WhatsApp Business.
-// La diferencia es solo el canal: las respuestas del bot llegan a esta página.
+// Chat del colmado en la página (delywa.com/pedir/<colmado>): canal propio de DelyWa, sin las reglas de Meta.
+// Lo atiende el bot por pasos de worker/bot/motor.ts (sin IA; la IA de Cloudflare solo cuando no entiende).
+// La conversación y los pedidos aparecen en el panel del colmado igual que los de WhatsApp.
 
 export const chatColmadoRoutes = new Hono<AppEnv>();
 
 const MINUTO = 60_000;
 const ipDe = (c: Context<AppEnv>) => c.req.header("CF-Connecting-IP") ?? "sin-ip";
 const demasiados = (c: Context<AppEnv>) => c.json({ error: "Demasiados mensajes seguidos. Espera un momento e intenta de nuevo." }, 429);
-/** Pausa corta antes de cada respuesta para que se sienta como una persona escribiendo. */
-export const pausaWeb: [number, number] = [600, 1500];
+/**
+ * Cuánto espera el bot antes de responder: rápido en las 2 primeras respuestas y luego
+ * como una persona escribiendo. Las pruebas lo ponen en 0.
+ */
+export const tiempos = { primerasRespuestas: 2, rapidoMs: 2000, normalMs: 10_000, entreMensajesMs: 1200 };
 
 async function cuerpo(c: Context<AppEnv>): Promise<Record<string, any>> {
   return ((await c.req.json().catch(() => null)) || {}) as Record<string, any>;
@@ -85,7 +88,7 @@ chatColmadoRoutes.get("/api/chat-colmado/sesion/:sessionId/mensajes", async (c) 
   const s = await sesionValida(c, db);
   if (!s) return c.json({ error: "Sesión no encontrada" }, 404);
   const despues = Number(c.req.query("despues")) || 0;
-  const mensajes = await db.select({ id: chatWebMensajes.id, rol: chatWebMensajes.rol, contenido: chatWebMensajes.contenido, fecha: chatWebMensajes.fechaCreacion })
+  const mensajes = await db.select({ id: chatWebMensajes.id, rol: chatWebMensajes.rol, contenido: chatWebMensajes.contenido, opciones: chatWebMensajes.opciones, fecha: chatWebMensajes.fechaCreacion })
     .from(chatWebMensajes)
     .where(and(eq(chatWebMensajes.sessionId, s.sesion.sessionId), gt(chatWebMensajes.id, despues)))
     .orderBy(asc(chatWebMensajes.id)).limit(200);
@@ -98,12 +101,24 @@ chatColmadoRoutes.get("/api/chat-colmado/sesion/:sessionId/mensajes", async (c) 
   return c.json({ mensajes, pedido });
 });
 
-/** Corre el bot de WhatsApp para este cliente, en segundo plano: la página va leyendo las respuestas. */
-function atender(c: Context<AppEnv>, env: Env, s: NonNullable<Awaited<ReturnType<typeof sesionValida>>>, texto: string, tipo: "text" | "location", extras?: { latitude: number; longitude: number }) {
-  const trabajo = conContexto(
-    { env, db: getDb(env.DB), origen: new URL(c.req.url).origin, demoraMs: pausaWeb, colmadoId: s.colmado.id, canalWeb: { sessionId: s.sesion.sessionId, telefono: s.telefono } },
-    () => processIncomingWhatsAppMessage(s.colmado, s.telefono, texto, tipo, extras),
-  ).catch((err) => console.error("[chat-colmado] El bot falló:", err instanceof Error ? err.message : err));
+const dormir = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
+
+/** Corre el bot en segundo plano: la página va leyendo las respuestas (con "escribiendo…" mientras tanto). */
+function atender(c: Context<AppEnv>, s: NonNullable<Awaited<ReturnType<typeof sesionValida>>>, entrada: Entrada) {
+  const trabajo = (async () => {
+    const db = getDb(c.env.DB);
+    const [{ previas }] = await db.select({ previas: count() }).from(chatWebMensajes)
+      .where(and(eq(chatWebMensajes.sessionId, s.sesion.sessionId), eq(chatWebMensajes.rol, "assistant")));
+    // Se vuelve a leer la sesión justo antes de responder, por si llegaron dos mensajes seguidos.
+    const [fresca] = await db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, s.sesion.sessionId));
+    const respuestas = await atenderChat({ env: c.env, db, colmado: s.colmado, sesion: fresca ?? s.sesion, respuestasPrevias: previas }, entrada);
+    await dormir(previas < tiempos.primerasRespuestas ? tiempos.rapidoMs : tiempos.normalMs);
+    for (const [i, r] of respuestas.entries()) {
+      if (i > 0) await dormir(tiempos.entreMensajesMs);
+      await db.insert(chatWebMensajes).values({ sessionId: s.sesion.sessionId, rol: "assistant", contenido: r.texto, opciones: r.opciones ?? null });
+    }
+    await db.update(chatWebSesiones).set({ fechaUltimaActividad: new Date() }).where(eq(chatWebSesiones.sessionId, s.sesion.sessionId));
+  })().catch((err) => console.error("[chat-colmado] El bot falló:", err instanceof Error ? err.message : err));
   try {
     c.executionCtx.waitUntil(trabajo);
     return Promise.resolve();
@@ -133,7 +148,7 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/mensaje", async (c) 
   if (texto.length > 1500) return c.json({ error: "El mensaje es demasiado largo. Escríbelo en partes más cortas." }, 400);
   if (!(await dentroDelLimite(c, db, s.sesion.sessionId))) return demasiados(c);
   const id = await guardarDelCliente(db, s.sesion.sessionId, texto);
-  await atender(c, c.env, s, texto, "text");
+  await atender(c, s, { tipo: "texto", texto });
   return c.json({ ok: true, id });
 });
 
@@ -147,7 +162,7 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/ubicacion", async (c
   if (!(await dentroDelLimite(c, db, s.sesion.sessionId))) return demasiados(c);
   await db.update(chatWebSesiones).set({ clienteLatitud: String(lat), clienteLongitud: String(lon) }).where(eq(chatWebSesiones.sessionId, s.sesion.sessionId));
   const id = await guardarDelCliente(db, s.sesion.sessionId, "📍 Ubicación compartida");
-  await atender(c, c.env, s, "", "location", { latitude: lat, longitude: lon });
+  await atender(c, s, { tipo: "ubicacion", latitud: lat, longitud: lon });
   return c.json({ ok: true, id });
 });
 
@@ -163,16 +178,23 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/voz", async (c) => {
   if (!(await permitirEvento(db, `chat-voz:${s.sesion.sessionId}`, 10, 10 * MINUTO)) || !(await dentroDelLimite(c, db, s.sesion.sessionId))) return demasiados(c);
   let texto = "";
   try {
-    const bytes = Uint8Array.from(atob(m[2]), (ch) => ch.charCodeAt(0));
-    const archivo = await toFile(bytes, "nota.webm", { type: m[1] });
-    const r = await ia.crear(c.env, s.colmado.id).audio.transcriptions.create({ file: archivo, model: "whisper-1", language: "es" });
-    texto = (r.text || "").trim();
+    if (iaDisponible(c.env)) {
+      // Whisper de Cloudflare (Workers AI): gratis dentro del cupo diario.
+      texto = await transcribir(c.env, m[2]);
+    } else if (c.env.OPENAI_API_KEY) {
+      // Respaldo si Workers AI no está conectado y hay llave de OpenAI.
+      const bytes = Uint8Array.from(atob(m[2]), (ch) => ch.charCodeAt(0));
+      const archivo = await toFile(bytes, "nota.webm", { type: m[1] });
+      const r = await ia.crear(c.env, s.colmado.id).audio.transcriptions.create({ file: archivo, model: "whisper-1", language: "es" });
+      texto = (r.text || "").trim();
+    }
+    await anotarNotaDeVoz(db, s.colmado.id);
   } catch (err) {
     console.error("[chat-colmado] No se pudo transcribir:", err instanceof Error ? err.message : err);
   }
   if (!texto) return c.json({ error: "No pude entender la nota de voz. Intenta de nuevo o escribe tu pedido." }, 422);
   const id = await guardarDelCliente(db, s.sesion.sessionId, `🎤 ${texto}`);
-  await atender(c, c.env, s, texto, "text");
+  await atender(c, s, { tipo: "texto", texto });
   return c.json({ ok: true, id, texto });
 });
 

@@ -15,6 +15,7 @@ import { SeguridadSection } from "@/components/admin/SeguridadSection";
 import { IntegracionesSection } from "@/components/admin/IntegracionesSection";
 import { SolicitudesNegocioSection } from "@/components/admin/SolicitudesNegocioSection";
 import { JergaAprendidaPanel } from "@/components/admin/JergaAprendidaPanel";
+import { BotChatPanel } from "@/components/admin/BotChatPanel";
 import promoVideo1 from "@assets/generated_videos/complete_delivery_flow_sequence.mp4";
 import promoVideo2 from "@assets/generated_videos/delywa_logo_with_slogan.mp4";
 import promoVideoFull1 from "@assets/generated_videos/customer_types_order_ai_responds.mp4";
@@ -3645,6 +3646,7 @@ export default function PlatformAdminPage() {
                 <div className="space-y-8">
                   {renderJergaSection()}
                   <JergaAprendidaPanel paisId={selectedPaisJerga} />
+                  <BotChatPanel />
                 </div>
               )}
               {activeSection === "system-prompt" && renderSystemPromptSection()}

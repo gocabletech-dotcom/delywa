@@ -31,6 +31,8 @@
   // Tiempo real del panel: una sala (Durable Object con SQLite, incluido en el plan gratis) por sucursal.
   "durable_objects": { "bindings": [{ "name": "SALAS", "class_name": "SalaNegocio" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SalaNegocio"] }],
+  // Workers AI: notas de voz (Whisper) y la IA de respaldo del bot del chat. Plan gratis: 10,000 neuronas al día.
+  "ai": { "binding": "AI" },
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": { "PUBLIC_URL": "https://delywa.com" },
   "observability": { "enabled": true }

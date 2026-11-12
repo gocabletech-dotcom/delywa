@@ -9,7 +9,8 @@ import { businessTheme } from "@/lib/temaNegocio";
 // toma el pedido y el colmado ve la conversación en su panel. No hay menú: se pide hablando.
 
 type Info = { id: number; nombre: string; logo: string | null; colorPrimario: string | null; direccion: string; estaAbierto: boolean; mensajeCerrado: string | null; codigoPais: string };
-type Mensaje = { id: number; rol: string; contenido: string; fecha: string | number };
+type Opcion = { texto: string; accion?: "ubicacion" | "comprobante" };
+type Mensaje = { id: number; rol: string; contenido: string; fecha: string | number; opciones?: Opcion[] | null };
 type Pedido = { id: number; estado: string; total: string | null; metodoPago: string | null } | null;
 type Guardado = { sessionId: string; nombre: string; telefono: string };
 
@@ -274,6 +275,25 @@ export default function PedirPage() {
             </div>
           );
         })}
+        {/* Botones de respuesta rápida bajo el último mensaje del bot. */}
+        {!esperando && (() => {
+          const ultimo = mensajes[mensajes.length - 1];
+          if (!ultimo || ultimo.rol === "user" || !ultimo.opciones?.length) return null;
+          return (
+            <div className="flex flex-wrap gap-2 justify-start pl-1" data-testid="opciones-rapidas">
+              {ultimo.opciones.map((o) => (
+                <button
+                  key={o.texto}
+                  type="button"
+                  onClick={() => (o.accion === "ubicacion" ? enviarUbicacion() : o.accion === "comprobante" ? foto.current?.click() : mandar("mensaje", { texto: o.texto }, o.texto))}
+                  className="px-4 py-2 rounded-full bg-white border border-primary text-primary text-sm font-medium shadow-sm active:scale-95"
+                >
+                  {o.texto}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
         {esperando && (
           <div className="flex justify-start"><div className="bg-white rounded-lg px-4 py-3 shadow-sm"><span className="inline-flex gap-1"><i className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" /><i className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" /><i className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" /></span></div></div>
         )}

@@ -919,10 +919,31 @@ export const chatWebMensajes = sqliteTable("chat_web_mensajes", {
   sessionId: text("session_id").notNull(),
   rol: text("rol").notNull(), // user, assistant
   contenido: text("contenido").notNull(),
+  /** DELYWA: botones de respuesta rápida que muestra el chat bajo este mensaje del bot. */
+  opciones: text("opciones", { mode: "json" }).$type<Array<{ texto: string; accion?: "ubicacion" | "comprobante" }>>(),
   fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (t) => [
   index("chat_web_mensajes_session_idx").on(t.sessionId),
 ]);
+
+/** DELYWA: cuántos mensajes atendió el bot del chat cada día, cuántos necesitaron IA y cuántos no entendió. */
+export const botRegistro = sqliteTable("bot_registro", {
+  dia: text("dia").notNull(),
+  colmadoId: integer("colmado_id").notNull(),
+  mensajes: integer("mensajes").notNull().default(0),
+  conIa: integer("con_ia").notNull().default(0),
+  sinEntender: integer("sin_entender").notNull().default(0),
+  notasDeVoz: integer("notas_de_voz").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.dia, t.colmadoId] })]);
+
+/** DELYWA: frases que el bot no entendió (para mejorar la jerga y los productos). 60 días. */
+export const botNoEntendidos = sqliteTable("bot_no_entendidos", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  colmadoId: integer("colmado_id").notNull(),
+  texto: text("texto").notNull(),
+  resueltoConIa: integer("resuelto_con_ia", { mode: "boolean" }).notNull().default(false),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (t) => [index("bot_no_entendidos_fecha_idx").on(t.fecha)]);
 
 export const insertChatWebSesionSchema = createInsertSchema(chatWebSesiones).omit({
   id: true,

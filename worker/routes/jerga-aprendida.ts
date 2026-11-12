@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
-import { and, desc, eq, sql } from "drizzle-orm";
-import { jergaAprendizaje, paises, plantillasJerga } from "@shared/schema";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { botNoEntendidos, botRegistro, colmados, jergaAprendizaje, paises, plantillasJerga } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAdmin, requireAuth } from "../lib/auth";
@@ -107,4 +107,20 @@ jergaAprendidaRoutes.put("/api/admin/jerga-aprendida/umbral", async (c) => {
   if (!Number.isInteger(umbral) || umbral < 1 || umbral > 50) return c.json({ error: "El número de colmados debe estar entre 1 y 50" }, 400);
   await upsertConfiguracion(getDb(c.env.DB), CLAVE_UMBRAL, String(umbral), "Colmados distintos que deben usar una palabra para que entre al diccionario del país", "numero");
   return c.json({ success: true, umbral });
+});
+
+// ---------- Bot del chat de la página: cuánto resuelve sin IA ----------
+
+jergaAprendidaRoutes.use("/api/admin/bot-chat", requireAuth, requireAdmin);
+jergaAprendidaRoutes.get("/api/admin/bot-chat", async (c) => {
+  const db = getDb(c.env.DB);
+  const desde = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const dias = await db.select({
+    dia: botRegistro.dia,
+    mensajes: sql<number>`sum(${botRegistro.mensajes})`, conIa: sql<number>`sum(${botRegistro.conIa})`,
+    sinEntender: sql<number>`sum(${botRegistro.sinEntender})`, notasDeVoz: sql<number>`sum(${botRegistro.notasDeVoz})`,
+  }).from(botRegistro).where(gte(botRegistro.dia, desde)).groupBy(botRegistro.dia).orderBy(desc(botRegistro.dia));
+  const frases = await db.select({ id: botNoEntendidos.id, texto: botNoEntendidos.texto, resueltoConIa: botNoEntendidos.resueltoConIa, fecha: botNoEntendidos.fecha, colmado: colmados.nombre })
+    .from(botNoEntendidos).leftJoin(colmados, eq(colmados.id, botNoEntendidos.colmadoId)).orderBy(desc(botNoEntendidos.id)).limit(50);
+  return c.json({ dias: dias.map((d) => ({ dia: d.dia, mensajes: Number(d.mensajes), conIa: Number(d.conIa), sinEntender: Number(d.sinEntender), notasDeVoz: Number(d.notasDeVoz) })), frases });
 });
