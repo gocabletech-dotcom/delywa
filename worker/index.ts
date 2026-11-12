@@ -3,11 +3,15 @@ import { sql } from "drizzle-orm";
 import type { AppEnv, Env } from "./env";
 import { getDb } from "./db";
 import { deleteExpiredSessions, sessionMiddleware } from "./lib/session";
+import { enviarRecordatoriosComprobante } from "./lib/cron";
 import { authRoutes } from "./routes/auth";
 import { userRoutes } from "./routes/users";
 import { negocioRoutes } from "./routes/negocios";
 import { catalogoRoutes } from "./routes/catalogos";
 import { menuRoutes } from "./routes/menu";
+import { pedidoRoutes } from "./routes/pedidos";
+import { clienteRoutes } from "./routes/clientes";
+import { menuGraficoRoutes } from "./routes/menu-grafico";
 
 export const app = new Hono<AppEnv>();
 
@@ -30,6 +34,9 @@ app.route("/", userRoutes);
 app.route("/", negocioRoutes);
 app.route("/", catalogoRoutes);
 app.route("/", menuRoutes);
+app.route("/", pedidoRoutes);
+app.route("/", clienteRoutes);
+app.route("/", menuGraficoRoutes);
 
 // Los módulos restantes se agregan por capas.
 app.all("/api/*", (c) => c.json({ message: "Endpoint aún no migrado" }, 501));
@@ -38,6 +45,6 @@ export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(deleteExpiredSessions(env.DB));
-    // Recordatorio de comprobantes de transferencia: se implementa en la capa 4.
+    ctx.waitUntil(enviarRecordatoriosComprobante(env));
   },
 } satisfies ExportedHandler<Env>;
