@@ -13,6 +13,7 @@ export interface Env {
   META_CONFIG_ID?: string;
   WHATSAPP_ACCESS_TOKEN?: string;
   WHATSAPP_VERIFY_TOKEN?: string;
+  META_GRAPH_VERSION?: string;
   // Proveedor de rutas por carretera (opcional). Sin él se usa la distancia GPS.
   ROUTING_PROVIDER_URL?: string;
   ROUTING_PROVIDER_API_KEY?: string;

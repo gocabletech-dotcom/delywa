@@ -1,23 +1,41 @@
 import type { Colmado, Pedido } from "@shared/schema";
 import type { Env } from "../env";
-import type { Db } from "../db";
+import { getDb, type Db } from "../db";
 import {
   addChatWebMensaje, addMensaje, buscarChatWebDelPedido, cerrarSesionConversacion, getConversacionByCliente,
-  getChatWebSessionByPedidoId, updateChatWebSession,
+  getChatWebSessionByPedidoId, getUltimoMensajeCliente, updateChatWebSession,
 } from "../storage/conversaciones";
+import { canalDelNegocio, enviarTextoEvolution, enviarTextoMeta } from "./whatsapp";
+
+const HORAS_24_MS = 24 * 3_600_000;
+
+/** Meta solo permite texto libre dentro de las 24 horas siguientes al último mensaje del cliente. */
+async function dentroDeVentana24h(db: Db, colmadoId: number, to: string): Promise<boolean> {
+  const conversacion = await getConversacionByCliente(db, colmadoId, to);
+  if (!conversacion) return false;
+  const ultimo = conversacion.ultimoMensajeCliente ?? (await getUltimoMensajeCliente(db, conversacion.id))?.fechaEnvio;
+  return !!ultimo && Date.now() - ultimo.getTime() <= HORAS_24_MS;
+}
 
 /**
- * Envío por WhatsApp (Meta Cloud API o Evolution API). Se conecta en la capa 4.
- * Mientras tanto devuelve false y el panel ofrece enviar el mensaje a mano
- * con un enlace wa.me, igual que el original cuando no había canal integrado.
+ * Envía un texto por el canal de WhatsApp del negocio (Evolution API o Meta
+ * Cloud API). Devuelve false si no hay canal, si Meta no lo permite por la
+ * ventana de 24 horas o si el envío falla; quien llama ofrece entonces el
+ * enlace wa.me para enviarlo a mano.
  */
-export async function enviarWhatsApp(_env: Env, _colmado: Colmado, _to: string, _texto: string): Promise<boolean> {
-  return false;
+export async function enviarWhatsApp(
+  env: Env, colmado: Colmado, to: string, texto: string, opciones: { omitirVentana?: boolean } = {},
+): Promise<boolean> {
+  const canal = canalDelNegocio(env, colmado);
+  if (!canal || !to) return false;
+  if (canal.tipo === "evolution") return enviarTextoEvolution(canal.evolution, to, texto);
+  if (!opciones.omitirVentana && !(await dentroDeVentana24h(getDb(env.DB), colmado.id, to))) return false;
+  return enviarTextoMeta(canal.meta, to, texto);
 }
 
 /** El negocio tiene un canal de WhatsApp integrado y listo para enviar. */
-export function whatsappDisponible(_env: Env, _colmado: Colmado): boolean {
-  return false;
+export function whatsappDisponible(env: Env, colmado: Colmado): boolean {
+  return canalDelNegocio(env, colmado) !== null;
 }
 
 export function urlPublica(env: Env, origen?: string): string {
