@@ -83,8 +83,8 @@ chatWebRoutes.get("/api/chat-web/check-pedido", async (c) => {
 
 const manejadores = new Map<string, (req: any, res: any) => any>();
 const registro: AppLike = {
-  get: (ruta, h) => void manejadores.set(`GET ${ruta}`, h),
-  post: (ruta, h) => void manejadores.set(`POST ${ruta}`, h),
+  get: (ruta: string, ...h: unknown[]) => void manejadores.set(`GET ${ruta}`, h.at(-1) as any),
+  post: (ruta: string, ...h: unknown[]) => void manejadores.set(`POST ${ruta}`, h.at(-1) as any),
 };
 registrarChatWeb(registro);
 

@@ -19,6 +19,11 @@
     }
   ],
   "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "delywa-uploads" }],
+  // Cola de avisos entrantes de WhatsApp. La crea "npm run build" (scripts/preparar-cloudflare.mjs) si no existe.
+  "queues": {
+    "producers": [{ "binding": "COLA_WEBHOOKS", "queue": "delywa-webhooks" }],
+    "consumers": [{ "queue": "delywa-webhooks", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 1 }]
+  },
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": { "PUBLIC_URL": "https://delywa.com" },
   "observability": { "enabled": true }

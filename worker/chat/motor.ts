@@ -208,7 +208,7 @@ interface MergeEvaluacion {
   noBebidasExcluidas?: any[];
 }
 
-function evaluarElegibilidadMerge(
+export function evaluarElegibilidadMerge(
   pedido: any,
   nuevosProductos: any[],
   menuProductos: any[]
@@ -252,11 +252,11 @@ function evaluarElegibilidadMerge(
 // ---- End merge helpers ----
 
 
-function getPalabraDevuelta(codigoPais: string): string {
+export function getPalabraDevuelta(codigoPais: string): string {
   return codigoPais === "AR" ? "vuelto" : "devuelta";
 }
 
-function buildOrderStatusMessage(pedido: any, colmado: any, delivery?: any, simbolo: string = "RD$", metodosPago?: any): string {
+export function buildOrderStatusMessage(pedido: any, colmado: any, delivery?: any, simbolo: string = "RD$", metodosPago?: any): string {
   const total = parseFloat(pedido.totalConfirmado || pedido.total);
   const negocio = colmado.nombre || "el negocio";
   const tiempoEst = colmado.tiempoEstimado || "20-30 min";

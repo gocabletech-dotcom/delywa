@@ -20,6 +20,8 @@ import { plataformaRoutes } from "./routes/plataforma";
 import { limpiarSubidasPendientes, uploadRoutes } from "./routes/uploads";
 import { whatsappRoutes } from "./routes/whatsapp";
 import { chatWebRoutes } from "./routes/chat-web";
+import { generadorRoutes } from "./routes/generadores";
+import { procesarAviso, webhookRoutes, type AvisoWebhook } from "./routes/webhooks";
 
 export const app = new Hono<AppEnv>();
 
@@ -53,6 +55,8 @@ app.route("/", plataformaRoutes);
 app.route("/", uploadRoutes);
 app.route("/", whatsappRoutes);
 app.route("/", chatWebRoutes);
+app.route("/", webhookRoutes);
+app.route("/", generadorRoutes);
 
 // Los módulos restantes se agregan por capas.
 app.all("/api/*", (c) => c.json({ message: "Endpoint aún no migrado" }, 501));
@@ -63,5 +67,17 @@ export default {
     ctx.waitUntil(deleteExpiredSessions(env.DB));
     ctx.waitUntil(enviarRecordatoriosComprobante(env));
     ctx.waitUntil(limpiarSubidasPendientes(env));
+  },
+  /** Cola de avisos de WhatsApp: cada mensaje del cliente lo atiende el bot aquí, sin hacer esperar a Meta. */
+  async queue(batch: MessageBatch<unknown>, env: Env) {
+    for (const mensaje of batch.messages) {
+      try {
+        await procesarAviso(env, mensaje.body as AvisoWebhook);
+      } catch (err) {
+        console.error("[cola] Error al atender un aviso de WhatsApp:", err instanceof Error ? err.message : err);
+      }
+      // Siempre se confirma: cada mensaje ya quedó marcado como recibido y reintentarlo lo duplicaría.
+      mensaje.ack();
+    }
   },
 } satisfies ExportedHandler<Env>;

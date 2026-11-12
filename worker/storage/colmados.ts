@@ -234,3 +234,8 @@ export async function aplicarPlantillaMenu(db: Db, colmadoId: number, tipoNegoci
   await db.batch(inserts as [typeof inserts[0], ...typeof inserts]);
   return productos.length;
 }
+
+export async function getColmadoPorInstancia(db: Db, instancia: string): Promise<Colmado | undefined> {
+  const [row] = await db.select().from(colmados).where(eq(colmados.evolutionInstanceName, instancia));
+  return row;
+}

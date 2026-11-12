@@ -127,3 +127,20 @@ export function canalDelNegocio(env: Env, colmado: Colmado): Canal | null {
   const meta = credencialesMeta(env, colmado);
   return meta ? { tipo: "meta", meta } : null;
 }
+
+/**
+ * Nota de voz por Meta: primero se sube el audio a la Media API y luego se envía
+ * el mensaje con el id devuelto. WhatsApp acepta OGG/Opus; el WebM del navegador
+ * usa el mismo códec, así que se declara como OGG (igual que el original).
+ */
+export async function enviarAudioMeta(c: CredencialesMeta, to: string, audio: ArrayBuffer, tipo: string): Promise<boolean> {
+  const mime = tipo.includes("webm") || !tipo ? "audio/ogg" : tipo;
+  const form = new FormData();
+  form.append("file", new Blob([audio], { type: mime }), mime.includes("ogg") ? "voice.ogg" : "voice.webm");
+  form.append("type", mime);
+  form.append("messaging_product", "whatsapp");
+  const subida = await pedir(graphUrl(`${c.phoneNumberId}/media`), { method: "POST", headers: { Authorization: `Bearer ${c.accessToken}` }, body: form }, "subir audio a Meta");
+  const id = subida?.ok ? ((await subida.json().catch(() => null)) as any)?.id : null;
+  if (!id) return false;
+  return enviarMeta(c, { to: soloDigitos(to), type: "audio", audio: { id: String(id) } }, "nota de voz por Meta");
+}

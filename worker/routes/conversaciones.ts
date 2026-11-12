@@ -6,6 +6,7 @@ import { getDb } from "../db";
 import { requireAuth, requireBusinessAccess } from "../lib/auth";
 import { ADMINISTRADORES, puedeOperar } from "../lib/permisos";
 import { enlaceWhatsApp, enviarWhatsApp, whatsappDisponible } from "../lib/mensajeria";
+import { canalDelNegocio, enviarAudioMeta } from "../lib/whatsapp";
 import { getColmado } from "../storage/colmados";
 import { getProductosRestringidos } from "../storage/menu";
 import {
@@ -13,7 +14,7 @@ import {
   getConversacionById, getConversaciones, getMensajes, getUltimoMensajeCliente, marcarConversacionLeida, updateConversacion,
 } from "../storage/conversaciones";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { zipAlertaEventos } from "@shared/schema";
+import { chatWebMensajes, zipAlertaEventos } from "@shared/schema";
 
 export const conversacionRoutes = new Hono<AppEnv>();
 
@@ -149,6 +150,47 @@ conversacionRoutes.post("/api/conversaciones/:id/send", requireAuth, async (c) =
   if (chatWeb) await addChatWebMensaje(db, chatWeb.sessionId, "assistant", message);
   else await addMensaje(db, conversacion.id, "negocio", message);
   return c.json({ success: true, whatsappEnviado, chatWeb: !!chatWeb });
+});
+
+// ---------- Nota de voz ----------
+
+const MAX_AUDIO = 16 * 1024 * 1024;
+
+conversacionRoutes.post("/api/conversaciones/:id/send-voice", requireAuth, async (c) => {
+  const r = await conversacionOperable(c);
+  if ("error" in r) return r.error;
+  const db = getDb(c.env.DB);
+  const conversacion = r.conversacion;
+  if (Number(c.req.header("Content-Length") || 0) > MAX_AUDIO + 64 * 1024) return c.json({ error: "La nota de voz es demasiado grande (máximo 16 MB)" }, 413);
+  const form = await c.req.formData().catch(() => null);
+  const archivo = form?.get("audio");
+  if (!archivo || typeof archivo === "string") return c.json({ error: "Archivo de audio requerido" }, 400);
+  const blob = archivo as unknown as Blob;
+  if (!blob.type.startsWith("audio/")) return c.json({ error: "Solo se permiten archivos de audio" }, 400);
+  if (blob.size > MAX_AUDIO) return c.json({ error: "La nota de voz es demasiado grande (máximo 16 MB)" }, 413);
+
+  // Ventana de 24 horas de Meta.
+  const ultimo = await getUltimoMensajeCliente(db, conversacion.id);
+  if (!ultimo) {
+    return c.json({ error: "⚠️ No hay mensajes del cliente en esta conversación. Según las políticas de Meta, solo puedes responder después de que el cliente te escriba.", policyViolation: "no_customer_message" }, 400);
+  }
+  const horas = (Date.now() - ultimo.fechaEnvio.getTime()) / 3_600_000;
+  if (horas > 24) {
+    return c.json({ error: "⚠️ Han pasado más de 24 horas desde el último mensaje del cliente. Según las políticas de Meta, solo puedes responder dentro de 24 horas.", policyViolation: "24h_window", horasTranscurridas: Math.round(horas) }, 400);
+  }
+  const colmado = await getColmado(db, conversacion.colmadoId);
+  if (!colmado) return c.json({ error: "Colmado no encontrado" }, 404);
+  // Como en el original, las notas de voz solo salen por Meta; además se exige que la plataforma lo haya habilitado.
+  const canal = canalDelNegocio(c.env, colmado);
+  if (canal?.tipo !== "meta") return c.json({ error: "Las notas de voz solo se pueden enviar con WhatsApp de Meta conectado" }, 400);
+  if (!(await enviarAudioMeta(canal.meta, conversacion.clienteWhatsapp, await blob.arrayBuffer(), blob.type))) {
+    return c.json({ error: "Error al enviar nota de voz" }, 502);
+  }
+  await addMensaje(db, conversacion.id, "negocio", "[Nota de voz enviada]");
+  // En el chat web solo queda constancia; no se duplica en la conversación.
+  const chatWeb = await getChatWebSessionByConversacionId(db, conversacion.id);
+  if (chatWeb) await db.insert(chatWebMensajes).values({ sessionId: chatWeb.sessionId, rol: "assistant", contenido: "[Nota de voz enviada]" });
+  return c.json({ success: true });
 });
 
 // ---------- Analytics ----------

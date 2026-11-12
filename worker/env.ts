@@ -6,6 +6,8 @@ export interface Env {
   UPLOADS: R2Bucket;
   ASSETS: Fetcher;
   PUBLIC_URL: string;
+  /** Cola de avisos entrantes de WhatsApp. Si falta, el webhook los atiende él mismo. */
+  COLA_WEBHOOKS?: Queue<unknown>;
   // Secretos (wrangler secret put ...). Se cargan en la capa 4.
   OPENAI_API_KEY?: string;
   AI_GATEWAY_URL?: string;
