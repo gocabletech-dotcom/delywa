@@ -8,6 +8,7 @@ export interface Env {
   PUBLIC_URL: string;
   // Secretos (wrangler secret put ...). Se cargan en la capa 4.
   OPENAI_API_KEY?: string;
+  AI_GATEWAY_URL?: string;
   META_APP_ID?: string;
   META_APP_SECRET?: string;
   META_CONFIG_ID?: string;

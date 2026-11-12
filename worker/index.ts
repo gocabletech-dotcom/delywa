@@ -19,6 +19,7 @@ import { conversacionRoutes } from "./routes/conversaciones";
 import { plataformaRoutes } from "./routes/plataforma";
 import { limpiarSubidasPendientes, uploadRoutes } from "./routes/uploads";
 import { whatsappRoutes } from "./routes/whatsapp";
+import { chatWebRoutes } from "./routes/chat-web";
 
 export const app = new Hono<AppEnv>();
 
@@ -51,6 +52,7 @@ app.route("/", conversacionRoutes);
 app.route("/", plataformaRoutes);
 app.route("/", uploadRoutes);
 app.route("/", whatsappRoutes);
+app.route("/", chatWebRoutes);
 
 // Los módulos restantes se agregan por capas.
 app.all("/api/*", (c) => c.json({ message: "Endpoint aún no migrado" }, 501));

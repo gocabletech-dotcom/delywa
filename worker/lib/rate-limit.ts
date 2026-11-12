@@ -39,3 +39,15 @@ export async function recordLoginFailure(db: Db, username: string, ip: string | 
 export async function clearLoginFailures(db: Db, username: string): Promise<void> {
   await db.delete(loginIntentos).where(eq(loginIntentos.clave, `user:${username}`));
 }
+
+/**
+ * Contador genérico por clave: registra el evento y devuelve true, o devuelve
+ * false sin registrarlo si ya se alcanzó el máximo dentro de la ventana.
+ */
+export async function permitirEvento(db: Db, clave: string, maximo: number, ventanaMs: number): Promise<boolean> {
+  const [fila] = await db.select({ total: sql<number>`count(*)` }).from(loginIntentos)
+    .where(and(eq(loginIntentos.clave, clave), gt(loginIntentos.fecha, new Date(Date.now() - ventanaMs))));
+  if (Number(fila?.total || 0) >= maximo) return false;
+  await db.insert(loginIntentos).values({ clave });
+  return true;
+}
