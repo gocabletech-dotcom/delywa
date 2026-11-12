@@ -44,6 +44,8 @@ describe("correo con Resend", () => {
     const p = await admin.request("POST", "/api/admin/integraciones/probar-correo");
     expect(p.json.ok).toBe(true);
     expect(correosEnviados.at(-1)).toMatchObject({ to: ["admin@delywa.test"], from: "DelyWa <no-responder@delywa.com>" });
+    // Plantilla con el logo de delywa.com.
+    expect(correosEnviados.at(-1)!.html).toContain('src="https://delywa.com/correo-logo.png"');
   });
 });
 

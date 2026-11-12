@@ -4,7 +4,7 @@ import { getCookie, setCookie } from "hono/cookie";
 import { codigosCorreo, dispositivos, recuperaciones, sessions, users, type User } from "@shared/schema";
 import type { AppEnv, Env } from "../env";
 import type { Db } from "../db";
-import { boton, correoListo, enviarCorreo, escHtml, plantillaCorreo } from "./correo";
+import { boton, correoListo, destacado, enviarCorreo, escHtml, plantillaCorreo } from "./correo";
 
 // Cuenta: olvidé mi contraseña, código de registro por correo y aviso de equipo nuevo (traído de FoodPOS).
 
@@ -25,7 +25,7 @@ export async function mandarEnlaceRecuperacion(c: Context<AppEnv>, db: Db, user:
   await db.insert(recuperaciones).values({ tokenHash: await sha256(token), userId: user.id, expira: new Date(Date.now() + VIGENCIA_ENLACE_MS) });
   const enlace = `${base(c.env, c)}/recuperar?t=${token}`;
   const html = plantillaCorreo("Cambia tu contraseña de DelyWa",
-    `<p>Hola${user.firstName ? ` ${escHtml(user.firstName)}` : ""}: alguien (ojalá tú) pidió cambiar la contraseña de tu cuenta.</p>${boton("Poner una contraseña nueva", enlace)}<p style="color:#666;font-size:13px">El enlace sirve una sola vez y vence en 30 minutos. Si no fuiste tú, ignora este correo: tu contraseña sigue igual.</p>`);
+    `<p>Hola${user.firstName ? ` ${escHtml(user.firstName)}` : ""}: alguien (ojalá tú) pidió cambiar la contraseña de tu cuenta.</p>${boton("Poner una contraseña nueva", enlace)}<p>El enlace sirve una sola vez y vence en 30 minutos. Si no fuiste tú, ignora este correo: tu contraseña sigue igual.</p>`, { resumen: "Enlace para poner una contraseña nueva (vence en 30 minutos)." });
   try {
     await enviarCorreo(c.env, { para: user.email, asunto: "Cambia tu contraseña de DelyWa", html });
   } catch (err) {
@@ -58,7 +58,7 @@ export async function mandarCodigoRegistro(env: Env, db: Db, email: string, nomb
   await db.insert(codigosCorreo).values(fila).onConflictDoUpdate({ target: codigosCorreo.email, set: fila });
   await enviarCorreo(env, {
     para: email, asunto: `${codigo} es tu código de DelyWa`,
-    html: plantillaCorreo("Confirma tu correo", `<p>Hola ${escHtml(nombre)}: para crear <b>${escHtml(negocio)}</b> en DelyWa, escribe este código:</p><p style="font-size:32px;letter-spacing:6px;font-weight:bold;margin:20px 0">${codigo}</p><p style="color:#666;font-size:13px">Vence en 20 minutos. Si no fuiste tú, ignora este correo.</p>`),
+    html: plantillaCorreo("Confirma tu correo", `<p>Hola ${escHtml(nombre)}: para crear <b>${escHtml(negocio)}</b> en DelyWa, escribe este código:</p>${destacado(codigo)}<p>Vence en 20 minutos. Si no fuiste tú, ignora este correo.</p>`, { resumen: `Tu código es ${codigo}. Vence en 20 minutos.` }),
   });
 }
 
