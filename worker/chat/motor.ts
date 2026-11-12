@@ -2479,7 +2479,8 @@ REGLAS:
         const globalPromptConfig = await storage.getConfiguracion("system_prompt_global");
         const globalSystemPrompt = globalPromptConfig?.valor || "";
         
-        const jergaColmado = await storage.getDiccionarioByColmado(colmado.id);
+        // DELYWA: solo las expresiones que aparecen en el mensaje (del colmado y del país), no el diccionario entero.
+        const jergaColmado = await storage.buscarEnDiccionario(colmado.id, mensaje);
         let jergaContext = "";
         if (jergaColmado.length > 0) {
           jergaContext = "\n\nDICCIONARIO DE JERGA LOCAL:\n" +

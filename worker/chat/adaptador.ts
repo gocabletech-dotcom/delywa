@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { llaveOpenAI } from "../lib/integraciones";
 import { avisarNegocio } from "../lib/tiempo-real";
+import { aprenderJerga, buscarJerga, incrementarUsoJerga } from "../lib/jerga";
 import OpenAI from "openai";
 import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import {
@@ -402,26 +403,16 @@ export const storage = {
     const hallado = (await getProductosRestringidos(ctx().db)).find((p) => p.activo && t.includes(p.palabraClave.toLowerCase()));
     return hallado ? { restringido: true, categoria: hallado.categoria } : { restringido: false, categoria: "" };
   },
+  // DELYWA: el diccionario del colmado más el compartido del país (worker/lib/jerga.ts), por palabra completa.
   async buscarEnDiccionario(colmadoId: number, texto: string) {
-    const t = texto.toLowerCase();
-    return (await getDiccionarioByColmado(ctx().db, colmadoId)).filter((e) => t.includes(e.jerga.toLowerCase()));
+    const colmado = await getColmado(ctx().db, colmadoId);
+    return colmado ? buscarJerga(ctx().db, colmado, texto) : [];
   },
-  async incrementarUsoJerga(id: number) {
-    await ctx().db.update(diccionarioJerga).set({ vecesUsado: sql`coalesce(${diccionarioJerga.vecesUsado}, 1) + 1`, ultimoUso: new Date() }).where(eq(diccionarioJerga.id, id));
-  },
+  incrementarUsoJerga: (id: string | number) => incrementarUsoJerga(ctx().db, id),
+  /** Lo aprendido en un colmado alimenta también el diccionario del país. */
   async guardarJerga(colmadoId: number, jerga: string, productoIdentificado: string, precioSugerido?: string) {
-    const db = ctx().db;
-    const clave = jerga.toLowerCase().trim();
-    const [existente] = await db.select().from(diccionarioJerga).where(and(eq(diccionarioJerga.colmadoId, colmadoId), eq(diccionarioJerga.jerga, clave)));
-    if (existente) {
-      await db.update(diccionarioJerga).set({
-        productoIdentificado, precioSugerido: precioSugerido || existente.precioSugerido,
-        vecesUsado: (existente.vecesUsado || 1) + 1, ultimoUso: new Date(),
-      }).where(eq(diccionarioJerga.id, existente.id));
-      return { ...existente, productoIdentificado, vecesUsado: (existente.vecesUsado || 1) + 1 };
-    }
-    const [nueva] = await db.insert(diccionarioJerga).values({ colmadoId, jerga: clave, productoIdentificado, precioSugerido, vecesUsado: 1 }).returning();
-    return nueva;
+    const colmado = await getColmado(ctx().db, colmadoId);
+    return colmado ? aprenderJerga(ctx().db, colmado, jerga, productoIdentificado, precioSugerido) : null;
   },
   // ---------- Generación con IA (panel de plataforma) ----------
   getUserById: (id: string) => getUserById(ctx().db, id),

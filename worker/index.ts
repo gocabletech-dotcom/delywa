@@ -23,6 +23,7 @@ import { chatWebRoutes } from "./routes/chat-web";
 import { generadorRoutes } from "./routes/generadores";
 import { integracionRoutes } from "./routes/integraciones";
 import { registroRoutes } from "./routes/registro";
+import { jergaAprendidaRoutes } from "./routes/jerga-aprendida";
 import { avisarCambios, tiempoRealRoutes } from "./routes/tiempo-real";
 import { envEfectivo } from "./lib/integraciones";
 import { procesarAviso, webhookRoutes, type AvisoWebhook } from "./routes/webhooks";
@@ -71,6 +72,7 @@ app.route("/", webhookRoutes);
 app.route("/", generadorRoutes);
 app.route("/", integracionRoutes);
 app.route("/", registroRoutes);
+app.route("/", jergaAprendidaRoutes);
 app.route("/", tiempoRealRoutes);
 
 // Los módulos restantes se agregan por capas.

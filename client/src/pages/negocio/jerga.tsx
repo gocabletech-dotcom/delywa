@@ -355,7 +355,7 @@ export default function JergaPage() {
                 <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">No hay jerga aprendida todavía</h3>
                 <p className="text-sm sm:text-base text-gray-500 mb-6">
                   El sistema aprenderá expresiones automáticamente de las conversaciones con tus clientes.
-                  También puedes cargar una plantilla base con expresiones comunes para tu tipo de negocio.
+                  Tu bot ya usa el diccionario de jerga de tu país, que se alimenta con lo que aprenden todos los colmados. Aquí verás las expresiones propias de tu colmado y su precio.
                 </p>
                 <Button 
                   onClick={() => colmadoId && copiarPlantillaMutation.mutate()}

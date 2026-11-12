@@ -13,6 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Loader2, Store, Users, Package, DollarSign, Settings, LogOut, MessageSquare, Save, X, Plus, Edit, ChevronDown, ChevronRight, MapPin, Phone, Trash2, Building2, Percent, Crown, Image, Video, Download, Tag, FileText, LayoutGrid, BookOpen, Sparkles, Check, AlertCircle, Ban, Play, Truck, Brain, Globe, KeyRound } from "lucide-react";
 import { IntegracionesSection } from "@/components/admin/IntegracionesSection";
 import { SolicitudesNegocioSection } from "@/components/admin/SolicitudesNegocioSection";
+import { JergaAprendidaPanel } from "@/components/admin/JergaAprendidaPanel";
 import promoVideo1 from "@assets/generated_videos/complete_delivery_flow_sequence.mp4";
 import promoVideo2 from "@assets/generated_videos/delywa_logo_with_slogan.mp4";
 import promoVideoFull1 from "@assets/generated_videos/customer_types_order_ai_responds.mp4";
@@ -2362,8 +2363,8 @@ export default function PlatformAdminPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Plantillas de Jerga</h2>
-          <p className="text-sm text-slate-500">Gestiona las plantillas de jerga por tipo de negocio. Esta jerga se copia automáticamente cuando se crea un nuevo negocio.</p>
+          <h2 className="text-xl font-bold text-slate-800">Diccionario de jerga por país</h2>
+          <p className="text-sm text-slate-500">El bot de todos los colmados de cada país usa esta jerga directamente, junto con lo que aprende cada colmado. Las palabras que usan varios colmados entran solas (ver «Aprendida de los colmados» abajo).</p>
         </div>
         <div className="flex items-center gap-2">
           {paises.length > 0 && (
@@ -3638,7 +3639,12 @@ export default function PlatformAdminPage() {
             <>
               {activeSection === "tipos-negocio" && renderTiposNegocioSection()}
               {activeSection === "plantillas-menu" && renderPlantillasMenuSection()}
-              {activeSection === "jerga" && renderJergaSection()}
+              {activeSection === "jerga" && (
+                <div className="space-y-8">
+                  {renderJergaSection()}
+                  <JergaAprendidaPanel paisId={selectedPaisJerga} />
+                </div>
+              )}
               {activeSection === "system-prompt" && renderSystemPromptSection()}
               {activeSection === "datos-conocimiento" && renderDatosConocimientoSection()}
               {activeSection === "delivery-prompt" && renderDeliveryPromptSection()}
