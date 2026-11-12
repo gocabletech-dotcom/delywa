@@ -1,3 +1,4 @@
+import { prepararLogo } from "@/lib/imagen";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -351,7 +352,7 @@ export default function PlatformAdminPage() {
     setIsUploadingLogo(true);
     try {
       const formData = new FormData();
-      formData.append('logo', logoFile);
+      formData.append('logo', await prepararLogo(logoFile));
       const res = await fetch(`/api/colmados/${colmadoId}/logo`, {
         method: 'POST',
         body: formData,
@@ -408,7 +409,7 @@ export default function PlatformAdminPage() {
       const newColmado = await res.json();
       if (createLogoFile && newColmado.id) {
         const formData = new FormData();
-        formData.append('logo', createLogoFile);
+        formData.append('logo', await prepararLogo(createLogoFile));
         await fetch(`/api/colmados/${newColmado.id}/logo`, {
           method: 'POST',
           body: formData,

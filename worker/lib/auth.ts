@@ -66,3 +66,9 @@ export function requireBusinessAccess(param = "id"): MiddlewareHandler<AppEnv> {
     await next();
   };
 }
+
+/** Usuario de la sesión si lo hay; para rutas que también atienden a visitantes sin cuenta. */
+export async function usuarioOpcional(c: Parameters<MiddlewareHandler<AppEnv>>[0]) {
+  const userId = c.var.session?.data.userId;
+  return userId ? getUserById(getDb(c.env.DB), userId) : undefined;
+}

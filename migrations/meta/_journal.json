@@ -36,6 +36,13 @@
       "when": 1794451525508,
       "tag": "0004_asistencia_abierta_unica",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794486593707,
+      "tag": "0005_subidas_pendientes",
+      "breakpoints": true
     }
   ]
 }

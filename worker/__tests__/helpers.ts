@@ -54,6 +54,13 @@ export async function createTestApp() {
         try { json = JSON.parse(text); } catch { /* no es JSON */ }
         return { status: res.status, json, headers: res.headers };
       },
+      /** Petición con cuerpo binario o de formulario, sin convertir a JSON. Devuelve la respuesta tal cual. */
+      raw(method: string, path: string, body?: BodyInit, headers: Record<string, string> = {}) {
+        return app.request(`https://delywa.test${path}`, {
+          method, body,
+          headers: { ...(cookies.size ? { Cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join("; ") } : {}), ...headers },
+        }, env);
+      },
     };
   }
 

@@ -1,3 +1,4 @@
+import { prepararLogo } from "@/lib/imagen";
 import { useState, useEffect } from "react";
 import { formatDominicanDateTime } from "@/lib/date-utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -667,7 +668,7 @@ export default function SettingsPage() {
                             const file = e.target.files?.[0];
                             if (file && colmadoId) {
                               const formDataUpload = new FormData();
-                              formDataUpload.append("logo", file);
+                              formDataUpload.append("logo", await prepararLogo(file));
                               try {
                                 const res = await fetch(`/api/colmados/${colmadoId}/logo`, {
                                   method: "POST",

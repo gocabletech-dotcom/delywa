@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { prepararFoto } from "@/lib/imagen";
 
 interface UploadMetadata {
   name: string;
@@ -110,12 +111,13 @@ export function useUpload(options: UseUploadOptions = {}) {
    * @returns The upload response containing the object path
    */
   const uploadFile = useCallback(
-    async (file: File): Promise<UploadResponse | null> => {
+    async (original: File): Promise<UploadResponse | null> => {
       setIsUploading(true);
       setError(null);
       setProgress(0);
 
       try {
+        const file = await prepararFoto(original);
         // Step 1: Request presigned URL (send metadata as JSON)
         setProgress(10);
         const uploadResponse = await requestUploadUrl(file);

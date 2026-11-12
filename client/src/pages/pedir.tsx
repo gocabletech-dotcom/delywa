@@ -1,3 +1,4 @@
+import { prepararFoto } from "@/lib/imagen";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -972,10 +973,11 @@ export default function PedirPage() {
   };
 
   const handleComprobanteUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !sessionId) return;
+    const original = event.target.files?.[0];
+    if (!original || !sessionId) return;
     setIsUploadingComprobante(true);
     try {
+      const file = await prepararFoto(original);
       const presignedRes = await fetch("/api/uploads/request-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -983,6 +985,7 @@ export default function PedirPage() {
           name: `comprobante_${sessionId}_${Date.now()}.${file.name.split(".").pop()}`,
           size: file.size,
           contentType: file.type,
+          uso: "comprobante",
         }),
       });
       if (!presignedRes.ok) throw new Error("Failed to get upload URL");

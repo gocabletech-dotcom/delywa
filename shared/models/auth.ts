@@ -50,3 +50,15 @@ export const loginIntentos = sqliteTable("login_intentos", {
   clave: text("clave").notNull(), // "user:<correo>" o "ip:<dirección>"
   fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (table) => [index("login_intentos_clave_fecha_idx").on(table.clave, table.fecha)]);
+
+/** Subidas autorizadas y aún no recibidas: cada enlace sirve una sola vez y vence a los 10 minutos. */
+export const subidasPendientes = sqliteTable("subidas_pendientes", {
+  token: text("token").primaryKey(),
+  clave: text("clave").notNull(), // ruta del archivo dentro del bucket R2
+  contentType: text("content_type").notNull(),
+  maxBytes: integer("max_bytes").notNull(),
+  ip: text("ip"),
+  usada: integer("usada", { mode: "boolean" }).notNull().default(false),
+  expiraEn: integer("expira_en", { mode: "timestamp_ms" }).notNull(),
+  fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (table) => [index("subidas_pendientes_ip_fecha_idx").on(table.ip, table.fechaCreacion)]);
