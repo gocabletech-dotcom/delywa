@@ -183,6 +183,15 @@ export default function ConversacionesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message }),
       });
+      // Sin WhatsApp integrado: se abre WhatsApp con el mensaje listo para enviarlo a mano.
+      if (res.status === 409) {
+        const data = await res.json().catch(() => ({}));
+        if (data.necesitaEnvioManual && data.enlaceWhatsApp) {
+          window.open(data.enlaceWhatsApp, "_blank", "noopener");
+          return data;
+        }
+        throw new Error(data.error || "Error al enviar mensaje");
+      }
       if (!res.ok) throw new Error("Error al enviar mensaje");
       return res.json();
     },

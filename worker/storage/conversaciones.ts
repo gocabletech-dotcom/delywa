@@ -172,3 +172,83 @@ export async function addChatWebMensaje(db: Db, sessionId: string, rol: string, 
   const session = await getChatWebSession(db, sessionId);
   if (session?.conversacionId) await addMensaje(db, session.conversacionId, rol === "user" ? "cliente" : "negocio", contenido);
 }
+
+// ---------- Panel de conversaciones ----------
+
+export async function getConversacionById(db: Db, id: number): Promise<WhatsappConversacion | undefined> {
+  if (!Number.isInteger(id)) return undefined;
+  const [row] = await db.select().from(whatsappConversaciones).where(eq(whatsappConversaciones.id, id));
+  return row;
+}
+
+export async function getConversaciones(db: Db, colmadoId: number, estado?: string): Promise<WhatsappConversacion[]> {
+  return db.select().from(whatsappConversaciones)
+    .where(estado
+      ? and(eq(whatsappConversaciones.colmadoId, colmadoId), eq(whatsappConversaciones.ultimoPedidoEstado, estado))
+      : eq(whatsappConversaciones.colmadoId, colmadoId))
+    .orderBy(desc(whatsappConversaciones.ultimoMensaje), desc(whatsappConversaciones.id));
+}
+
+export async function contarNoLeidas(db: Db, colmadoId: number): Promise<number> {
+  const [row] = await db.select({ total: sql<number>`count(*)` }).from(whatsappConversaciones)
+    .where(and(eq(whatsappConversaciones.colmadoId, colmadoId), sql`${whatsappConversaciones.noLeidosColmado} > 0`));
+  return Number(row?.total || 0);
+}
+
+export async function getMensajes(db: Db, conversacionId: number, limite: number) {
+  return db.select().from(whatsappMensajes).where(eq(whatsappMensajes.conversacionId, conversacionId))
+    .orderBy(desc(whatsappMensajes.fechaEnvio), desc(whatsappMensajes.id)).limit(limite);
+}
+
+export async function getUltimoMensajeCliente(db: Db, conversacionId: number) {
+  const [row] = await db.select().from(whatsappMensajes)
+    .where(and(eq(whatsappMensajes.conversacionId, conversacionId), sql`${whatsappMensajes.rol} in ('user', 'cliente')`))
+    .orderBy(desc(whatsappMensajes.fechaEnvio), desc(whatsappMensajes.id)).limit(1);
+  return row;
+}
+
+export async function marcarConversacionLeida(db: Db, id: number): Promise<void> {
+  await db.update(whatsappConversaciones).set({ noLeidosColmado: 0 }).where(eq(whatsappConversaciones.id, id));
+}
+
+/**
+ * Borra la conversación con sus mensajes y sus sesiones de chat web en un solo
+ * batch. Antes se asegura de que el cliente quede en la tabla permanente.
+ */
+export async function deleteConversacion(db: Db, conversacion: WhatsappConversacion): Promise<void> {
+  await getOrCreateCliente(db, conversacion.colmadoId, conversacion.clienteWhatsapp, {
+    nombre: conversacion.clienteNombre ?? undefined, direccionTexto: conversacion.direccionTexto ?? undefined,
+    latitud: conversacion.latitud ?? undefined, longitud: conversacion.longitud ?? undefined,
+  });
+  const id = conversacion.id;
+  await db.batch([
+    db.delete(chatWebMensajes).where(sql`${chatWebMensajes.sessionId} in (select session_id from chat_web_sesiones where conversacion_id = ${id})`),
+    db.delete(chatWebSesiones).where(eq(chatWebSesiones.conversacionId, id)),
+    db.delete(whatsappMensajes).where(eq(whatsappMensajes.conversacionId, id)),
+    db.delete(whatsappConversaciones).where(eq(whatsappConversaciones.id, id)),
+  ]);
+}
+
+/** Mensajes enviados y recibidos del negocio, con consultas agregadas (el original recorría cada conversación). */
+export async function getAnalyticsMensajes(db: Db, colmadoId: number, desde?: Date, hasta?: Date) {
+  const rango = and(
+    eq(whatsappConversaciones.colmadoId, colmadoId),
+    ...(desde ? [sql`${whatsappMensajes.fechaEnvio} >= ${desde.getTime()}`] : []),
+    ...(hasta ? [sql`${whatsappMensajes.fechaEnvio} <= ${hasta.getTime()}`] : []),
+  );
+  const hace24h = Date.now() - 24 * 60 * 60 * 1000;
+  const [porRol, [activas], [total]] = await Promise.all([
+    db.select({ rol: whatsappMensajes.rol, n: sql<number>`count(*)` }).from(whatsappMensajes)
+      .innerJoin(whatsappConversaciones, eq(whatsappConversaciones.id, whatsappMensajes.conversacionId))
+      .where(rango).groupBy(whatsappMensajes.rol),
+    db.select({ n: sql<number>`count(distinct ${whatsappMensajes.conversacionId})` }).from(whatsappMensajes)
+      .innerJoin(whatsappConversaciones, eq(whatsappConversaciones.id, whatsappMensajes.conversacionId))
+      .where(and(eq(whatsappConversaciones.colmadoId, colmadoId), sql`${whatsappMensajes.rol} in ('user', 'cliente')`, sql`${whatsappMensajes.fechaEnvio} >= ${hace24h}`)),
+    db.select({ n: sql<number>`count(*)` }).from(whatsappConversaciones).where(eq(whatsappConversaciones.colmadoId, colmadoId)),
+  ]);
+  const cuenta = (...roles: string[]) => porRol.filter((r) => roles.includes(r.rol)).reduce((s, r) => s + Number(r.n), 0);
+  return {
+    mensajesEnviados: cuenta("assistant", "negocio"), mensajesRecibidos: cuenta("user", "cliente"),
+    conversacionesActivas: Number(activas?.n || 0), conversacionesTotal: Number(total?.n || 0),
+  };
+}
