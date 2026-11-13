@@ -600,7 +600,7 @@ export default function PedidosPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productos, ...(totalConfirmado !== undefined ? { totalConfirmado } : {}) }),
       });
-      if (!res.ok) throw new Error("Error al actualizar productos");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Error al actualizar productos");
       return res.json();
     },
   });
@@ -2114,8 +2114,8 @@ export default function PedidosPage() {
                     setEditarOpen(false);
                     setPedidoParaEditar(null);
                     setProductosEditando([]);
-                  } catch {
-                    toast({ title: "Error al actualizar pedido", variant: "destructive" });
+                  } catch (err) {
+                    toast({ title: "No se pudo actualizar el pedido", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
                   }
                 }}
               >

@@ -117,5 +117,5 @@ export async function enviarCorreo(env: Env, datos: { para: string; asunto: stri
     body: JSON.stringify({ from: v.correo_desde, to: [datos.para], subject: datos.asunto, html: datos.html, reply_to: datos.responder || SOPORTE }),
     signal: AbortSignal.timeout(15_000),
   });
-  if (!res.ok) throw new Error(mensajeResend(res.status, await res.json().catch(() => ({}))));
+  if (!res.ok) throw new Error(mensajeResend(res.status, (await res.json().catch(() => ({}))) as { message?: string; error?: string }));
 }

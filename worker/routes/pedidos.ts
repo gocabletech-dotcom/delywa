@@ -21,7 +21,8 @@ import {
   registrarEnVentas, updateMetodoPago, updatePedidoCoordenadas, updatePedidoEstado, updatePedidoProductos,
   updateProductosYTotalConfirmado, updateVuelto, ESTADOS_TERMINALES, type Sustitucion,
 } from "../storage/pedidos";
-import { whatsappConversaciones } from "@shared/schema";
+import { pedidos, whatsappConversaciones } from "@shared/schema";
+import { avisarNegocio } from "../lib/tiempo-real";
 import { eq } from "drizzle-orm";
 
 export const pedidoRoutes = new Hono<AppEnv>();
@@ -399,14 +400,21 @@ pedidoRoutes.patch("/api/pedidos/:id/revisar-productos", requireAuth, async (c) 
   if (!parsed.success) return c.json({ error: "Datos inválidos", details: parsed.error.flatten() }, 400);
   const r = await cargarPedidoOperable(db, c.var.user, Number(c.req.param("id")));
   if (r.error) return c.json(r.error.body, r.error.status);
-  if (r.pedido.estado !== "esperando_confirmacion_pago") {
-    return c.json({ error: "Solo se puede revisar en estado esperando_confirmacion_pago" }, 400);
+  // Se puede corregir mientras el pedido no haya salido: revisando el pago, o ya confirmado y todavía en el negocio.
+  const EDITABLES = ["esperando_confirmacion_pago", "esperando_pago", "pendiente", "en_preparacion", "listo"];
+  if (!EDITABLES.includes(r.pedido.estado)) {
+    return c.json({ error: "Este pedido ya no se puede editar porque salió del negocio o está cerrado." }, 400);
   }
   const { productos, totalConfirmado } = parsed.data;
   const calculado = productos.reduce((s, p) => s + num(p.monto ?? p.precio) * p.cantidad, 0);
   const nuevoTotal = totalConfirmado !== undefined && totalConfirmado !== "" ? Number(totalConfirmado) : calculado;
   if (!Number.isFinite(nuevoTotal) || nuevoTotal < 0) return c.json({ error: "El total no puede ser negativo" }, 400);
   await updateProductosYTotalConfirmado(db, r.pedido.id, productos, nuevoTotal.toFixed(2));
+  // Un pedido ya confirmado muestra y cobra `total`: se corrige también.
+  if (r.pedido.estado !== "esperando_confirmacion_pago") {
+    await db.update(pedidos).set({ total: nuevoTotal.toFixed(2) }).where(eq(pedidos.id, r.pedido.id));
+    await avisarNegocio(c.env, r.pedido.colmadoId, ["pedidos"]);
+  }
   return c.json({ success: true, totalConfirmado: nuevoTotal.toFixed(2) });
 });
 

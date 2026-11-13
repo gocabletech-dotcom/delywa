@@ -238,6 +238,48 @@ async function crearElPedido(c: Contexto, metodo: I.Pago, montoPago: number | nu
   }, ...(ofrecerCasa ? [{ texto: "¿Guardo esta dirección como tu casa? 🏠 Así la próxima vez solo me dices «a mi casa».", opciones: [{ texto: "Sí, es mi casa" }, { texto: "No, gracias" }] }] : [])];
 }
 
+const SI_NO: Opcion[] = [{ texto: "Sí, acepto" }, { texto: "No, quítalo" }];
+
+/** Respuesta del cliente al cambio de producto que propuso el colmado. null = el mensaje no era un sí ni un no. */
+async function responderSustitucion(c: Contexto, pedido: typeof pedidos.$inferSelect, texto: string): Promise<Respuesta[] | null> {
+  const todas = Array.isArray(pedido.sustituciones) ? pedido.sustituciones : [];
+  const actual = todas.find((s) => s.estado === "pendiente");
+  if (!actual) return null;
+  const t = normalizar(texto).replace(/[^a-z0-9ñ\s]/g, " ").replace(/\s+/g, " ").trim();
+  const no = I.esNegativo(texto) || /^(no|nop|nah|mejor no|quitalo|quitala|quita|remueve|sin eso|sin ese)\b/.test(t);
+  const si = !no && (I.esAfirmativo(texto) || /^(si|sii+|sip|ok|okay|dale|claro|acepto|aceptado|esta bien|ta bien|bueno|va)\b/.test(t));
+  const pregunta = (s: { original: string; nuevo: string }) => `No tenemos *${s.original}* disponible.\n\n🔄 Te ofrecemos: *${s.nuevo}*\n\n¿Aceptas este cambio?`;
+  if (!si && !no) return [{ texto: `Para seguir con tu pedido necesito tu respuesta 🙏\n\n${pregunta(actual)}`, opciones: SI_NO }];
+
+  const nuevas = todas.map((s) => (s === actual ? { ...s, estado: si ? "aceptada" as const : "rechazada" as const } : s));
+  let productos: any[] = [];
+  try { const leidos = typeof pedido.productos === "string" ? JSON.parse(pedido.productos) : pedido.productos; if (Array.isArray(leidos)) productos = leidos; } catch { /* se deja vacío */ }
+  const esElProducto = (p: any) => normalizar(String(p?.nombre || p?.name || "")) === normalizar(actual.original);
+  let total = Number(pedido.totalConfirmado || pedido.total) || 0;
+  if (si) productos = productos.map((p) => (esElProducto(p) ? { ...p, nombre: actual.nuevo } : p));
+  else {
+    const quitado = productos.find(esElProducto);
+    const resta = Number(actual.monto) || (quitado ? (Number(quitado.monto ?? quitado.precio) || 0) * (Number(quitado.cantidad) || 1) : 0);
+    productos = productos.filter((p) => !esElProducto(p));
+    total = Math.max(0, total - resta);
+  }
+  const siguiente = nuevas.find((s) => s.estado === "pendiente");
+  await c.db.update(pedidos).set({
+    sustituciones: nuevas, productos: JSON.stringify(productos), total: total.toFixed(2), totalConfirmado: total.toFixed(2),
+    ...(siguiente ? {} : { estado: "pendiente" }),
+  }).where(and(eq(pedidos.id, pedido.id), eq(pedidos.estado, "esperando_confirmacion_sustituciones")));
+  const inicio = si ? "✅ Perfecto, aceptaste el cambio." : `👍 Entendido, quitamos *${actual.original}* de tu pedido.`;
+  if (siguiente) return [{ texto: `${inicio}\n\n📋 *Siguiente cambio:*\n${pregunta(siguiente)}`, opciones: SI_NO }];
+
+  if (c.sesion.conversacionId) await updateConversacionPedidoEstado(c.db, c.sesion.conversacionId, "pendiente");
+  await avisarNegocio(c.env, c.colmado.id, ["pedidos", "conversaciones"]);
+  const pagaCon = Number(pedido.montoPago) || 0;
+  const pago = pedido.metodoPago === "efectivo"
+    ? (pagaCon > total ? `💵 Pagas con ${dinero(pagaCon)} — tu devuelta: ${dinero(pagaCon - total)}` : "💵 Pago en efectivo")
+    : pedido.metodoPago === "transferencia" ? "🏦 Transferencia — envía la foto del comprobante con el botón 📷" : pedido.metodoPago === "tarjeta" ? "💳 Tarjeta" : "";
+  return [{ texto: `${inicio}\n\n✅ *¡Pedido #${pedido.id} listo!*\n*💵 Total a pagar: ${dinero(total)}*${pago ? `\n${pago}` : ""}\n\n${c.colmado.nombre} ya lo está preparando. 🛵` }];
+}
+
 /** Anota productos y responde "¿Algo más?". */
 async function anotar(c: Contexto, nuevos: Nuevo[], prefijo = ""): Promise<Respuesta> {
   const todos = sumar(productosDe(c.sesion), nuevos);
@@ -359,6 +401,11 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
       await guardarSesion(c, { productosCapturados: [] as any, estadoConversacion: "tomando_pedido", pedidoId: null, estado: "activa", metodoPagoSeleccionado: null, montoPagoCliente: null,
         clienteDireccion: null, clienteLatitud: null, clienteLongitud: null, destinoGuardado: null });
       return responder(c, entrada, texto);
+    }
+    // El colmado ofreció cambiar un producto que no tiene: el cliente responde sí o no.
+    if (pedido?.estado === "esperando_confirmacion_sustituciones" && entrada.tipo === "texto") {
+      const r = await responderSustitucion(c, pedido, texto);
+      if (r) return r;
     }
     if (I.esEstado(texto) && pedido) return [{ texto: `Tu pedido #${pedido.id}: ${ESTADOS_LEGIBLES[pedido.estado] ?? pedido.estado}.` }];
     if (I.esGracias(texto)) return [{ texto: `¡A la orden${nombre ? `, ${nombre}` : ""}! 🙌` }];

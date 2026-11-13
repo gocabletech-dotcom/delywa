@@ -107,7 +107,7 @@ describe("panel del negocio", () => {
     expect((await dueno.request("POST", `/api/pedidos/${pedidoId}/confirmar`, {})).status).toBe(400);
     const res = await operador.request("POST", `/api/pedidos/${pedidoId}/confirmar`, { totalConfirmado: "350" });
     expect(res.status).toBe(200);
-    expect(res.json).toMatchObject({ success: true, necesitaEnvioManual: true, whatsappNumero: CLIENTE });
+    expect(res.json).toMatchObject({ success: true, necesitaEnvioManual: true, whatsappNumero: CLIENTE, estado: "pendiente", total: "350.00" });
     expect(res.json.mensajeParaEnviar).toContain(`Pedido #${pedidoId} Confirmado`);
     expect(res.json.mensajeParaEnviar).toContain("Subtotal: RD$300");
     expect((await operador.request("POST", `/api/pedidos/${pedidoId}/confirmar`, { totalConfirmado: "350" })).status).toBe(400);
@@ -177,6 +177,21 @@ describe("fusionar, pickup, vuelto y borrado", () => {
     }).returning();
     return p;
   }
+
+  it("un pedido ya confirmado se puede editar mientras no haya salido", async () => {
+    const p = await nuevoPedidoPendiente();
+    const r = await dueno.request("PATCH", `/api/pedidos/${p.id}/revisar-productos`, {
+      productos: [{ nombre: "Mangú", cantidad: 2, monto: 150, textoOriginal: "Mangú", encontradoEnMenu: false }], totalConfirmado: "350.00",
+    });
+    expect(r.status).toBe(200);
+    const [despues] = await t.db.select().from(pedidos).where(eq(pedidos.id, p.id));
+    expect(Number(despues.total)).toBe(350);
+    expect(JSON.parse(despues.productos)[0].cantidad).toBe(2);
+    const enCamino = await nuevoPedidoPendiente({ estado: "en_camino" });
+    const no = await dueno.request("PATCH", `/api/pedidos/${enCamino.id}/revisar-productos`, { productos: [{ nombre: "Mangú", cantidad: 1, monto: 150 }] });
+    expect(no.status).toBe(400);
+    expect(no.json.error).toContain("ya no se puede editar");
+  });
 
   it("fusiona dos pedidos del mismo cliente con un solo cargo de delivery", async () => {
     const a = await nuevoPedidoPendiente();

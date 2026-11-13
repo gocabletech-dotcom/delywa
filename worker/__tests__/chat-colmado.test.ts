@@ -367,3 +367,40 @@ describe("pedido por dinero en el chat", () => {
   });
 });
 
+describe("sustitución de un producto en el chat de la página", () => {
+  it("el cliente acepta un cambio y rechaza otro: el pedido queda confirmado con el total corregido", async () => {
+    const id = await abrir("8095556666", "Carla");
+    await decir(id, "un pan, una malta y un queso");
+    await decir(id, "eso es todo");
+    await decir(id, "Calle Luna #8, casa azul");
+    await decir(id, "efectivo");
+    await decir(id, "1000");
+    const [s] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
+    // Lo que hace el panel al confirmar con sustituciones.
+    await t.db.update(pedidos).set({
+      estado: "esperando_confirmacion_sustituciones", total: "350.00", totalConfirmado: "350.00",
+      productos: JSON.stringify([{ nombre: "Pan", cantidad: 1, monto: 50 }, { nombre: "Malta", cantidad: 1, monto: 100 }, { nombre: "Queso", cantidad: 1, monto: 150 }]),
+      sustituciones: [{ original: "Malta", nuevo: "Malta Morena", monto: 100, estado: "pendiente" }, { original: "Queso", nuevo: "Queso amarillo", monto: 150, estado: "pendiente" }],
+    }).where(eq(pedidos.id, s.pedidoId!));
+    await t.db.update(chatWebSesiones).set({ estadoConversacion: "esperando_confirmacion_sustitucion" }).where(eq(chatWebSesiones.sessionId, id));
+
+    const duda = await decir(id, "¿y eso?");
+    expect(duda[0].contenido).toContain("Malta Morena");
+    expect(duda[0].opciones.map((o: any) => o.texto)).toEqual(["Sí, acepto", "No, quítalo"]);
+
+    const r1 = await decir(id, "Sí, acepto");
+    expect(r1[0].contenido).toContain("aceptaste el cambio");
+    expect(r1[0].contenido).toContain("Queso amarillo");
+    const r2 = await decir(id, "No, quítalo");
+    expect(r2[0].contenido).toContain("quitamos *Queso*");
+    expect(r2[0].contenido).toContain("Total a pagar: RD$200");
+    expect(r2[0].contenido).toContain("devuelta: RD$800");
+
+    const [p] = await t.db.select().from(pedidos).where(eq(pedidos.id, s.pedidoId!));
+    expect(p.estado).toBe("pendiente");
+    expect(Number(p.total)).toBe(200);
+    expect(JSON.parse(p.productos).map((x: any) => x.nombre)).toEqual(["Pan", "Malta Morena"]);
+    expect(p.sustituciones!.map((x) => x.estado)).toEqual(["aceptada", "rechazada"]);
+  });
+});
+
