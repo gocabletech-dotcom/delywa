@@ -376,7 +376,7 @@ export default function DeliveriesPage() {
               <TabsTrigger value="repartidores" data-testid="tab-repartidores" className="text-xs sm:text-sm px-1 sm:px-3 truncate">
                 <Truck size={13} className="shrink-0 mr-1 hidden sm:inline-block" />
                 <span className="hidden sm:inline">Repartidores</span>
-                <span className="sm:hidden">Repartid.</span>
+                <span className="sm:hidden">Equipo</span>
               </TabsTrigger>
               <TabsTrigger value="mapa" data-testid="tab-mapa" className="text-xs sm:text-sm px-1 sm:px-3">
                 <Map size={13} className="shrink-0 mr-1" />
@@ -409,25 +409,19 @@ export default function DeliveriesPage() {
           ) : (
             <div className="space-y-4">
               {/* Portal link info banner */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
-                  <Smartphone size={16} className="text-blue-600" />
-                </div>
-                <div>
-                  <p className="font-medium text-blue-900 text-sm">Portal Web para Repartidores</p>
-                  <p className="text-blue-700 text-xs mt-0.5">
-                    Genera un código de acceso para cada repartidor. Con ese código pueden activarse y gestionar pedidos desde el celular sin necesidad de WhatsApp.
-                  </p>
-                  <a
-                    href={`/repartidor/${colmadoData?.slug || colmadoId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 text-xs font-medium flex items-center gap-1 mt-1 hover:underline"
-                    data-testid="link-portal-repartidor"
-                  >
-                    <ExternalLink size={12} /> Ver portal: /repartidor/{colmadoData?.slug || colmadoId}
-                  </a>
-                </div>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-slate-700 min-w-0">
+                  <b>Portal del repartidor.</b> Cada uno entra con su código y ve sus entregas en el celular.
+                </p>
+                <a
+                  href={`/repartidor/${colmadoData?.slug || colmadoId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary text-sm font-semibold flex items-center gap-1 min-h-[44px]"
+                  data-testid="link-portal-repartidor"
+                >
+                  <ExternalLink size={14} /> Abrir el portal
+                </a>
               </div>
 
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -567,25 +561,25 @@ export default function DeliveriesPage() {
                       {/* ── Action buttons ───────────────────────────────────── */}
                       <div className="flex flex-col gap-2">
                         {/* Enable / Disable row */}
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           {habilitado ? (
                             <>
                               {delivery.estado === 'activo' && (
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="flex-1 text-yellow-600 border-yellow-300 hover:bg-yellow-50 text-xs"
+                                  className="flex-1 min-w-[130px] h-10 rounded-xl border-slate-300 text-slate-800 hover:bg-slate-50 text-sm font-medium"
                                   onClick={() => updateEstadoMutation.mutate({ id: delivery.id, estado: 'en_descanso' })}
                                   data-testid={`descanso-delivery-${delivery.id}`}
                                 >
-                                  <PauseCircle size={13} className="mr-1 shrink-0" /> En Descanso
+                                  <PauseCircle size={15} className="mr-1.5 shrink-0" /> Descanso
                                 </Button>
                               )}
                               {delivery.estado === 'en_descanso' && (
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="flex-1 text-green-600 border-green-200 hover:bg-green-50 text-xs"
+                                  className="flex-1 h-10 rounded-xl border-primary/40 text-primary hover:bg-primary/5 text-sm font-medium"
                                   onClick={() => updateEstadoMutation.mutate({ id: delivery.id, estado: 'activo' })}
                                   data-testid={`activar-delivery-${delivery.id}`}
                                 >
@@ -595,11 +589,11 @@ export default function DeliveriesPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="flex-1 text-red-600 border-red-200 hover:bg-red-50 font-medium text-xs"
+                                className="flex-1 min-w-[130px] h-10 rounded-xl border-slate-300 text-red-700 hover:bg-red-50 text-sm font-medium"
                                 onClick={() => updateEstadoMutation.mutate({ id: delivery.id, estado: 'inactivo' })}
                                 data-testid={`desactivar-delivery-${delivery.id}`}
                               >
-                                <XCircle size={13} className="mr-1 shrink-0" /> Deshabilitar
+                                <XCircle size={15} className="mr-1.5 shrink-0" /> Deshabilitar
                               </Button>
                             </>
                           ) : (
@@ -618,19 +612,19 @@ export default function DeliveriesPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="w-full text-blue-600 border-blue-200 hover:bg-blue-50 text-xs"
+                          className="w-full h-10 rounded-xl border-slate-300 text-slate-800 hover:bg-slate-50 text-sm font-medium"
                           onClick={() => generarCodigoMutation.mutate(delivery.id)}
                           disabled={generarCodigoMutation.isPending}
                           data-testid={`generar-codigo-${delivery.id}`}
                         >
                           <Key size={13} className="mr-1 shrink-0" />
-                          {delivery.codigoAcceso ? "Regenerar código" : "Generar código de acceso"}
+                          {delivery.codigoAcceso ? "Cambiar el código" : "Crear código de acceso"}
                         </Button>
                       </div>
 
                       {/* Registered date */}
                       <p className="text-xs text-gray-400 mt-3">
-                        Registrado: {new Date(delivery.fechaRegistro).toLocaleDateString()}
+                        Registrado el {new Date(delivery.fechaRegistro).toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" })}
                       </p>
 
                     </CardContent>

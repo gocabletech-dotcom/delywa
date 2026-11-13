@@ -368,7 +368,7 @@ export default function MenuPage() {
           <CardContent>
             <Button variant="outline" onClick={() => setLocation("/negocio/dashboard")}>
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Volver al Dashboard
+              Volver a Inicio
             </Button>
           </CardContent>
         </Card>

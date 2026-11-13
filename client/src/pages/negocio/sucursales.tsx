@@ -435,7 +435,7 @@ export default function SucursalesPage() {
           )}
           {soloUsuarios && <Card id="usuarios">
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><UserPlus size={18} /> Usuarios y permisos</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2"><UserPlus size={18} /> Agregar un usuario</CardTitle>
               <p className="text-sm text-gray-500">Crea administradores de pedidos u operadores y asigna las sucursales que pueden manejar.</p>
             </CardHeader>
             <CardContent>

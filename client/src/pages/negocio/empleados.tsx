@@ -146,7 +146,7 @@ export default function EmpleadosPage() {
       <main className="flex-1 overflow-auto p-3 sm:p-4 lg:p-6">
         <div className="max-w-6xl mx-auto space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div><h2 className="text-xl font-bold">Gestión de empleados</h2><p className="text-sm text-gray-500">Personal, asistencia y nómina en un solo lugar.</p></div>
+            <p className="text-sm text-slate-600">Personal, asistencia y nómina en un solo lugar.</p>
             {tab === "empleados" && <Button onClick={openCreate}><Plus className="w-4 h-4 mr-2" />Nuevo empleado</Button>}
           </div>
           <div className="grid grid-cols-3 gap-2">

@@ -215,38 +215,39 @@ export default function Dashboard() {
   const pedidosPendientes = pedidos?.filter((p) => p.estado !== "entregado" && p.estado !== "cancelado" && p.estado !== "retorno" && p.estado !== "fusionado") || [];
   const pedidosEnCamino = pedidos?.filter((p) => p.estado === "en_camino") || [];
   const moneda = colmadoData?.simboloMoneda || "RD$";
+  const porConfirmar = pedidos?.filter((p) => ["pendiente_confirmacion", "esperando_confirmacion_pago"].includes(p.estado)).length || 0;
 
   const stats = [
     {
       title: "Ventas de hoy",
       value: `${moneda}${parseFloat(ventasHoy?.totalVentas || 0).toLocaleString()}`,
       icon: DollarSign,
-      color: "bg-green-100 text-green-600",
+      color: "bg-primary/10 text-primary",
     },
     {
-      title: "Pedidos entregados",
+      title: "Entregados hoy",
       value: ventasHoy?.pedidosEntregados || 0,
       icon: CheckCircle2,
-      color: "bg-blue-100 text-blue-600",
+      color: "bg-primary/10 text-primary",
       change: `${ventasHoy?.pedidosCancelados || 0} cancelados`,
     },
     {
       title: "Pendientes",
       value: ventasHoy?.pedidosPendientes ?? pedidosPendientes.length,
       icon: Clock,
-      color: "bg-orange-100 text-orange-600",
+      color: "bg-amber-100 text-amber-700",
     },
     {
-      title: "Repartidores activos",
+      title: "Repartidores",
       value: deliveries?.filter((d) => d.estado === "activo").length || 0,
       icon: Truck,
-      color: "bg-purple-100 text-purple-600",
+      color: "bg-primary/10 text-primary",
     },
     {
       title: "Mensajes",
       value: (analyticsData?.mensajesRecibidos || 0) + (analyticsData?.mensajesEnviados || 0),
       icon: MessageCircle,
-      color: "bg-cyan-100 text-cyan-600",
+      color: "bg-primary/10 text-primary",
       change: `${analyticsData?.conversacionesActivas || 0} activas`,
     },
   ];
@@ -261,7 +262,7 @@ export default function Dashboard() {
             : "border-amber-300 bg-amber-50 text-amber-800"
         }`}
       >
-        {ventasHoy?.cuadrado ? "Cuadrada" : "Pendiente"}
+        {ventasHoy?.cuadrado ? "Caja cuadrada" : "Caja sin cuadrar"}
       </Badge>
       <Button
         variant="ghost"
@@ -353,9 +354,24 @@ export default function Dashboard() {
 
       {/* Content */}
       <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-4 sm:mb-6">
+        {/* Lo que hay que atender ahora */}
+        {porConfirmar > 0 && (
+          <Link href="/negocio/pedidos">
+            <div className="mb-3 sm:mb-4 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-center justify-between gap-3 cursor-pointer" data-testid="aviso-por-confirmar">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0"><Clock size={20} /></div>
+                <div className="min-w-0">
+                  <p className="font-bold text-amber-900 leading-tight">{porConfirmar} pedido{porConfirmar === 1 ? "" : "s"} por confirmar</p>
+                  <p className="text-xs sm:text-sm text-amber-800 truncate">El cliente está esperando el total.</p>
+                </div>
+              </div>
+              <span className="text-sm font-semibold text-amber-900 flex items-center shrink-0">Ver <ChevronRight size={16} /></span>
+            </div>
+          </Link>
+        )}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-4 mb-4 sm:mb-6">
           {stats.map((stat, i) => (
-            <Card key={i} className="border-none shadow-sm" data-testid={`stat-${stat.title.toLowerCase().replace(" ", "-")}`}>
+            <Card key={i} className={`border border-slate-200 shadow-none rounded-2xl ${i === 0 ? "col-span-2 lg:col-span-1" : ""}`} data-testid={`stat-${stat.title.toLowerCase().replace(" ", "-")}`}>
               <CardContent className="p-3 sm:p-4">
                 <div className="flex items-center justify-between mb-2 sm:mb-3">
                   <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center ${stat.color}`}>
@@ -412,26 +428,26 @@ export default function Dashboard() {
               </Link>
             </CardHeader>
             <CardContent className="px-3 sm:px-6">
-              <div className="grid grid-cols-2 sm:grid-cols-1 gap-2 sm:gap-3">
+              <div className="grid grid-cols-1 gap-2 sm:gap-3">
                 {pedidos?.slice(0, 6).map((pedido) => (
-                  <div key={pedido.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-2 sm:p-3 bg-gray-50 rounded-lg" data-testid={`pedido-${pedido.id}`}>
-                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 mb-1 sm:mb-0">
-                      <div className={`w-6 h-6 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shrink-0 ${
+                  <div key={pedido.id} className="flex flex-row items-center justify-between gap-2 p-2.5 sm:p-3 bg-slate-50 rounded-xl" data-testid={`pedido-${pedido.id}`}>
+                    <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
+                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shrink-0 ${
                         pedido.estado === "pendiente" ? "bg-orange-100 text-orange-600" :
                         pedido.estado === "en_camino" ? "bg-blue-100 text-blue-600" :
                         pedido.estado === "entregado" ? "bg-green-100 text-green-600" :
                         "bg-red-100 text-red-600"
                       }`}>
-                        <Package size={12} className="sm:hidden" />
+                        <Package size={16} className="sm:hidden" />
                         <Package size={18} className="hidden sm:block" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-xs sm:text-sm truncate">{pedido.clienteNombre}</p>
-                        <p className="text-xs text-gray-500 truncate hidden sm:block">{formatProductos(pedido.productos)}</p>
+                        <p className="font-semibold text-sm truncate">{pedido.clienteNombre}</p>
+                        <p className="text-xs text-slate-500 truncate">{formatProductos(pedido.productos)}</p>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between sm:block sm:text-right shrink-0">
-                      <p className="font-bold text-xs sm:text-sm">{moneda}{parseFloat(pedido.total).toLocaleString()}</p>
+                    <div className="text-right shrink-0">
+                      <p className="font-bold text-sm">{moneda}{parseFloat(pedido.total).toLocaleString()}</p>
                       <Badge variant="outline" className={`text-xs whitespace-nowrap ${
                         pedido.estado === "pendiente" || pedido.estado === "pendiente_confirmacion" ? "border-orange-300 text-orange-600" :
                         pedido.estado === "en_camino" ? "border-blue-300 text-blue-600" :
@@ -480,7 +496,7 @@ export default function Dashboard() {
                         <Truck size={18} className="hidden sm:block" />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium text-xs sm:text-sm truncate">{delivery.nombre}</p>
+                        <p className="font-medium text-xs sm:text-sm truncate capitalize">{delivery.nombre}</p>
                         <Badge
                           variant={delivery.estado === "activo" ? "default" : delivery.estado === "en_descanso" ? "outline" : "secondary"}
                           className={`text-xs mt-0.5 ${
