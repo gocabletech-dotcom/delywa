@@ -15,6 +15,40 @@ export const jergaAprendidaRoutes = new Hono<AppEnv>();
 jergaAprendidaRoutes.use("/api/admin/jerga-aprendida", requireAuth, requireAdmin);
 jergaAprendidaRoutes.use("/api/admin/jerga-aprendida/*", requireAuth, requireAdmin);
 
+jergaAprendidaRoutes.use("/api/admin/jerga-rapida", requireAuth, requireAdmin);
+
+/**
+ * Plataforma → Jerga: agregar palabras rápido. Varias palabras (separadas por coma) para un mismo producto.
+ * Si la palabra ya existe en ese país y tipo de negocio, se corrige su producto y se vuelve a activar.
+ */
+jergaAprendidaRoutes.post("/api/admin/jerga-rapida", async (c) => {
+  const db = getDb(c.env.DB);
+  const body = ((await c.req.json().catch(() => null)) || {}) as Record<string, unknown>;
+  const producto = typeof body.producto === "string" ? body.producto.trim().slice(0, 200) : "";
+  const tipoNegocio = typeof body.tipoNegocio === "string" && body.tipoNegocio.trim() ? body.tipoNegocio.trim().slice(0, 50) : "colmado";
+  const paisId = Number.isInteger(Number(body.paisId)) && Number(body.paisId) > 0 ? Number(body.paisId) : null;
+  const crudas = Array.isArray(body.palabras) ? body.palabras : typeof body.palabras === "string" ? body.palabras.split(/[,;\n]+/) : [];
+  const palabras = [...new Set(crudas.map((p) => (typeof p === "string" ? p.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 200) : "")).filter((p) => p.length >= 2))].slice(0, 30);
+  if (!palabras.length) return c.json({ error: "Escribe la palabra que usa el cliente." }, 400);
+  if (!producto) return c.json({ error: "Escribe el producto que significa." }, 400);
+  if (paisId && !(await db.select({ id: paises.id }).from(paises).where(eq(paises.id, paisId))).length) return c.json({ error: "País no encontrado" }, 400);
+
+  const existentes = await db.select().from(plantillasJerga).where(eq(plantillasJerga.tipoNegocio, tipoNegocio));
+  let nuevas = 0, corregidas = 0;
+  for (const palabra of palabras) {
+    const igual = existentes.find((e) => (e.paisId ?? null) === paisId && normalizar(e.jerga) === normalizar(palabra));
+    if (igual) {
+      await db.update(plantillasJerga).set({ productoIdentificado: producto, activo: true }).where(eq(plantillasJerga.id, igual.id));
+      corregidas++;
+    } else {
+      await db.insert(plantillasJerga).values({ tipoNegocio, jerga: palabra, productoIdentificado: producto, paisId, activo: true, origen: "manual" });
+      nuevas++;
+    }
+  }
+  olvidarCacheJerga();
+  return c.json({ ok: true, nuevas, corregidas });
+});
+
 jergaAprendidaRoutes.get("/api/admin/jerga-aprendida", async (c) => {
   const db = getDb(c.env.DB);
   const paisId = Number(c.req.query("paisId")) || null;

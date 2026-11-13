@@ -98,6 +98,18 @@ describe("panel de plataforma", () => {
     expect(verde).toMatchObject({ colmados: 1, estado: "pendiente", veces: 3 });
   });
 
+  it("la plataforma agrega palabras rápido: varias a la vez, y corrige las que ya existen", async () => {
+    expect((await t.client().request("POST", "/api/admin/jerga-rapida", { palabras: "x", producto: "y" })).status).toBe(401);
+    expect((await admin.request("POST", "/api/admin/jerga-rapida", { palabras: "", producto: "Ajo" })).status).toBe(400);
+    const r = await admin.request("POST", "/api/admin/jerga-rapida", { palabras: "Un Ajito, cabecita de ajo", producto: "Ajo", paisId: rd });
+    expect(r.json).toMatchObject({ nuevas: 2, corregidas: 0 });
+    const r2 = await admin.request("POST", "/api/admin/jerga-rapida", { palabras: "un ajito", producto: "Ajo en cabeza", paisId: rd });
+    expect(r2.json).toMatchObject({ nuevas: 0, corregidas: 1 });
+    const todas = (await admin.request("GET", "/api/admin/plantillas-jerga")).json.filter((j: any) => j.jerga.includes("ajito"));
+    expect(todas).toHaveLength(1);
+    expect(todas[0]).toMatchObject({ productoIdentificado: "Ajo en cabeza", paisId: rd, tipoNegocio: "colmado", activo: true });
+  });
+
   it("aprobar la mete al país; descartar la saca y no vuelve sola", async () => {
     const verde = { paisId: rd, tipoNegocio: "colmado", jerga: "la verde", productoIdentificado: "Cerveza Heineken" };
     expect((await admin.request("POST", "/api/admin/jerga-aprendida/aprobar", verde)).status).toBe(200);

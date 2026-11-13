@@ -15,6 +15,7 @@ import { SeguridadSection } from "@/components/admin/SeguridadSection";
 import { IntegracionesSection } from "@/components/admin/IntegracionesSection";
 import { SolicitudesNegocioSection } from "@/components/admin/SolicitudesNegocioSection";
 import { JergaAprendidaPanel } from "@/components/admin/JergaAprendidaPanel";
+import { JergaSimple } from "@/components/admin/JergaSimple";
 import { BotChatPanel } from "@/components/admin/BotChatPanel";
 import promoVideo1 from "@assets/generated_videos/complete_delivery_flow_sequence.mp4";
 import promoVideo2 from "@assets/generated_videos/delywa_logo_with_slogan.mp4";
@@ -237,6 +238,7 @@ export default function PlatformAdminPage() {
   const [selectedTipoJerga, setSelectedTipoJerga] = useState<string | null>(null);
   const [selectedPaisJerga, setSelectedPaisJerga] = useState<number | null>(null);
   const [generatingJerga, setGeneratingJerga] = useState(false);
+  const [palabraPorEnsenar, setPalabraPorEnsenar] = useState<string | null>(null);
   
   const [selectedTipoConocimiento, setSelectedTipoConocimiento] = useState<string>("colmado");
   const [showUploadConocimiento, setShowUploadConocimiento] = useState(false);
@@ -2362,236 +2364,15 @@ export default function PlatformAdminPage() {
   );
 
   const renderJergaSection = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800">Diccionario de jerga por país</h2>
-          <p className="text-sm text-slate-500">El bot de todos los colmados de cada país usa esta jerga directamente, junto con lo que aprende cada colmado. Las palabras que usan varios colmados entran solas (ver «Aprendida de los colmados» abajo).</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {paises.length > 0 && (
-            <select
-              value={selectedPaisJerga ?? ""}
-              onChange={(e) => setSelectedPaisJerga(e.target.value ? parseInt(e.target.value) : null)}
-              className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              data-testid="select-pais-jerga-filter"
-            >
-              <option value="">Todos los países</option>
-              {paises.map((p) => (
-                <option key={p.id} value={p.id}>{p.bandera} {p.nombre}</option>
-              ))}
-            </select>
-          )}
-          <Button
-            onClick={() => setShowCreateJergaDialog(true)}
-            className="bg-emerald-600 hover:bg-emerald-700"
-            data-testid="btn-create-jerga"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva Jerga
-          </Button>
-        </div>
-      </div>
-
-      {jergaLoading || tiposLoading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <Card className="bg-white border-0 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold">Tipos de Negocio</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {tiposNegocioCatalogo?.filter(t => t.activo).map((tipo) => {
-                  const tieneJerga = tipoTieneJerga(tipo.slug);
-                  const isSelected = selectedTipoJerga === tipo.slug;
-                  return (
-                    <button
-                      key={tipo.id}
-                      onClick={() => setSelectedTipoJerga(tipo.slug)}
-                      className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${
-                        isSelected
-                          ? "bg-emerald-50 border-emerald-300"
-                          : "bg-white border-slate-200 hover:border-slate-300"
-                      }`}
-                      data-testid={`btn-tipo-jerga-${tipo.slug}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isSelected ? "bg-emerald-100" : "bg-slate-100"}`}>
-                          <MessageSquare className={`w-4 h-4 ${isSelected ? "text-emerald-600" : "text-slate-500"}`} />
-                        </div>
-                        <span className={`font-medium ${isSelected ? "text-emerald-700" : "text-slate-700"}`}>
-                          {tipo.nombre}
-                        </span>
-                      </div>
-                      {tieneJerga ? (
-                        <Badge className="bg-emerald-100 text-emerald-700">
-                          <Check className="w-3 h-3 mr-1" />
-                          {getJergaForTipo(tipo.slug).length}
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-slate-500">
-                          <AlertCircle className="w-3 h-3 mr-1" />
-                          Sin jerga
-                        </Badge>
-                      )}
-                    </button>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="lg:col-span-2">
-            {selectedTipoJerga ? (
-              <Card className="bg-white border-0 shadow-sm">
-                <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base font-semibold">
-                      Jerga: {tiposNegocioCatalogo?.find(t => t.slug === selectedTipoJerga)?.nombre}
-                    </CardTitle>
-                    <p className="text-sm text-slate-500 mt-1">
-                      {tipoTieneJerga(selectedTipoJerga)
-                        ? `${getJergaForTipo(selectedTipoJerga).length} términos de jerga`
-                        : "Este tipo no tiene jerga definida"}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => {
-                        setNewJerga({ ...newJerga, tipoNegocio: selectedTipoJerga });
-                        setShowCreateJergaDialog(true);
-                      }}
-                      variant="outline"
-                      size="sm"
-                      data-testid="btn-add-jerga-tipo"
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      Agregar
-                    </Button>
-                    <Button
-                      onClick={() => generarJergaConIA(selectedTipoJerga)}
-                      disabled={generatingJerga}
-                      className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
-                      size="sm"
-                      data-testid="btn-generar-jerga-ia"
-                    >
-                      {generatingJerga ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4 mr-2" />
-                      )}
-                      Generar con IA
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {tipoTieneJerga(selectedTipoJerga) ? (
-                    (() => {
-                      const allJerga = getJergaForTipo(selectedTipoJerga);
-                      const globalJerga = allJerga.filter(j => j.paisId === null);
-                      const byCountry = paises.filter(p => allJerga.some(j => j.paisId === p.id));
-                      const renderJergaList = (items: PlantillaJerga[]) => (
-                        <div className="space-y-2">
-                          {items.map((jerga) => (
-                            <div
-                              key={jerga.id}
-                              className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100"
-                              data-testid={`jerga-item-${jerga.id}`}
-                            >
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-medium text-slate-800">"{jerga.jerga}"</span>
-                                  <span className="text-slate-400">→</span>
-                                  <span className="text-emerald-700">{jerga.productoIdentificado}</span>
-                                  {jerga.precioSugerido && (
-                                    <Badge variant="outline" className="text-xs">
-                                      RD${jerga.precioSugerido}
-                                    </Badge>
-                                  )}
-                                </div>
-                                {jerga.descripcion && (
-                                  <p className="text-xs text-slate-500 mt-1">{jerga.descripcion}</p>
-                                )}
-                              </div>
-                              <div className="flex gap-1 ml-4">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setEditJerga(jerga);
-                                    setShowEditJergaDialog(true);
-                                  }}
-                                  data-testid={`btn-edit-jerga-${jerga.id}`}
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setShowDeleteJergaConfirm(jerga.id)}
-                                  className="text-red-500 hover:text-red-600"
-                                  data-testid={`btn-delete-jerga-${jerga.id}`}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                      return (
-                        <div className="space-y-5">
-                          {globalJerga.length > 0 && (
-                            <div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <Globe className="w-4 h-4 text-slate-400" />
-                                <span className="text-sm font-medium text-slate-500">Global / Sin país específico ({globalJerga.length})</span>
-                              </div>
-                              {renderJergaList(globalJerga)}
-                            </div>
-                          )}
-                          {byCountry.map(p => {
-                            const countryJerga = allJerga.filter(j => j.paisId === p.id);
-                            return (
-                              <div key={p.id}>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-lg">{p.bandera}</span>
-                                  <span className="text-sm font-medium text-slate-600">{p.nombre} ({countryJerga.length})</span>
-                                </div>
-                                {renderJergaList(countryJerga)}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <div className="text-center py-12 text-slate-500">
-                      <MessageSquare className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                      <p className="mb-2">No hay jerga para este tipo de negocio</p>
-                      <p className="text-sm">Haz clic en "Generar con IA" para crear jerga sugerida</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="bg-white border-0 shadow-sm">
-                <CardContent className="py-12">
-                  <div className="text-center text-slate-500">
-                    <MessageSquare className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p>Selecciona un tipo de negocio para ver su jerga</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    <JergaSimple
+      paises={paises}
+      tipos={tiposNegocioCatalogo ?? []}
+      paisId={selectedPaisJerga}
+      onPais={setSelectedPaisJerga}
+      palabraInicial={palabraPorEnsenar}
+      onGenerarIA={generarJergaConIA}
+      generando={generatingJerga}
+    />
   );
 
   const renderSystemPromptSection = () => (
@@ -3645,8 +3426,8 @@ export default function PlatformAdminPage() {
               {activeSection === "jerga" && (
                 <div className="space-y-8">
                   {renderJergaSection()}
+                  <BotChatPanel onEnsenar={(t) => setPalabraPorEnsenar(t)} />
                   <JergaAprendidaPanel paisId={selectedPaisJerga} />
-                  <BotChatPanel />
                 </div>
               )}
               {activeSection === "system-prompt" && renderSystemPromptSection()}

@@ -409,7 +409,7 @@ export default function SettingsPage() {
   
 
   return (
-    <NegocioLayout title="Configuración" activeNav="settings" headerRight={<Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10" onClick={() => window.location.reload()} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className="sm:hidden" /><RefreshCw size={20} className="hidden sm:block" /></Button>}>
+    <NegocioLayout title="Configuración" activeNav="settings" headerRight={<Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10" onClick={() => queryClient.invalidateQueries()} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className="sm:hidden" /><RefreshCw size={20} className="hidden sm:block" /></Button>}>
 
 
       <main className="flex-1 lg:ml-0">

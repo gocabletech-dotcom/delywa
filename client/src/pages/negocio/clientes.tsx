@@ -233,7 +233,7 @@ export default function ClientesPage() {
       variant="ghost"
       size="icon"
       className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10"
-      onClick={() => window.location.reload()}
+      onClick={() => queryClient.invalidateQueries()}
       title="Refrescar"
       data-testid="button-refresh"
     >

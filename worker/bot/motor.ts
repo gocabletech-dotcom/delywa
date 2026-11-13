@@ -23,7 +23,8 @@ export type Opcion = { texto: string; accion?: "ubicacion" | "comprobante" };
 export type Respuesta = { texto: string; opciones?: Opcion[] };
 export type Entrada = { tipo: "texto"; texto: string } | { tipo: "ubicacion"; latitud: number; longitud: number };
 
-type Anotado = { nombre: string; cantidad: number; unidad: string | null; monto: null };
+type Anotado = { nombre: string; cantidad: number; unidad: string | null; monto: number | null };
+type Nuevo = Pick<Item, "nombre" | "cantidad" | "unidad" | "monto">;
 
 type Contexto = {
   env: Env;
@@ -91,12 +92,14 @@ function productosDe(s: ChatWebSesion): Anotado[] {
 }
 
 /** Junta lo nuevo con lo ya anotado (si repite el mismo producto y unidad, suma la cantidad). */
-function sumar(anteriores: Anotado[], nuevos: Array<Pick<Item, "nombre" | "cantidad" | "unidad">>): Anotado[] {
+function sumar(anteriores: Anotado[], nuevos: Nuevo[]): Anotado[] {
   const r = anteriores.map((p) => ({ ...p }));
   for (const n of nuevos) {
-    const igual = r.find((p) => normalizar(p.nombre) === normalizar(n.nombre) && (p.unidad ?? null) === (n.unidad ?? null));
-    if (igual) igual.cantidad += n.cantidad;
-    else r.push({ nombre: n.nombre, cantidad: n.cantidad, unidad: n.unidad ?? null, monto: null });
+    // Lo pedido por dinero ("10 pesos de ajo") se suma en pesos; lo pedido por cantidad, en cantidad.
+    const igual = r.find((p) => normalizar(p.nombre) === normalizar(n.nombre) && (p.unidad ?? null) === (n.unidad ?? null) && Boolean(p.monto) === Boolean(n.monto));
+    if (igual && n.monto) igual.monto = (igual.monto ?? 0) + n.monto;
+    else if (igual) igual.cantidad += n.cantidad;
+    else r.push({ nombre: n.nombre, cantidad: n.cantidad, unidad: n.unidad ?? null, monto: n.monto ?? null });
   }
   return r.slice(0, 60);
 }
@@ -130,7 +133,7 @@ function metros(lat1: number, lon1: number, lat2: number, lon2: number): number 
 }
 
 /** Productos del último pedido del cliente (para "repetir mi último pedido"). */
-async function ultimoPedido(c: Contexto): Promise<Array<Pick<Item, "nombre" | "cantidad" | "unidad">>> {
+async function ultimoPedido(c: Contexto): Promise<Nuevo[]> {
   if (!c.sesion.clienteWhatsapp) return [];
   const [p] = await c.db.select({ productos: pedidos.productos }).from(pedidos)
     .where(and(eq(pedidos.colmadoId, c.colmado.id), eq(pedidos.clienteWhatsapp, c.sesion.clienteWhatsapp), ne(pedidos.estado, "cancelado")))
@@ -141,7 +144,8 @@ async function ultimoPedido(c: Contexto): Promise<Array<Pick<Item, "nombre" | "c
   if (!Array.isArray(lista)) return [];
   return lista.filter((x) => x && typeof x.nombre === "string").slice(0, 60).map((x) => {
     const m = String(x.nombre).match(/^(.*) \(([^()]+)\)$/);
-    return { nombre: m ? m[1] : String(x.nombre), cantidad: Number(x.cantidad) > 0 ? Number(x.cantidad) : 1, unidad: m ? m[2] : null };
+    // El monto de un pedido anterior es el precio que puso el colmado, no lo que pidió el cliente: no se copia.
+    return { nombre: m ? m[1] : String(x.nombre), cantidad: Number(x.cantidad) > 0 ? Number(x.cantidad) : 1, unidad: m ? m[2] : null, monto: null };
   });
 }
 
@@ -196,7 +200,10 @@ async function crearElPedido(c: Contexto, metodo: I.Pago, montoPago: number | nu
     clienteUbicacion: direccion,
     clienteLatitud: latitud,
     clienteLongitud: longitud,
-    productos: JSON.stringify(productos.map((p) => ({ nombre: p.unidad ? `${p.nombre} (${p.unidad})` : p.nombre, cantidad: p.cantidad, monto: null }))),
+    // "10 pesos de ajo": el colmado lo ve en el nombre y con ese precio ya puesto.
+    productos: JSON.stringify(productos.map((p) => p.monto
+      ? { nombre: `${p.nombre} (RD$${p.monto})`, cantidad: 1, monto: p.monto }
+      : { nombre: p.unidad ? `${p.nombre} (${p.unidad})` : p.nombre, cantidad: p.cantidad, monto: null })),
     total: "0",
     metodoPago: metodo,
     montoPago: montoPago ? String(montoPago) : "0",
@@ -232,10 +239,10 @@ async function crearElPedido(c: Contexto, metodo: I.Pago, montoPago: number | nu
 }
 
 /** Anota productos y responde "¿Algo más?". */
-async function anotar(c: Contexto, nuevos: Array<Pick<Item, "nombre" | "cantidad" | "unidad">>, prefijo = ""): Promise<Respuesta> {
+async function anotar(c: Contexto, nuevos: Nuevo[], prefijo = ""): Promise<Respuesta> {
   const todos = sumar(productosDe(c.sesion), nuevos);
   await guardarSesion(c, { productosCapturados: todos as any, estadoConversacion: "tomando_pedido" });
-  return { texto: `${prefijo}Anotado ✍️\n${lista(nuevos.map((n) => ({ ...n, unidad: n.unidad ?? null, monto: null })))}\n\n¿Algo más?`, opciones: [{ texto: "Eso es todo" }] };
+  return { texto: `${prefijo}Anotado ✍️\n${lista(nuevos.map((n) => ({ ...n, unidad: n.unidad ?? null, monto: n.monto ?? null })))}\n\n¿Algo más?`, opciones: [{ texto: "Eso es todo" }] };
 }
 
 async function noEntendido(c: Contexto, texto: string): Promise<Respuesta> {
@@ -317,7 +324,9 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
   const nombre = primerNombre(c.sesion);
   const saludo = `${I.saludoPorHora(timezone)}${nombre ? `, ${nombre}` : ""} 👋`;
   const primera = c.respuestasPrevias === 0;
-  const estado = c.sesion.estadoConversacion || "inicial";
+  // "finalizado" y "esperando_confirmacion_sustitucion" los pone el panel al confirmar el pedido: el pedido sigue vivo.
+  const guardado = c.sesion.estadoConversacion || "inicial";
+  const estado = c.sesion.pedidoId && ["finalizado", "esperando_confirmacion_sustitucion"].includes(guardado) ? "pedido_creado" : guardado;
 
   // Después del pedido se le ofreció guardar la dirección como su casa.
   if (estado === "ofreciendo_casa") {

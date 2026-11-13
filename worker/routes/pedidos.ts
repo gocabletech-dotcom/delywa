@@ -69,8 +69,16 @@ pedidoRoutes.get("/api/colmados/:id/pedidos", requireAuth, requireBusinessAccess
     const enriquecido = conDireccionUtil(pedido, { cliente: clientePorTel.get(tel), conversacion: convPorTel.get(tel) });
     const intentar = !geocodeIntentado && enriquecido.tipoEntrega !== "pickup" && !parseCoordinatePair(enriquecido.clienteLatitud, enriquecido.clienteLongitud);
     const geocodificable = intentar && !!enriquecido.clienteUbicacion?.trim() && !needsSavedAddress(enriquecido.clienteUbicacion);
-    const destino = intentar ? await coordenadasDelPedido(db, enriquecido) : parseCoordinatePair(enriquecido.clienteLatitud, enriquecido.clienteLongitud);
-    if (intentar) geocodeIntentado = true;
+    // La búsqueda de la dirección en el mapa (hasta 5 s) corre después de responder: la lista no espera por ella
+    // y las coordenadas aparecen en la siguiente carga.
+    let destino = parseCoordinatePair(enriquecido.clienteLatitud, enriquecido.clienteLongitud);
+    if (intentar) {
+      geocodeIntentado = true;
+      const busqueda = coordenadasDelPedido(db, enriquecido).catch(() => null);
+      let enSegundoPlano = false;
+      try { c.executionCtx.waitUntil(busqueda); enSegundoPlano = true; } catch { /* pruebas: sin executionCtx */ }
+      if (!enSegundoPlano) destino = await busqueda;
+    }
     const metricasDistancia = calcularMetricasDistanciaPedido({ tipoEntrega: enriquecido.tipoEntrega, sucursalOrigenId: enriquecido.colmadoId, destino, sucursales });
     if (geocodificable && !destino) metricasDistancia.estado = "no_se_pudo_calcular";
     resultado.push({ ...enriquecido, metricasDistancia });
@@ -313,6 +321,8 @@ pedidoRoutes.post("/api/pedidos/:id/confirmar", requireAuth, async (c) => {
   if (!envio.chatWeb && !envio.whatsappEnviado) {
     return c.json({
       success: true,
+      estado: nuevoEstado,
+      total: total.toFixed(2),
       message: haySustituciones
         ? "Pedido confirmado con sustituciones. Envía la pregunta al cliente por WhatsApp."
         : "Pedido confirmado. Envía la confirmación al cliente por WhatsApp.",
@@ -324,6 +334,8 @@ pedidoRoutes.post("/api/pedidos/:id/confirmar", requireAuth, async (c) => {
   }
   return c.json({
     success: true,
+    estado: nuevoEstado,
+    total: total.toFixed(2),
     message: haySustituciones ? "Pregunta de sustitución enviada al cliente" : "Confirmación enviada al cliente",
     necesitaEnvioManual: false,
     envioWhatsApp: envio.whatsappEnviado,

@@ -5,7 +5,8 @@ import { normalizar } from "../lib/jerga";
 // con sus sinónimos y errores de escritura comunes ("arros", "cerbesa").
 // Lo que no esté en la lista igual se anota tal cual: el colmado lo verifica.
 
-export type Item = { nombre: string; cantidad: number; unidad: string | null; conocido: boolean; original: string };
+/** `monto`: cuando el cliente pide por dinero ("10 pesos de ajo"), cuánto quiere gastar en ese producto. */
+export type Item = { nombre: string; cantidad: number; unidad: string | null; conocido: boolean; original: string; monto?: number | null };
 
 /** Productos típicos del colmado (nombre que ve el colmado → formas en que lo escribe el cliente). */
 export const CATALOGO: Array<[string, string[]]> = [
@@ -120,7 +121,8 @@ const UNIDADES: Array<[RegExp, string, string]> = [
 
 const NUMEROS: Record<string, number> = {
   un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
-  once: 11, doce: 12, quince: 15, veinte: 20, media: 0.5, medio: 0.5, cuarto: 0.25, par: 2, docena: 12,
+  once: 11, doce: 12, quince: 15, veinte: 20, veinticinco: 25, treinta: 30, cuarenta: 40, cincuenta: 50, cien: 100, ciento: 100,
+  doscientos: 200, trescientos: 300, quinientos: 500, mil: 1000, media: 0.5, medio: 0.5, cuarto: 0.25, par: 2, docena: 12,
 };
 
 /** Palabras de relleno que se quitan antes de buscar el producto. */
@@ -183,13 +185,50 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
   const original = pedazo.trim();
   let t = normalizar(original).replace(/[^a-z0-9ñ/.,\s]/g, " ").replace(/\s+/g, " ").trim();
   if (!t) return null;
+  // Pedido por dinero: "10 pesos de ajo", "RD$50 de salami", "dame 10 de ajo", "queso de a 100".
+  // En el colmado ese número es lo que el cliente quiere gastar, no la cantidad.
+  let monto: number | null = null;
+  {
+    const crudo = normalizar(original);
+    const conSigno = crudo.match(/(?:rd\s*)?\$\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*\$/);
+    const fichas = t.split(" ");
+    const iPesos = fichas.findIndex((f, i) => i > 0 && /^(pesos?|pesitos?|rd|dop|tablas?|cheles?)$/.test(f) && leerNumero(fichas[i - 1]) !== null);
+    if (iPesos > 0) {
+      monto = leerNumero(fichas[iPesos - 1]);
+      fichas.splice(iPesos - 1, 2);
+    } else if (conSigno) {
+      monto = Number((conSigno[1] ?? conSigno[2]).replace(",", "."));
+      const i = fichas.findIndex((f) => leerNumero(f) === monto || f === `rd${monto}`);
+      if (i >= 0) fichas.splice(i, 1);
+    } else {
+      // "ajo de a 10", "salami de 50" al final.
+      const n = fichas.length;
+      const ultimo = n >= 3 ? leerNumero(fichas[n - 1]) : null;
+      if (ultimo !== null && ultimo >= 5 && /^\d/.test(fichas[n - 1]) && (fichas[n - 2] === "de" || (fichas[n - 2] === "a" && fichas[n - 3] === "de"))) {
+        monto = ultimo;
+        fichas.splice(fichas[n - 2] === "a" ? n - 3 : n - 2);
+      } else {
+        // "dame 10 de ajo": número, luego "de", sin unidad (no "10 libras de ajo").
+        let i = 0;
+        while (i < fichas.length && RELLENO.has(fichas[i]) && leerNumero(fichas[i]) === null) i++;
+        const primero = i < fichas.length ? leerNumero(fichas[i]) : null;
+        if (primero !== null && primero >= 5 && fichas[i + 1] === "de" && fichas[i + 2] && !UNIDADES.some(([re]) => re.test(fichas[i + 2]))) {
+          monto = primero;
+          fichas.splice(i, 2);
+        }
+      }
+    }
+    if (monto !== null && !(monto > 0 && monto <= 100000)) monto = null;
+    if (monto !== null) t = fichas.join(" ").trim();
+    if (!t) return null;
+  }
   // La jerga primero, con la frase entera ("una fria", "un pote").
   for (const [frase, producto] of jerga) {
     if (` ${t} `.includes(` ${frase} `)) {
       const resto = t.replace(frase, " ").trim().split(" ");
       const n = resto.map(leerNumero).find((x) => x !== null && x > 0 && x <= 100);
       const cantidadEnFrase = leerNumero(frase.split(" ")[0]);
-      return { nombre: producto, cantidad: n ?? (cantidadEnFrase && cantidadEnFrase >= 1 ? cantidadEnFrase : 1), unidad: null, conocido: true, original };
+      return { nombre: producto, cantidad: monto ? 1 : n ?? (cantidadEnFrase && cantidadEnFrase >= 1 ? cantidadEnFrase : 1), unidad: null, conocido: true, original, monto };
     }
   }
   const palabras = t.split(" ");
@@ -225,6 +264,7 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
     unidad,
     conocido: Boolean(delCatalogo),
     original,
+    monto,
   };
 }
 
@@ -237,7 +277,8 @@ export function leerPedido(mensaje: string, jerga: Map<string, string>): Item[] 
 }
 
 /** Cómo se muestra un producto anotado: "2 libras de Arroz", "1 Aceite", "Un chin de Sal". */
-export function textoItem(item: { nombre: string; cantidad?: number | null; unidad?: string | null }): string {
+export function textoItem(item: { nombre: string; cantidad?: number | null; unidad?: string | null; monto?: number | null }): string {
+  if (item.monto) return `RD$${item.monto} de ${item.nombre}`;
   const n = item.cantidad ?? 1;
   const cantidad = Number.isInteger(n) ? String(n) : n === 0.5 ? "½" : n === 0.25 ? "¼" : String(n);
   if (item.unidad === "chin") return `Un chin de ${item.nombre}`;

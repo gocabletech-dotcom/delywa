@@ -15,6 +15,22 @@ describe("lee pedidos de colmado sin IA", () => {
     expect(leer("dos fundas de pan, una coca cola")).toEqual(["2 fundas de Pan", "1 Refresco"]);
   });
 
+  it("pedido por dinero: el número es lo que quiere gastar, no la cantidad", () => {
+    expect(leer("dame 10 pesos de ajo")).toEqual(["RD$10 de Ajo"]);
+    expect(leer("dame 10 de ajo")).toEqual(["RD$10 de Ajo"]);
+    expect(leer("RD$50 de salami y 2 libras de arroz")).toEqual(["RD$50 de Salami", "2 libras de Arroz"]);
+    expect(leer("25 pesos de queso, un pan")).toEqual(["RD$25 de Queso", "1 Pan"]);
+    expect(leer("cincuenta pesos de salami")).toEqual(["RD$50 de Salami"]);
+    expect(leer("ajo de a 10")).toEqual(["RD$10 de Ajo"]);
+    expect(leer("100 pesos de la verde")).toEqual(["RD$100 de Cerveza Heineken"]);
+    const [ajo] = leerPedido("dame 10 pesos de ajo", jerga);
+    expect(ajo).toMatchObject({ nombre: "Ajo", cantidad: 1, monto: 10 });
+    // Con unidad sigue siendo cantidad.
+    expect(leer("10 libras de arroz")).toEqual(["10 libras de Arroz"]);
+    expect(leer("3 panes")).toEqual(["3 Pan"]);
+    expect(leer("un refresco de 2 litros")).toEqual(["1 Refresco"]);
+  });
+
   it("entiende errores de escritura", () => {
     expect(leer("quiero arros y cerbeza")).toEqual(["1 Arroz", "1 Cerveza Presidente"]);
     expect(leer("4 guevos")).toEqual(["4 Huevos"]);

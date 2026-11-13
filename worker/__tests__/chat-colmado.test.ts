@@ -334,3 +334,36 @@ describe("casa guardada, inactividad y memoria del último pedido", () => {
     expect(cl.nombre).toBe("Marta");
   });
 });
+
+describe("pedido por dinero en el chat", () => {
+  it("«10 pesos de ajo» se anota como RD$10 y llega al colmado con ese precio", async () => {
+    const id = await abrir("8095554444", "Pedro");
+    const r = await decir(id, "dame 10 pesos de ajo y 2 libras de arroz");
+    expect(r[0].contenido).toContain("• RD$10 de Ajo");
+    expect(r[0].contenido).toContain("• 2 libras de Arroz");
+    const r2 = await decir(id, "y 15 de ajo");
+    expect(r2[0].contenido).toContain("• RD$15 de Ajo");
+    await decir(id, "eso es todo");
+    await decir(id, "Calle Sol #5, frente al parque");
+    const fin = await decir(id, "tarjeta");
+    expect(fin[0].contenido).toContain("• RD$25 de Ajo");
+    const [s] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
+    const [p] = await t.db.select().from(pedidos).where(eq(pedidos.id, s.pedidoId!));
+    const productos = typeof p.productos === "string" ? JSON.parse(p.productos) : p.productos;
+    expect(productos).toContainEqual({ nombre: "Ajo (RD$25)", cantidad: 1, monto: 25 });
+    expect(productos).toContainEqual({ nombre: "Arroz (libras)", cantidad: 2, monto: null });
+  });
+
+  it("cuando el colmado confirma, el chat sigue ligado al pedido (no empieza uno nuevo)", async () => {
+    const id = await abrir("8095554444", "Pedro", "d".repeat(32));
+    await decir(id, "un pan");
+    await decir(id, "eso es todo");
+    await decir(id, "Calle Sol #5, frente al parque");
+    await decir(id, "tarjeta");
+    await t.db.update(chatWebSesiones).set({ estadoConversacion: "finalizado" }).where(eq(chatWebSesiones.sessionId, id));
+    const r = await decir(id, "gracias");
+    expect(r[0].contenido).toContain("¡A la orden");
+    expect(r[0].contenido).not.toContain("pedir");
+  });
+});
+

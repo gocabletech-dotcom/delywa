@@ -313,6 +313,20 @@ export default function PedidosPage() {
     refetchInterval: 60_000,
   });
 
+  // Al volver a esta página con el botón "atrás" (por ejemplo desde WhatsApp), se piden los pedidos de nuevo.
+  useEffect(() => {
+    const alVolver = (e: PageTransitionEvent) => { if (e.persisted) queryClient.invalidateQueries({ queryKey: ["pedidos"] }); };
+    window.addEventListener("pageshow", alVolver);
+    return () => window.removeEventListener("pageshow", alVolver);
+  }, []);
+  const [refrescando, setRefrescando] = useState(false);
+  const refrescar = async () => {
+    setRefrescando(true);
+    try {
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ["pedidos"] }), queryClient.invalidateQueries({ queryKey: ["ventas-hoy"] })]);
+    } finally { setRefrescando(false); }
+  };
+
   const pedidosParaRutas = Array.isArray(pedidos)
     ? pedidos.filter((pedido: PedidoNegocio) => pedido.tipoEntrega !== "pickup").map((pedido: PedidoNegocio) => pedido.id)
     : [];
@@ -673,7 +687,13 @@ export default function PedidosPage() {
       }
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
+      // El pedido cambia de estado en pantalla al instante; después se confirma con el servidor.
+      if (data.estado) {
+        queryClient.setQueriesData({ queryKey: ["pedidos"] }, (lista: unknown) => Array.isArray(lista)
+          ? lista.map((p: any) => (p?.id === variables.pedidoId ? { ...p, estado: data.estado, total: data.total ?? p.total, totalConfirmado: data.total ?? p.totalConfirmado } : p))
+          : lista);
+      }
       queryClient.invalidateQueries({ queryKey: ["pedidos"] });
       
       if (data.necesitaEnvioManual && data.whatsappNumero && data.mensajeParaEnviar) {
@@ -684,7 +704,8 @@ export default function PedidosPage() {
         if (whatsappWindowRef.current && !whatsappWindowRef.current.closed) {
           whatsappWindowRef.current.location.href = url;
           whatsappWindowRef.current = null;
-        } else {
+        } else if (!window.open(url, "_blank")) {
+          // Solo si el navegador bloquea la pestaña nueva se sale de esta página.
           window.location.href = url;
         }
         setConfirmOpen(false);
@@ -895,7 +916,7 @@ export default function PedidosPage() {
   }
 
   return (
-    <NegocioLayout title="Pedidos" activeNav="pedidos" headerRight={<Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10" onClick={() => window.location.reload()} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className="sm:hidden" /><RefreshCw size={20} className="hidden sm:block" /></Button>}>
+    <NegocioLayout title="Pedidos" activeNav="pedidos" headerRight={<Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10" onClick={refrescar} disabled={refrescando} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className={`sm:hidden ${refrescando ? "animate-spin" : ""}`} /><RefreshCw size={20} className={`hidden sm:block ${refrescando ? "animate-spin" : ""}`} /></Button>}>
       {/* Sidebar */}
 
       {/* Main Content */}
