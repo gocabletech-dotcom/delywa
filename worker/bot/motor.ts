@@ -1,5 +1,6 @@
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { botNoEntendidos, botRegistro, chatWebSesiones, clienteDirecciones, clientes, diccionarioJerga, pedidos, type ChatWebSesion, type Colmado } from "@shared/schema";
+import { textoCuentas } from "../lib/transferencia";
 import type { Env } from "../env";
 import type { Db } from "../db";
 import { isColmadoAbierto } from "../lib/horario";
@@ -10,7 +11,7 @@ import { addMensaje, getClienteByWhatsapp, updateConversacionPedidoEstado } from
 import { createPedido, ESTADOS_TERMINALES } from "../storage/pedidos";
 import { interpretar } from "./ia";
 import * as I from "./intenciones";
-import { leerPedido, textoItem, type Item } from "./productos";
+import { corregirOrtografia, emojiDe, leerPedido, textoItem, type Item } from "./productos";
 
 // Bot del chat de la página (delywa.com/pedir/<colmado>). Funciona por pasos y SIN inteligencia artificial:
 //   saludo según la hora → anota el pedido ("¿Algo más?") → "¿Eso es todo?" → ubicación →
@@ -23,8 +24,9 @@ export type Opcion = { texto: string; accion?: "ubicacion" | "comprobante" };
 export type Respuesta = { texto: string; opciones?: Opcion[] };
 export type Entrada = { tipo: "texto"; texto: string } | { tipo: "ubicacion"; latitud: number; longitud: number };
 
-type Anotado = { nombre: string; cantidad: number; unidad: string | null; monto: number | null };
-type Nuevo = Pick<Item, "nombre" | "cantidad" | "unidad" | "monto">;
+/** `emoji`: cuando la IA reconoció el producto ("la de botella verde" → cerveza), su emoji. */
+type Anotado = { nombre: string; cantidad: number; unidad: string | null; monto: number | null; emoji?: string };
+type Nuevo = Pick<Item, "nombre" | "cantidad" | "unidad" | "monto"> & { emoji?: string };
 
 type Contexto = {
   env: Env;
@@ -50,7 +52,7 @@ const ESTADOS_LEGIBLES: Record<string, string> = {
   llegando: "está llegando 📍", entregado: "entregado ✅", cancelado: "cancelado", retorno: "devuelto",
 };
 
-const lista = (items: Anotado[]) => items.map((p) => `• ${textoItem(p)}`).join("\n");
+const lista = (items: Anotado[]) => items.map((p) => `${p.emoji ?? emojiDe(p.nombre)} ${textoItem(p)}`).join("\n");
 const primerNombre = (s: ChatWebSesion) => (s.clienteNombre || "").trim().split(/\s+/)[0] || "";
 const dinero = (n: number) => `RD$${n.toLocaleString("es-DO")}`;
 
@@ -99,7 +101,7 @@ function sumar(anteriores: Anotado[], nuevos: Nuevo[]): Anotado[] {
     const igual = r.find((p) => normalizar(p.nombre) === normalizar(n.nombre) && (p.unidad ?? null) === (n.unidad ?? null) && Boolean(p.monto) === Boolean(n.monto));
     if (igual && n.monto) igual.monto = (igual.monto ?? 0) + n.monto;
     else if (igual) igual.cantidad += n.cantidad;
-    else r.push({ nombre: n.nombre, cantidad: n.cantidad, unidad: n.unidad ?? null, monto: n.monto ?? null });
+    else r.push({ nombre: n.nombre, cantidad: n.cantidad, unidad: n.unidad ?? null, monto: n.monto ?? null, ...(n.emoji ? { emoji: n.emoji } : {}) });
   }
   return r.slice(0, 60);
 }
@@ -231,10 +233,11 @@ async function crearElPedido(c: Contexto, metodo: I.Pago, montoPago: number | nu
 
   const pago = metodo === "efectivo"
     ? (montoPago ? `💵 Efectivo — pagas con ${dinero(montoPago)} (te llevamos la devuelta)` : "💵 Efectivo — pagas el monto exacto")
-    : metodo === "tarjeta" ? "💳 Tarjeta" : "🏦 Transferencia — cuando el colmado te confirme el total, envía la foto del comprobante con el botón 📷";
+    : metodo === "tarjeta" ? "💳 Tarjeta" : `🏦 Transferencia\n\n${await textoCuentas(c.db, c.colmado.id) || "El colmado te pasa la cuenta por aquí."}\n\n⏳ Espera que el colmado te confirme el total; luego transfiere y envíanos la *foto del comprobante* con el botón de abajo.`;
   const nombre = primerNombre(c.sesion);
   return [{
     texto: `✅ ¡Listo${nombre ? `, ${nombre}` : ""}! Este es tu pedido #${pedido.id}:\n${lista(productos)}\n\n${casa ? "🏠 Tu casa (dirección guardada)" : `📍 ${direccion.startsWith("Ubicación compartida") ? "Tu ubicación compartida" : direccion}`}\n${pago}\n\n⏳ *${c.colmado.nombre}* está verificando tu pedido y te confirma el total por aquí.`,
+    ...(metodo === "transferencia" ? { opciones: [{ texto: "📸 Enviar comprobante", accion: "comprobante" as const }] } : {}),
   }, ...(ofrecerCasa ? [{ texto: "¿Guardo esta dirección como tu casa? 🏠 Así la próxima vez solo me dices «a mi casa».", opciones: [{ texto: "Sí, es mi casa" }, { texto: "No, gracias" }] }] : [])];
 }
 
@@ -309,13 +312,59 @@ async function conIa(c: Contexto, texto: string, paso: string): Promise<Respuest
         await aprenderJerga(c.db, c.colmado, p.jergaOriginal, p.nombre).catch(() => undefined);
       }
     }
-    return anotar(c, r.productos.map((p) => ({ nombre: p.nombre, cantidad: p.cantidad ?? 1, unidad: p.unidad })));
+    // Se anota con las palabras del cliente (solo con la ortografía corregida), no con el nombre que eligió la IA.
+    return anotar(c, r.productos.map((p) => ({ nombre: nombreDelCliente(p.jergaOriginal, p.nombre), cantidad: p.cantidad ?? 1, unidad: p.unidad, emoji: emojiDe(p.nombre) })));
   }
   if (r.respuesta) {
     const algo = productosDe(c.sesion).length > 0;
     return { texto: `${r.respuesta}\n\n${algo ? "¿Algo más para tu pedido?" : "¿Qué te gustaría pedir?"}`, opciones: algo ? [{ texto: "Eso es todo" }] : undefined };
   }
   return null;
+}
+
+function nombreDelCliente(original: string | null | undefined, sugerido: string): string {
+  const t = normalizar(original ?? "").replace(/[^a-z0-9ñ\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!t) return sugerido;
+  const c = corregirOrtografia(t);
+  return c.charAt(0).toUpperCase() + c.slice(1);
+}
+
+/** La dirección escrita a mano tiene números o palabras de dirección ("calle", "sector", "frente a"...). */
+function pareceDireccion(texto: string): boolean {
+  const t = ` ${normalizar(texto)} `;
+  if (texto.includes("?")) return false;
+  return /\d/.test(t) || /\s(calle|c\/|av|ave|avenida|sector|residencial|res|edificio|edif|apto|apartamento|casa|cerca|frente|al lado|esquina|detras|km|kilometro|carretera|barrio|manzana|mz|urbanizacion|urb|ensanche|villa|reparto|callejon|entrada|colmado|iglesia|escuela|parque)\s/.test(t);
+}
+
+/**
+ * Hay botones esperando respuesta, pero el cliente escribió otra cosa: se le contesta lo que
+ * escribió (productos que agrega, una pregunta) y luego se le repite lo que el bot esperaba.
+ */
+async function fueraDelPaso(c: Contexto, texto: string, paso: string): Promise<Respuesta[]> {
+  const sigue = recordatorio(c);
+  const despues = (r: Respuesta[]) => (sigue ? [...r, sigue] : r);
+  // Una pregunta ("¿el pollo es fresco?") no es un pedido aunque nombre un producto.
+  const items = I.pareceConversacion(texto) ? [] : leerPedido(texto, await jergaParaLeer(c));
+  if (items.length && items.some((i) => i.conocido)) {
+    const todos = sumar(productosDe(c.sesion), items);
+    await guardarSesion(c, { productosCapturados: todos as any });
+    return despues([{ texto: `Anotado también ✍️
+${lista(items.map((n) => ({ ...n, unidad: n.unidad ?? null, monto: n.monto ?? null })))}` }]);
+  }
+  const ia = await interpretar(c.env, { mensaje: texto, colmado: infoColmado(c.colmado), paso });
+  if (ia) {
+    await anotarMetrica(c, "conIa");
+    if (ia.tipo === "productos" && ia.productos.length) {
+      const nuevos = ia.productos.map((p) => ({ nombre: nombreDelCliente(p.jergaOriginal, p.nombre), cantidad: p.cantidad ?? 1, unidad: p.unidad, emoji: emojiDe(p.nombre) }));
+      const todos = sumar(productosDe(c.sesion), nuevos);
+      await guardarSesion(c, { productosCapturados: todos as any });
+      return despues([{ texto: `Anotado también ✍️\n${lista(nuevos.map((n) => ({ ...n, unidad: n.unidad ?? null, monto: null })))}` }]);
+    }
+    if (ia.respuesta) return despues([{ texto: ia.respuesta }]);
+  }
+  await anotarMetrica(c, "sinEntender");
+  await c.db.insert(botNoEntendidos).values({ colmadoId: c.colmado.id, texto: texto.slice(0, 300) }).catch(() => undefined);
+  return despues([{ texto: `Le pasé tu mensaje a ${c.colmado.nombre} para que te responda 👍` }]);
 }
 
 /** Preguntas frecuentes que se contestan sin IA en cualquier paso. */
@@ -512,12 +561,13 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
         return [{ texto: "Dale, ¿qué más te anoto?" }];
       }
       const items = leerPedido(texto, await jergaParaLeer(c));
-      if (items.length) {
+      if (items.length && !I.pareceConversacion(texto)) {
         const todos = sumar(productosDe(c.sesion), items);
         await guardarSesion(c, { productosCapturados: todos as any });
         return [{ texto: `Anotado ✍️ Ahora tengo:\n${lista(todos)}\n\n¿Eso es todo?`, opciones: [{ texto: "Sí, eso es todo" }, { texto: "Agregar más" }] }];
       }
-      return [{ texto: "¿Eso es todo?", opciones: [{ texto: "Sí, eso es todo" }, { texto: "Agregar más" }] }];
+      if (!texto) return [{ texto: "¿Eso es todo?", opciones: [{ texto: "Sí, eso es todo" }, { texto: "Agregar más" }] }];
+      return fueraDelPaso(c, texto, "confirmando si eso es todo el pedido");
     }
 
     case "confirmando_direccion": // pasos de versiones anteriores
@@ -527,11 +577,12 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
         if (await casaDe(c)) return irACasa(c);
         return [{ texto: "Todavía no tengo guardada tu casa 🙏 Toca «Enviar mi ubicación» o escríbeme la dirección con una referencia.", opciones: [BOTON_UBICACION] }];
       }
-      if (texto.length >= 8 && !I.esNegativo(texto)) {
+      if (texto.length >= 8 && !I.esNegativo(texto) && pareceDireccion(texto)) {
         await guardarSesion(c, { clienteDireccion: texto.slice(0, 300), clienteLatitud: null, clienteLongitud: null, destinoGuardado: null, estadoConversacion: "esperando_pago" });
         return [{ texto: "📍 Anotada la dirección." }, pedirPago()];
       }
       if (estado !== "esperando_ubicacion") await guardarSesion(c, { estadoConversacion: "esperando_ubicacion" });
+      if (texto && !I.esNegativo(texto)) return fueraDelPaso(c, texto, "esperando la ubicación para la entrega");
       return [{ texto: "Necesito saber a dónde llevarlo 🙏 Toca «Enviar mi ubicación» o escríbeme la dirección con una referencia (calle, número, sector).", opciones: [BOTON_UBICACION] }];
     }
 
@@ -545,12 +596,13 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
         await guardarSesion(c, { destinoGuardado: null, estadoConversacion: "esperando_pago" });
         return [{ texto: "📍 Listo, te lo llevamos ahí donde estás." }, pedirPago()];
       }
+      if (texto) return fueraDelPaso(c, texto, "eligiendo si se lo llevan a su casa o donde está");
       return [{ texto: "¿Te lo llevamos ahí donde estás o a tu casa? Toca una opción:", opciones: ELEGIR_DESTINO }];
     }
 
     case "esperando_pago": {
       const pago = I.leerPago(texto);
-      if (!pago) return [{ texto: "¿Cómo vas a pagar? Toca una opción:", opciones: PAGOS }];
+      if (!pago) return texto ? fueraDelPaso(c, texto, "eligiendo la forma de pago") : [{ texto: "¿Cómo vas a pagar? Toca una opción:", opciones: PAGOS }];
       if (pago === "efectivo") {
         await guardarSesion(c, { metodoPagoSeleccionado: "efectivo", estadoConversacion: "esperando_monto" });
         return [{ texto: "¿Con cuánto vas a pagar? Así te llevamos la devuelta. 💵", opciones: [{ texto: "Exacto" }, { texto: "500" }, { texto: "1000" }, { texto: "2000" }] }];
@@ -560,7 +612,10 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
 
     case "esperando_monto": {
       const monto = I.leerMonto(texto);
-      if (monto === null) return [{ texto: "¿Con cuánto vas a pagar? Escríbeme el monto, por ejemplo 500 o 1000, o «exacto».", opciones: [{ texto: "Exacto" }, { texto: "500" }, { texto: "1000" }, { texto: "2000" }] }];
+      if (monto === null) {
+        if (texto && !/\d/.test(texto)) return fueraDelPaso(c, texto, "diciendo con cuánto efectivo paga");
+        return [{ texto: "¿Con cuánto vas a pagar? Escríbeme el monto, por ejemplo 500 o 1000, o «exacto».", opciones: [{ texto: "Exacto" }, { texto: "500" }, { texto: "1000" }, { texto: "2000" }] }];
+      }
       return crearElPedido(c, "efectivo", monto || null);
     }
 

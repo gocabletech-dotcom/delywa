@@ -1,5 +1,7 @@
 import { eq } from "drizzle-orm";
 import { whatsappConversaciones, type Colmado, type Pedido } from "@shared/schema";
+import { transferenciaSinAprobar } from "./transferencia";
+import { cerrarParadasDelPedido } from "../storage/deliveries";
 import type { Env } from "../env";
 import type { Db } from "../db";
 import { needsSavedAddress, resolveDeliveryAddress } from "./deliveryAddress";
@@ -141,6 +143,10 @@ export async function cambiarEstadoPedido(
       return { status: 409, body: { error: "Este pedido ya volvió al negocio. Usa «Volver a enviar» para mandarlo otra vez.", reason: "retorno_recibido" } };
     }
   }
+  // Transferencia: no se entrega hasta que el colmado apruebe el comprobante.
+  if (estado === "entregado" && transferenciaSinAprobar(antes)) {
+    return { status: 409, body: { error: "El pago por transferencia todavía no está aprobado. El colmado debe revisar el comprobante y pulsar «Aprobar pago»; después se puede marcar entregado.", reason: "transferencia_sin_aprobar" } };
+  }
   if (["en_camino", "llegando"].includes(estado) && !antes.deliveryId) {
     return { status: 400, body: { error: "Debes asignar un repartidor antes de marcar el pedido como en camino.", reason: "sin_delivery" } };
   }
@@ -175,5 +181,9 @@ export async function cambiarEstadoPedido(
     }
   }
   if (["entregado", "cancelado", "retorno"].includes(estado)) await cerrarConversacionDelPedido(db, pedido);
+  // La ruta del repartidor no debe seguir mostrando un pedido ya cerrado.
+  if (["entregado", "cancelado", "retorno"].includes(estado)) {
+    await cerrarParadasDelPedido(db, id, estado === "entregado" ? "entregado" : "no_entregado", estado === "retorno" ? opciones.motivoRetorno : null).catch(() => undefined);
+  }
   return null;
 }

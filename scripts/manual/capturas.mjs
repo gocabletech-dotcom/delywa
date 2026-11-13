@@ -175,6 +175,8 @@ try {
   await capturar(neg, "pedidos");
   await verAlCentro(neg, '[data-testid="retorno-abierto-6"]');
   await capturar(neg, "retorno");
+  await verAlCentro(neg, '[data-testid="transferencia-10"]');
+  await capturar(neg, "transferencia");
   await ir(neg, "/negocio/pedidos", '[data-testid="principal-1"]');
   await neg.click('[data-testid="principal-1"]');
   await neg.waitForSelector('[role="dialog"]', { visible: true, timeout: 8000 }).catch(() => {});
@@ -210,6 +212,8 @@ try {
   await capturar(rep, "r-entregas");
   await verAlCentro(rep, '[data-testid^="btn-entregado-"], [data-testid^="button-entregado-"]');
   await capturar(rep, "r-entregar");
+  await verAlCentro(rep, '[data-testid="transferencia-sin-aprobar-10"]');
+  await capturar(rep, "r-transferencia");
   await rep.evaluate(() => window.scrollTo(0, 0));
   await rep.evaluate(() => (document.querySelector('[data-testid^="btn-retorno-"], [data-testid^="button-retorno-"]'))?.click());
   await rep.waitForSelector('[data-testid="retorno-modal"]', { visible: true, timeout: 8000 }).catch(() => {});

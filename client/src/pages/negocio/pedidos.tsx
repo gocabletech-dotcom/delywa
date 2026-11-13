@@ -173,6 +173,8 @@ const formatProductosConSustituciones = (productosStr: string, sustituciones?: A
 
 interface PedidoNegocio {
   id: number;
+  comprobanteUrl?: string | null;
+  comprobanteConfirmado?: boolean | null;
   clienteNombre: string;
   clienteWhatsapp: string;
   clienteUbicacion: string;
@@ -613,7 +615,7 @@ export default function PedidosPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pedidos"] });
-      toast({ title: "Pago confirmado", description: "El pedido está listo para entrega" });
+      toast({ title: "Pago aprobado", description: "Al cliente le llegó la confirmación y el pedido ya se puede entregar." });
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo confirmar el pago", variant: "destructive" });
@@ -627,10 +629,14 @@ export default function PedidosPage() {
       return res.json();
     },
     onSuccess: (data) => {
+      // Sin chat ni WhatsApp conectado: se abre WhatsApp con el mensaje listo.
+      if (data?.necesitaEnvioManual && data.whatsappNumero && data.mensajeParaEnviar) {
+        window.open(`https://wa.me/${String(data.whatsappNumero).replace(/\D/g, "")}?text=${encodeURIComponent(data.mensajeParaEnviar)}`, "_blank");
+      }
       if (data?.conversacionNueva) {
         toast({ title: "Conversación reabierta", description: "Se abrió una nueva conversación y se envió el detalle del pedido al cliente" });
       } else {
-        toast({ title: "Aviso enviado", description: "Se notificó al cliente que esperas el comprobante" });
+        toast({ title: "Comprobante pedido", description: "Al cliente le llegaron tus cuentas y que debe enviar la foto del comprobante." });
       }
     },
     onError: () => {
@@ -1021,7 +1027,10 @@ export default function PedidosPage() {
       case "pendiente_confirmacion": return { texto: "Confirmar pedido", accion: () => openConfirmModal(pedido) };
       case "esperando_pago": return { texto: "Ya pagó · confirmar", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "pendiente" }) };
       case "en_camino":
-      case "llegando": return { texto: "Marcar entregado", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" }) };
+      case "llegando":
+        // Transferencia sin aprobar: primero se aprueba el pago; después se puede entregar.
+        if (pedido.metodoPago === "transferencia" && !pedido.comprobanteConfirmado) return { texto: "Aprobar pago", accion: () => confirmarPagoMutation.mutate(pedido.id) };
+        return { texto: "Marcar entregado", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" }) };
       // Preparación (antes estaba en la pantalla "Cocina").
       case "pendiente": return { texto: "Empezar a preparar", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "en_preparacion" }) };
       case "en_preparacion": return { texto: "Marcar listo", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "listo" }) };
@@ -1150,6 +1159,33 @@ export default function PedidosPage() {
                   )}
                   {pedido.reenvioDePedidoId && (
                     <p className="text-xs font-medium text-slate-600" data-testid={`reenvio-de-${pedido.id}`}>Reenvío del pedido #{pedido.reenvioDePedidoId}</p>
+                  )}
+
+                  {/* ── Transferencia: el cliente manda la foto del comprobante y el colmado aprueba el pago ── */}
+                  {pedido.metodoPago === "transferencia" && !["cancelado", "fusionado", "pendiente_confirmacion"].includes(pedido.estado) && (pedido.estado !== "entregado" || !pedido.comprobanteConfirmado) && (
+                    pedido.comprobanteConfirmado ? (
+                      <p className="text-xs font-medium text-emerald-700" data-testid={`pago-aprobado-${pedido.id}`}>🏦 Transferencia aprobada ✓</p>
+                    ) : (
+                      <div className="rounded-xl bg-indigo-50 border border-indigo-200 px-3 py-2.5 text-[13px] text-indigo-950 leading-snug" data-testid={`transferencia-${pedido.id}`}>
+                        <p className="font-semibold">{pedido.comprobanteUrl ? "🏦 El cliente envió el comprobante" : "🏦 Transferencia: falta el comprobante"}</p>
+                        <p className="mt-0.5 text-indigo-900/80">{pedido.comprobanteUrl ? "Revísalo en tu banco y aprueba el pago." : "Pídeselo al cliente: le llegan tus cuentas y cómo enviar la foto."} No se puede entregar hasta aprobarlo.</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {pedido.comprobanteUrl ? (
+                            <a href={pedido.comprobanteUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center min-h-[38px] rounded-lg border border-indigo-300 bg-white px-3 font-semibold text-indigo-800" data-testid={`ver-comprobante-tarjeta-${pedido.id}`}>📄 Ver comprobante</a>
+                          ) : (
+                            <button type="button" className="min-h-[38px] rounded-lg border border-indigo-300 bg-white px-3 font-semibold text-indigo-800 disabled:opacity-60" disabled={avisarComprobanteMutation.isPending} onClick={() => avisarComprobanteMutation.mutate(pedido.id)} data-testid={`pedir-comprobante-${pedido.id}`}>
+                              <Send size={13} className="inline mr-1" /> Pedir comprobante
+                            </button>
+                          )}
+                          {/* En camino, "Aprobar pago" ya es el botón grande de la tarjeta. */}
+                          {!["en_camino", "llegando"].includes(pedido.estado) && (
+                            <button type="button" className="min-h-[38px] rounded-lg bg-indigo-700 px-3 font-semibold text-white disabled:opacity-60" disabled={confirmarPagoMutation.isPending} onClick={() => confirmarPagoMutation.mutate(pedido.id)} data-testid={`aprobar-pago-${pedido.id}`}>
+                              Aprobar pago
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
                   )}
 
                   {/* ── Devuelta: el negocio le da el cambio al repartidor y él lo cuadra al volver ── */}
@@ -1887,9 +1923,16 @@ export default function PedidosPage() {
         </main>
 
       {/* Confirmation Modal */}
+      {/* Confirmar y poner precios: panel fijo a la derecha (pantalla completa en el celular).
+          No se cierra al tocar fuera ni con Escape, para no perder los precios escritos; se cierra con Cancelar o la X. */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-lg w-full mx-4 sm:mx-auto max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent
+          className="left-auto right-0 top-0 translate-x-0 translate-y-0 h-[100dvh] max-h-[100dvh] w-full max-w-full sm:max-w-xl grid-cols-[minmax(0,1fr)] rounded-none sm:rounded-l-2xl overflow-y-auto overflow-x-hidden content-start px-4 sm:px-6 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-left-0 data-[state=open]:slide-in-from-top-0 data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0 data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100 pb-0"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          data-testid="panel-confirmar"
+        >
+          <DialogHeader className="text-left">
             <DialogTitle>Confirmar Pedido #{pedidoParaConfirmar?.id}</DialogTitle>
           </DialogHeader>
           
@@ -1913,7 +1956,7 @@ export default function PedidosPage() {
               <div>
                 <h4 className="font-medium mb-2">Productos</h4>
                 {/* Column headers */}
-                <div className="grid grid-cols-[1fr_40px_72px_48px_20px] gap-1 text-xs text-gray-500 px-1 mb-1">
+                <div className="grid grid-cols-[minmax(0,1fr)_40px_72px_48px_20px] gap-1 text-xs text-gray-500 px-1 mb-1">
                   <span>Producto</span>
                   <span className="text-center">Cant.</span>
                   <span className="text-center">Precio</span>
@@ -1926,7 +1969,7 @@ export default function PedidosPage() {
                     const subtotal = p.cantidad * precio;
                     const sinPrecio = !p.precio || precio === 0;
                     return (
-                      <div key={idx} className="grid grid-cols-[1fr_40px_72px_48px_20px] gap-1 items-center">
+                      <div key={idx} className="grid grid-cols-[minmax(0,1fr)_40px_72px_48px_20px] gap-1 items-center">
                         <Input
                           value={p.nombre}
                           onChange={(e) => {
@@ -1978,7 +2021,7 @@ export default function PedidosPage() {
                   )}
                 </div>
                 {/* Add product row */}
-                <div className="grid grid-cols-[1fr_40px_72px_32px] gap-1 mt-2">
+                <div className="grid grid-cols-[minmax(0,1fr)_40px_72px_32px] gap-1 mt-2">
                   <Input
                     placeholder="Producto"
                     value={newProdNombreConf}
@@ -2050,7 +2093,7 @@ export default function PedidosPage() {
                 );
               })()}
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 sticky bottom-0 -mx-4 px-4 sm:-mx-6 sm:px-6 py-3 bg-background border-t border-slate-200 mt-2">
                   <Button
                     variant="outline"
                     className="flex-1"
@@ -2059,7 +2102,7 @@ export default function PedidosPage() {
                     Cancelar
                   </Button>
                   <Button
-                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    className="flex-[2] min-w-0 h-auto min-h-[44px] py-2 whitespace-normal leading-tight bg-green-600 hover:bg-green-700"
                     disabled={
                       productosParaConfirmar.length === 0 ||
                       productosParaConfirmar.some(p => !p.precio || parseFloat(p.precio) === 0) ||
@@ -2092,7 +2135,7 @@ export default function PedidosPage() {
                     data-testid="button-enviar-confirmacion"
                   >
                     <Send size={14} className="mr-1" />
-                     {(confirmarPedidoMutation.isPending || revisarProductosMutation.isPending) ? "Guardando..." : "Confirmar y enviar por WhatsApp"}
+                     {(confirmarPedidoMutation.isPending || revisarProductosMutation.isPending) ? "Guardando..." : "Confirmar y enviar al cliente"}
                   </Button>
               </div>
             </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "wouter";
+import { VERSION_APP } from "@/version";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Truck,
@@ -70,10 +71,13 @@ interface ColmadoInfo {
   direccion?: string | null;
   latitud?: string | null;
   longitud?: string | null;
+  telefono?: string | null;
 }
 
 interface Pedido {
   id: number;
+  comprobanteUrl?: string | null;
+  comprobanteConfirmado?: boolean | null;
   clienteNombre: string;
   clienteWhatsapp: string;
   clienteUbicacion: string;
@@ -591,11 +595,11 @@ export default function RepartidorPage() {
             <button
               type="button"
               className="h-12 px-3 whitespace-nowrap rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 disabled:opacity-60"
-              disabled={updateEstadoMutation.isPending}
+              disabled={updateEstadoMutation.isPending || (p.metodoPago === "transferencia" && !p.comprobanteConfirmado)}
               onClick={() => updateEstadoMutation.mutate({ pedidoId: p.id, estado: "entregado" })}
               data-testid={`entregar-retorno-${p.id}`}
             >
-              <CheckCircle2 size={18} /> Lo entregué
+              <CheckCircle2 size={18} /> {p.metodoPago === "transferencia" && !p.comprobanteConfirmado ? "Falta aprobar pago" : "Lo entregué"}
             </button>
           </div>
         </div>
@@ -758,6 +762,7 @@ export default function RepartidorPage() {
               </button>
             )}
             <p className="text-[13px] text-slate-500 leading-relaxed">¿Olvidaste el código? Pídele al colmado que te mande tu enlace por WhatsApp: al abrirlo entras sin escribir nada.</p>
+            <p className="text-[11px] text-slate-400 mt-3" data-testid="version-app">Delywa versión {VERSION_APP}</p>
           </div>
         </div>
       </div>
@@ -1057,16 +1062,36 @@ export default function RepartidorPage() {
                       </a>
                     </div>
 
+                    {/* ── Transferencia: el colmado debe aprobar el pago antes de entregar ── */}
+                    {pedido.metodoPago === "transferencia" && (
+                      pedido.comprobanteConfirmado ? (
+                        <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900 font-semibold" data-testid={`transferencia-aprobada-${pedido.id}`}>
+                          🏦 Transferencia aprobada por el colmado. No cobres efectivo.
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl bg-amber-50 border-2 border-amber-300 px-4 py-3 text-sm text-amber-950 leading-snug" data-testid={`transferencia-sin-aprobar-${pedido.id}`}>
+                          <p className="font-bold text-[15px]">🏦 Transferencia sin aprobar</p>
+                          <p className="mt-1">Pídele al cliente el comprobante y llama al colmado para que lo apruebe. Hasta que lo aprueben no puedes marcarlo entregado.</p>
+                          <p className="mt-1 font-semibold">Si lo entregas sin aprobación y el comprobante resulta falso, ese dinero lo pagas tú.</p>
+                          {colmado?.telefono && (
+                            <a href={`tel:${colmado.telefono}`} className="mt-2 h-11 rounded-xl bg-white border border-amber-300 font-semibold flex items-center justify-center gap-2" data-testid={`llamar-colmado-${pedido.id}`}>
+                              <Phone size={16} /> Llamar al colmado
+                            </a>
+                          )}
+                        </div>
+                      )
+                    )}
+
                     {/* ── Action buttons ── */}
                     <div className="space-y-2 pt-1">
                       <Button
                         className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-5 rounded-xl text-base shadow-sm"
                         onClick={() => updateEstadoMutation.mutate({ pedidoId: pedido.id, estado: "entregado" })}
-                        disabled={isUpdating}
+                        disabled={isUpdating || (pedido.metodoPago === "transferencia" && !pedido.comprobanteConfirmado)}
                         data-testid={`btn-entregado-${pedido.id}`}
                       >
                         {isUpdating ? <Loader2 size={18} className="mr-2 animate-spin" /> : <CheckCircle2 size={18} className="mr-2" />}
-                        Marcar como entregado
+                        {pedido.metodoPago === "transferencia" && !pedido.comprobanteConfirmado ? "Esperando que aprueben el pago" : "Marcar como entregado"}
                       </Button>
 
                       {/* "Llegando" — only shown when already en_camino */}
@@ -1155,6 +1180,9 @@ export default function RepartidorPage() {
       </div>
 
       {/* Order History */}
+      {activeTab === "historial" && (
+        <p className="px-4 pt-4 text-center text-[11px] text-slate-400 order-last" data-testid="version-portal">Delywa versión {VERSION_APP}</p>
+      )}
       {activeTab === "historial" && pedidosHistorial.length === 0 && (
         <p className="mx-4 mt-4 rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">Todavía no tienes entregas terminadas.</p>
       )}

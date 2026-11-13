@@ -49,7 +49,7 @@ export const GUIA: Record<ClaveManual, Manual> = {
     empieza: ["moverte", "configuracion", "chat-pagina", "repartidores", "pedidos", "confirmar"],
     grupos: [
       ["Empieza aquí", ["moverte"]],
-      ["El día a día", ["inicio", "pedidos", "confirmar", "preparar", "asignar", "devuelta", "retorno", "historial"]],
+      ["El día a día", ["inicio", "pedidos", "confirmar", "preparar", "asignar", "devuelta", "transferencia", "retorno", "historial"]],
       ["Chats", ["chats", "chat-abierto"]],
       ["Reparto", ["repartidores", "cuadres", "confirmar-cuadre"]],
       ["Dinero", ["ventas", "reportes"]],
@@ -132,19 +132,19 @@ export const GUIA: Record<ClaveManual, Manual> = {
       },
       {
         id: "confirmar", icono: "check", titulo: "Confirmar un pedido", ruta: "pedidos", cap: "confirmar",
-        que: "Antes de preparar, revisas lo que pidió el cliente, pones los precios, corriges lo que haga falta y le mandas el total. El cliente lo recibe en el mismo chat.",
+        que: "Antes de preparar, revisas lo que pidió el cliente, pones los precios, corriges lo que haga falta y le mandas el total. Se abre un panel fijo a la derecha (en el celular, la pantalla completa) que no se cierra si tocas fuera, para que no pierdas los precios.",
         spots: [
           ['[role="dialog"] input[type="text"], [role="dialog"] input:not([type])', "El producto. Si no tienes esa marca o presentación, cambia el nombre por lo que sí tienes; el cliente lo ve en la confirmación."],
           ['[role="dialog"] input[step="0.01"]', "El precio de cada producto. Los que el cliente pidió por dinero («10 pesos de ajo») ya vienen con su precio."],
           ['[data-testid="input-new-product-nombre"]', "Agregar un producto que el cliente pidió aparte o que faltó anotar."],
-          ['[data-testid="button-enviar-confirmacion"]', "Confirmar y enviar: el cliente recibe la lista con precios y el total, y el pedido pasa a Preparando."],
+          ['[data-testid="button-enviar-confirmacion"]', "Confirmar y enviar al cliente: recibe la lista con precios y el total, y el pedido pasa a Preparando. Si paga por transferencia, también le llegan tus cuentas."],
         ],
         pasos: [
           "En Por confirmar, pulsa «Confirmar pedido».",
           "Escribe el precio de cada producto.",
           "Si no tienes algo, cambia el nombre por lo que sí tienes o quítalo con la ×.",
           "Revisa el delivery y el total que paga el cliente.",
-          "Pulsa «Confirmar y enviar».",
+          "Pulsa «Confirmar y enviar al cliente».",
         ],
         tips: [
           "Si el colmado tiene WhatsApp conectado, el aviso sale por WhatsApp; si no, se abre WhatsApp con el mensaje listo para que lo envíes tú. En el chat del colmado el cliente lo recibe al momento.",
@@ -192,6 +192,27 @@ export const GUIA: Record<ClaveManual, Manual> = {
           "En Cuadres tienes el historial de todas las devueltas que le diste a cada repartidor.",
         ],
         faq: [["¿Y si el pedido no se entrega?", "El repartidor te devuelve el pedido y esa devuelta. Se descuenta en su cuadre."]],
+      },
+      {
+        id: "transferencia", icono: "card", titulo: "Pagos por transferencia", ruta: "pedidos", cap: "transferencia",
+        que: "Cuando el cliente paga por transferencia, le llegan tus cuentas y se le pide la foto del comprobante. Tú la revisas y apruebas el pago. Mientras no lo apruebes, nadie puede marcar el pedido entregado.",
+        spots: [
+          ['[data-testid="transferencia-10"]', "El estado del pago: si falta el comprobante o si el cliente ya lo envió."],
+          ['[data-testid="pedir-comprobante-10"], [data-testid="ver-comprobante-tarjeta-10"]', "Pedir comprobante: al cliente le llegan tus cuentas y que debe enviar la foto. Cuando la envíe, aquí sale «Ver comprobante»."],
+          ['[data-testid="principal-10"]', "Aprobar pago: cuando veas el dinero en tu banco. Al cliente le llega la confirmación y ya se puede entregar."],
+        ],
+        pasos: [
+          "Pon tus cuentas en Configuración → Formas de pago (banco, tipo, número y a nombre de quién).",
+          "El cliente elige Transferencia y recibe tus cuentas en el chat.",
+          "Si no ha enviado la foto, pulsa «Pedir comprobante».",
+          "Revisa la foto y tu banco, y pulsa «Aprobar pago».",
+          "El pedido puede salir antes de aprobarlo, pero el repartidor no lo podrá marcar entregado hasta que lo apruebes.",
+        ],
+        tips: [
+          "El repartidor ve en su portal «Transferencia sin aprobar» y un botón para llamarte.",
+          "Si el repartidor entrega sin aprobación y el comprobante resulta falso, ese dinero lo paga él (así se lo dice el portal).",
+        ],
+        faq: [["¿Dónde se guarda la foto?", "En el pedido: «Ver comprobante» la abre. También queda en la conversación del cliente."]],
       },
       {
         id: "retorno", icono: "undo", titulo: "No se pudo entregar (devoluciones)", ruta: "pedidos", cap: "retorno",
@@ -423,7 +444,7 @@ export const GUIA: Record<ClaveManual, Manual> = {
     empieza: ["entrar", "disponible", "entregas", "entregar", "cuadre"],
     grupos: [
       ["Empieza aquí", ["entrar", "disponible"]],
-      ["Entregar", ["entregas", "entregar", "ruta", "no-entregado", "devolver"]],
+      ["Entregar", ["entregas", "entregar", "transferencia", "ruta", "no-entregado", "devolver"]],
       ["Al terminar", ["cuadre", "historial"]],
     ],
     modulos: [
@@ -476,6 +497,16 @@ export const GUIA: Record<ClaveManual, Manual> = {
         pasos: ["Revisa los productos antes de salir.", "Toca la dirección para llegar.", "Al acercarte, pulsa «Ya estoy llegando».", "Entrega, cobra y da la devuelta.", "Pulsa «Marcar como entregado»."],
       },
       {
+        id: "transferencia", icono: "card", titulo: "Pedidos pagados por transferencia", cap: "r-transferencia",
+        que: "Si el cliente paga por transferencia, el colmado tiene que aprobar el pago antes de que lo marques entregado. Mientras tanto la tarjeta te lo avisa y el botón de entregar queda bloqueado.",
+        spots: [
+          ['[data-testid="transferencia-sin-aprobar-10"]', "Transferencia sin aprobar: pídele al cliente el comprobante."],
+          ['[data-testid="llamar-colmado-10"]', "Llama al colmado para que revise el comprobante y apruebe el pago."],
+        ],
+        pasos: ["Pídele al cliente que te enseñe el comprobante.", "Llama al colmado.", "Cuando lo aprueben, la tarjeta dice «Transferencia aprobada» y ya puedes marcarlo entregado."],
+        tips: ["Si lo entregas sin aprobación y el comprobante resulta falso, ese dinero lo pagas tú.", "Con la transferencia aprobada no cobras efectivo."],
+      },
+      {
         id: "ruta", icono: "route", titulo: "Tu ruta", cap: "r-ruta",
         que: "En Ruta ves en el mapa los pedidos que te faltan, en el mejor orden. Los entregados ya no salen aquí: pasan a Historial.",
         spots: [
@@ -520,7 +551,7 @@ export const GUIA: Record<ClaveManual, Manual> = {
       },
       {
         id: "historial", icono: "history", titulo: "Historial", cap: "r-historial",
-        que: "Tus pedidos cerrados: entregados, cancelados y devueltos. Toca uno para ver el detalle.",
+        que: "Tus pedidos cerrados: entregados, cancelados y devueltos. Toca uno para ver el detalle. Abajo dice la versión de Delywa que tienes.",
         spots: [
           ['[data-testid^="historial-abrir-"]', "Toca un pedido para abrirlo."],
           ['[data-testid^="historial-detalle-"]', "El detalle: productos, forma de pago, lo cobrado, la devuelta, la dirección y el motivo si no se entregó."],
@@ -563,7 +594,12 @@ export const GUIA: Record<ClaveManual, Manual> = {
           ['[data-testid="input-mensaje"]', "Escribe aquí. Mantén el micrófono para una nota de voz."],
         ],
         pasos: ["Escribe los productos.", "Responde «¿Algo más?».", "Cuando termines, toca «Eso es todo»."],
-        tips: ["«10 pesos de ajo» se anota como RD$10 de ajo, no como 10 ajos.", "Si el bot no entiende algo, el colmado lo lee y te responde."],
+        tips: [
+          "El bot anota lo que escribes con tus mismas palabras (solo corrige la ortografía) y le pone un emoji a cada producto: 🍚 arroz, 🍺 fría, 🫒 aceite…",
+          "«10 pesos de ajo» se anota como RD$10 de ajo, no como 10 ajos.",
+          "Si hay botones pero prefieres escribir, escribe: el bot te contesta y después te repite la pregunta.",
+          "Si el bot no entiende algo, el colmado lo lee y te responde.",
+        ],
       },
       {
         id: "ubicacion", icono: "pin", titulo: "Tu ubicación", cap: "c-ubicacion",
@@ -576,7 +612,7 @@ export const GUIA: Record<ClaveManual, Manual> = {
       },
       {
         id: "pagar", icono: "card", titulo: "Cómo pagar", cap: "c-pagar",
-        que: "Elige efectivo, tarjeta o transferencia. Si pagas en efectivo, dile con cuánto vas a pagar para que el repartidor lleve tu devuelta.",
+        que: "Elige efectivo, tarjeta o transferencia. En efectivo, dile con cuánto vas a pagar para que el repartidor lleve tu devuelta. Por transferencia, te llegan las cuentas del colmado y envías la foto del comprobante con el botón «📸 Enviar comprobante».",
         spots: [
           ['[data-testid="opciones-rapidas"]', "Elige la forma de pago y, en efectivo, con cuánto pagas."],
           ['button[aria-label="Adjuntar ubicación o comprobante"]', "Transferencia: manda la foto del comprobante con el botón +."],

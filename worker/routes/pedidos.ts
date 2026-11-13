@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { emojiDe } from "../bot/productos";
+import { instruccionesTransferencia } from "../lib/transferencia";
 import type { Colmado, Pedido } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
@@ -276,7 +278,7 @@ function lineasProductos(productos: any[], simbolo: string): string {
     const nombre = p.nombre || p.name;
     const cantidad = parseInt(p.cantidad) || 1;
     const monto = num(p.monto);
-    return `• ${cantidad > 1 ? `${cantidad}x ` : ""}${nombre}${monto > 0 ? ` (${simbolo}${monto})` : ""}`;
+    return `${emojiDe(String(nombre ?? ""))} ${cantidad > 1 ? `${cantidad}x ` : ""}${nombre}${monto > 0 ? ` (${simbolo}${monto})` : ""}`;
   }).join("\n");
 }
 
@@ -360,6 +362,7 @@ pedidoRoutes.post("/api/pedidos/:id/confirmar", requireAuth, async (c) => {
     if (metodo) {
       mensaje += `*Pago:* ${metodo === "efectivo" ? "💵 Efectivo" : metodo === "transferencia" ? "🏦 Transferencia" : "💳 Tarjeta"}\n`;
       if (metodo === "efectivo" && devuelta > 0) mensaje += `💵 Pagas con: ${simbolo}${montoPago}\n🔄 *Devuelta: ${simbolo}${devuelta}*\n`;
+      if (metodo === "transferencia" && !pedido.comprobanteConfirmado) mensaje += `\n${await instruccionesTransferencia(db, colmado.id)}\n`;
     }
     mensaje += `\n⏱️ *Tiempo estimado: ${colmado.tiempoEstimado || "20-30 min"}*\n`;
     mensaje += pedido.tipoEntrega === "pickup"
@@ -435,9 +438,10 @@ pedidoRoutes.patch("/api/pedidos/:id/confirmar-pago", requireAuth, async (c) => 
   const lista = productos.length
     ? productos.map((p: any) => (p.monto ? `• ${p.nombre || p.name} (${simbolo}${p.monto})` : p.cantidad ? `• ${p.cantidad}x ${p.nombre || p.name}` : `• ${p.nombre || p.name}`)).join("\n")
     : String(pedido.productos);
-  const mensaje = `✅ *¡Pago Confirmado!*\n\n📝 *Tu pedido #${pedido.id}:*\n${lista}\n\n💰 *Total: ${simbolo}${num(pedido.totalConfirmado || pedido.total)}*\n🏦 Pago: Transferencia ✅\n\n⏱️ *Tiempo estimado de entrega: ${colmado.tiempoEstimado || "20-30 min"}*\n\n¡Tu pedido está en camino! 🛵`;
+  const mensaje = `✅ *¡Recibimos tu pago!*\n\n📝 *Tu pedido #${pedido.id}:*\n${lista}\n\n💰 *Total: ${simbolo}${num(pedido.totalConfirmado || pedido.total)}*\n🏦 Pago: Transferencia aprobada ✅\n\n¡Gracias! Te avisamos cuando vaya en camino 🛵`;
   await notificarCliente(c.env, db, colmado, pedido, mensaje, { estadoChat: "finalizado" });
-  return c.json({ success: true, message: "Pago confirmado, pedido listo para entrega" });
+  await avisarNegocio(c.env, pedido.colmadoId, ["pedidos"]);
+  return c.json({ success: true, message: "Pago aprobado: el pedido ya se puede entregar" });
 });
 
 const revisarProductosSchema = z.object({
@@ -485,16 +489,17 @@ pedidoRoutes.post("/api/pedidos/:id/avisar-comprobante", requireAuth, async (c) 
   const nombre = pedido.clienteNombre || "cliente";
   const existente = pedido.clienteWhatsapp ? await getConversacionByCliente(db, pedido.colmadoId, pedido.clienteWhatsapp) : undefined;
 
+  const cuentas = await instruccionesTransferencia(db, colmado.id);
   let mensaje: string;
   if (existente) {
-    mensaje = `👋 Hola ${nombre}! Estamos listos. Solo estamos esperando tu comprobante de pago para enviar tu pedido 🛵📎`;
+    mensaje = `👋 Hola ${nombre}! Para tu pedido *#${pedido.id}* (${simbolo}${num(pedido.totalConfirmado || pedido.total).toLocaleString("es-DO")}) debes enviarnos la *foto del comprobante* de la transferencia 🙏\n\n${cuentas}`;
   } else {
     const totalPedido = num(pedido.totalConfirmado || pedido.total);
     const costoDelivery = pedido.tipoEntrega === "pickup" ? 0 : num(pedido.costoDeliveryAplicado);
     const lineas = leerProductos(pedido.productos).map((p: any) => `• ${p.nombre || p.producto}: ${simbolo}${p.monto || p.precio || 0}`).join("\n");
     mensaje = `👋 Hola ${nombre}! Te escribe *${colmado.nombre}*.\n\n⏳ Tu pedido *#${pedido.id}* está pendiente del comprobante de pago para ser procesado.\n\n📝 *Detalle de tu pedido:*\n${lineas}\n\n`;
     mensaje += `💰 Subtotal: ${simbolo}${(totalPedido - costoDelivery).toLocaleString("es-DO")}\n🛵 Delivery: ${simbolo}${costoDelivery.toLocaleString("es-DO")}\n━━━━━━━━━━━━━━━\n*💵 Total: ${simbolo}${totalPedido.toLocaleString("es-DO")}*\n\n`;
-    mensaje += `📎 Por favor envía el comprobante de tu transferencia para continuar.\n⚠️ Lamentablemente, si no recibimos el comprobante tu pedido no podrá ser procesado.`;
+    mensaje += `${cuentas}\n\n⚠️ Sin el comprobante aprobado el pedido no se puede entregar.`;
   }
   const envio = await notificarCliente(c.env, db, colmado, pedido, mensaje);
   // El aviso queda en la conversación aunque WhatsApp aún no esté conectado.

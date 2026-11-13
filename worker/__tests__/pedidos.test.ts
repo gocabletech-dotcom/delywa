@@ -413,3 +413,26 @@ describe("retorno: el pedido no se entregó y vuelve al negocio", () => {
   });
 });
 
+describe("transferencia: no se entrega sin el pago aprobado", () => {
+  it("el colmado aprueba el pago; antes nadie puede marcarlo entregado y aprobar no lo devuelve a pendiente", async () => {
+    const [rep] = await t.db.insert(deliveries).values({ colmadoId: cafe.id, nombre: "Leo", whatsappNumero: "18093330097", estado: "activo" }).returning();
+    const [p] = await t.db.insert(pedidos).values({
+      colmadoId: cafe.id, clienteNombre: "Gina", clienteWhatsapp: "18095550103", clienteUbicacion: "Calle 9",
+      productos: JSON.stringify([{ nombre: "Pan", monto: 50, cantidad: 1 }]), total: "100", totalConfirmado: "100", montoPago: "0",
+      metodoPago: "transferencia", estado: "en_camino", deliveryId: rep.id,
+    }).returning();
+    const intento = await operador.request("PATCH", `/api/pedidos/${p.id}/estado`, { estado: "entregado" });
+    expect(intento.status).toBe(409);
+    expect(intento.json.reason).toBe("transferencia_sin_aprobar");
+
+    expect((await operador.request("PATCH", `/api/pedidos/${p.id}/confirmar-pago`)).status).toBe(200);
+    let [fila] = await t.db.select().from(pedidos).where(eq(pedidos.id, p.id));
+    expect(fila).toMatchObject({ comprobanteConfirmado: true, estado: "en_camino" }); // sigue en camino
+    expect((await operador.request("PATCH", `/api/pedidos/${p.id}/confirmar-pago`)).status).toBe(409); // una sola vez
+
+    expect((await operador.request("PATCH", `/api/pedidos/${p.id}/estado`, { estado: "entregado" })).status).toBe(200);
+    [fila] = await t.db.select().from(pedidos).where(eq(pedidos.id, p.id));
+    expect(fila.estado).toBe("entregado");
+  });
+});
+

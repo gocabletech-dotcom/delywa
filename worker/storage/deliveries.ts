@@ -423,6 +423,13 @@ export async function marcarParadaEstado(db: Db, paradaId: number, rutaId: numbe
   return row;
 }
 
+/** El pedido se cerró (entregado, devuelto o cancelado) desde cualquier lado: sus paradas pendientes se cierran igual. */
+export async function cerrarParadasDelPedido(db: Db, pedidoId: number, estado: "entregado" | "no_entregado", motivo?: string | null): Promise<void> {
+  const abiertas = await db.select({ id: paradasRuta.id, rutaId: paradasRuta.rutaId }).from(paradasRuta)
+    .where(and(eq(paradasRuta.pedidoId, pedidoId), eq(paradasRuta.estado, "pendiente")));
+  for (const p of abiertas) await marcarParadaEstado(db, p.id, p.rutaId, estado, motivo ?? undefined);
+}
+
 /** Repartidores del negocio con su posición, su ruta activa y el ETA de sus pedidos abiertos. */
 export async function getDeliveriesConUbicacion(db: Db, colmadoId: number) {
   const lista = await getDeliveriesByColmado(db, colmadoId);

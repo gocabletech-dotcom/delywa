@@ -22,5 +22,7 @@ INSERT INTO clientes (colmado_id, whatsapp_numero, nombre, direccion_texto) VALU
 INSERT INTO clientes (colmado_id, whatsapp_numero, nombre, direccion_texto) VALUES (1, '18095550004', 'Pedro Santos', NULL);
 INSERT INTO clientes (colmado_id, whatsapp_numero, nombre, direccion_texto) VALUES (1, '18095550005', 'Carla Rosario', NULL);
 INSERT INTO clientes (colmado_id, whatsapp_numero, nombre, direccion_texto) VALUES (1, '18095550006', 'Rosa Marte', NULL);
+INSERT INTO pedidos (colmado_id, cliente_nombre, cliente_whatsapp, cliente_ubicacion, productos, total, total_confirmado, estado, metodo_pago, monto_pago, fecha_creacion, delivery_id, cliente_latitud, cliente_longitud) VALUES (1, 'Sandra Peña', '18095550010', 'Calle Duarte 40, Los Mina', '[{"nombre":"Arroz (libras)","cantidad":5,"monto":45},{"nombre":"Aceite","cantidad":1,"monto":280}]', '555', '555', 'en_camino', 'transferencia', '0', (unixepoch()-1200)*1000, 1, '18.4835000', '-69.8655000');
+INSERT INTO metodos_pago (colmado_id, efectivo, transferencia, tarjeta, bancos) VALUES (1, 1, 1, 1, '[{"nombre":"Banco Popular","numeroCuenta":"812345678","tipoCuenta":"Ahorro","titular":"Colmado El Sol"},{"nombre":"Banreservas","numeroCuenta":"960123456","tipoCuenta":"Corriente","titular":"Juan Pérez"}]');
 INSERT INTO ventas (colmado_id, fecha, total_ventas, pedidos_entregados, pedidos_cancelados) VALUES (1, (unixepoch()-60)*1000, '1390', 3, 0);
 UPDATE pedidos SET vuelto_entregado_at = fecha_creacion + 120000 WHERE vuelto_entregado_al_delivery = 1;

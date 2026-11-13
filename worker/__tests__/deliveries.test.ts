@@ -281,6 +281,21 @@ describe("portal del repartidor", () => {
     await t.db.delete(pedidos).where(inArray(pedidos.id, [lleva.id, otro.id, devuelto.id]));
   });
 
+  it("si el pedido se entrega o vuelve desde la tarjeta o el panel, su parada de la ruta se cierra sola", async () => {
+    const a = await pedidoListo({ estado: "en_camino", deliveryId: repartidor.id, clienteLatitud: "18.49", clienteLongitud: "-69.95" });
+    const b = await pedidoListo({ estado: "en_camino", deliveryId: repartidor.id, clienteLatitud: "18.50", clienteLongitud: "-69.96" });
+    const ruta = await portal.request("POST", `/api/deliveries/${repartidor.id}/rutas/optimizar`, { pedidosIds: [a.id, b.id] });
+    expect(ruta.status).toBe(200);
+    expect((await portal.request("PATCH", `/api/portal-repartidor/pedidos/${a.id}/estado`, { estado: "entregado" })).status).toBe(200);
+    expect((await portal.request("PATCH", `/api/portal-repartidor/pedidos/${b.id}/estado`, { estado: "retorno", motivoRetorno: "Cliente ausente" })).status).toBe(200);
+    const paradas = await t.db.select().from(paradasRuta).where(eq(paradasRuta.rutaId, ruta.json.ruta.id));
+    expect(paradas.map((x) => [x.pedidoId, x.estado]).sort()).toEqual([[a.id, "entregado"], [b.id, "no_entregado"]].sort());
+    const [r] = await t.db.select().from(rutas).where(eq(rutas.id, ruta.json.ruta.id));
+    expect(r.estado).toBe("completada");
+    await t.db.delete(paradasRuta).where(eq(paradasRuta.rutaId, ruta.json.ruta.id));
+    await t.db.delete(pedidos).where(inArray(pedidos.id, [a.id, b.id]));
+  });
+
   it("al ponerse en descanso puede volver a entrar; si el dueño lo deshabilita, no", async () => {
     await portal.request("POST", "/api/portal-repartidor/desactivar");
     const [fila] = await t.db.select().from(deliveries).where(eq(deliveries.id, repartidor.id));

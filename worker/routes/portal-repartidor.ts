@@ -130,6 +130,7 @@ portalRepartidorRoutes.get("/api/portal-repartidor/me", requirePortal, async (c)
       id: conMoneda.id, nombre: conMoneda.nombre, logo: conMoneda.logo, colorPrimario: conMoneda.colorPrimario,
       tiempoEstimado: conMoneda.tiempoEstimado, simboloMoneda: conMoneda.simboloMoneda || "RD$",
       direccion: conMoneda.direccion, latitud: conMoneda.latitud, longitud: conMoneda.longitud,
+      telefono: conMoneda.telefonoAlternativo || conMoneda.whatsappNumero,
     } : null,
     fueraDeHorario: gracia.enGracia,
     horaFinTurno: gracia.terminaEn ? new Date(gracia.terminaEn).toISOString() : null,

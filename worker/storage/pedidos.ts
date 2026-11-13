@@ -197,10 +197,15 @@ export async function updatePedidoCoordenadas(db: Db, id: number, lat: number, l
 
 /** Marca el comprobante como confirmado y libera el pedido para entrega. */
 export async function confirmarPagoTransferencia(db: Db, id: number): Promise<boolean> {
+  // Solo aprueba el pago: el pedido sigue en el paso donde esté (antes volvía a "pendiente" aunque ya hubiera salido).
   const rows = await db.update(pedidos)
-    .set({ comprobanteConfirmado: true, estado: "pendiente" })
-    .where(and(eq(pedidos.id, id), not(inArray(pedidos.estado, ESTADOS_TERMINALES))))
+    .set({ comprobanteConfirmado: true })
+    .where(and(eq(pedidos.id, id), not(inArray(pedidos.estado, ESTADOS_TERMINALES)), or(isNull(pedidos.comprobanteConfirmado), eq(pedidos.comprobanteConfirmado, false))))
     .returning({ id: pedidos.id });
+  if (rows.length) {
+    await db.update(pedidos).set({ estado: "pendiente" })
+      .where(and(eq(pedidos.id, id), inArray(pedidos.estado, ["esperando_pago", "esperando_comprobante", "esperando_confirmacion_pago"])));
+  }
   return rows.length > 0;
 }
 

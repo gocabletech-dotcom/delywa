@@ -2,9 +2,14 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import fs from "fs";
+
+// La versión se muestra en el panel y en el portal del repartidor para saber qué está publicado.
+const VERSION = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "package.json"), "utf8")).version as string;
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: { __DELYWA_VERSION__: JSON.stringify(VERSION) },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),

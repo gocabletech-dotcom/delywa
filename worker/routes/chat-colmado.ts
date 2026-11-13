@@ -1,3 +1,4 @@
+import { avisarNegocio } from "../lib/tiempo-real";
 import { Hono, type Context } from "hono";
 import { and, asc, count, desc, eq, gt, gte, max, ne } from "drizzle-orm";
 import { toFile } from "openai";
@@ -248,11 +249,13 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/comprobante", async 
   if (!s.sesion.pedidoId) return c.json({ error: "Primero haz tu pedido; después envía el comprobante." }, 400);
   await db.update(pedidos).set({ comprobanteUrl: body.comprobanteUrl }).where(and(eq(pedidos.id, s.sesion.pedidoId), eq(pedidos.colmadoId, s.colmado.id)));
   const id = await guardarDelCliente(db, s.sesion.sessionId, "📸 Comprobante de pago enviado");
-  const aviso = "¡Recibimos tu comprobante! 🙌 El colmado lo revisa y te confirma el pedido por aquí.";
+  const aviso = "¡Recibimos tu comprobante! 🙌 El colmado lo revisa y te confirma por aquí.";
   await db.insert(chatWebMensajes).values({ sessionId: s.sesion.sessionId, rol: "assistant", contenido: aviso });
   if (s.sesion.conversacionId) {
     await addMensaje(db, s.sesion.conversacionId, "user", `[Comprobante de pago: ${body.comprobanteUrl}]`);
     await addMensaje(db, s.sesion.conversacionId, "assistant", aviso);
   }
+  // El panel ve el comprobante al momento para revisarlo.
+  await avisarNegocio(c.env, s.colmado.id, ["pedidos", "conversaciones"]);
   return c.json({ ok: true, id });
 });

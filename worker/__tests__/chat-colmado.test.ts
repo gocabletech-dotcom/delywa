@@ -2,7 +2,7 @@
 // Pruebas con D1 local en memoria e IA simulada: no se llama a Cloudflare AI, OpenAI ni Meta.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { botNoEntendidos, botRegistro, chatWebMensajes, chatWebSesiones, clienteDirecciones, clientes, colmados, diccionarioJerga, pedidos, whatsappConversaciones, whatsappMensajes } from "@shared/schema";
+import { botNoEntendidos, botRegistro, chatWebMensajes, chatWebSesiones, clienteDirecciones, clientes, colmados, diccionarioJerga, metodosPago, pedidos, whatsappConversaciones, whatsappMensajes } from "@shared/schema";
 import { createTestApp } from "./helpers";
 import { http } from "../lib/whatsapp";
 import { tiempos } from "../routes/chat-colmado";
@@ -64,18 +64,18 @@ describe("bot por pasos del chat de la página (sin IA)", () => {
 
   it("anota el pedido y pregunta «¿Algo más?»", async () => {
     let r = await decir(sessionId, "dame 2 libras de arroz y una fría");
-    expect(r[0].contenido).toContain("• 2 libras de Arroz");
-    expect(r[0].contenido).toContain("• 1 Cerveza Presidente");
+    expect(r[0].contenido).toContain("2 libras de Arroz");
+    expect(r[0].contenido).toContain("🍺 1 Fría");
     expect(r[0].contenido).toContain("¿Algo más?");
     expect(r[0].opciones).toEqual([{ texto: "Eso es todo" }]);
     r = await decir(sessionId, "también un aceite");
-    expect(r[0].contenido).toContain("• 1 Aceite");
+    expect(r[0].contenido).toContain("1 Aceite");
   });
 
   it("«no» → muestra todo y pregunta «¿Eso es todo?»; «sí» → pide la ubicación", async () => {
     let r = await decir(sessionId, "no, nada más");
     expect(r[0].contenido).toContain("¿Eso es todo?");
-    expect(r[0].contenido).toContain("• 2 libras de Arroz");
+    expect(r[0].contenido).toContain("2 libras de Arroz");
     r = await decir(sessionId, "Sí, eso es todo");
     expect(r[0].contenido).toContain("¿A dónde te lo llevamos?");
     expect(r[0].opciones).toEqual([{ texto: "📍 Enviar mi ubicación", accion: "ubicacion" }]);
@@ -99,7 +99,7 @@ describe("bot por pasos del chat de la página (sin IA)", () => {
     expect(p).toMatchObject({ estado: "pendiente_confirmacion", metodoPago: "efectivo", necesitaDevuelta: true, clienteWhatsapp: "18095557777", clienteLatitud: "18.4800000" });
     expect(Number(p.montoPago)).toBe(1000);
     expect(JSON.parse(String(p.productos))).toEqual([
-      { nombre: "Arroz (libras)", cantidad: 2, monto: null }, { nombre: "Cerveza Presidente", cantidad: 1, monto: null }, { nombre: "Aceite", cantidad: 1, monto: null },
+      { nombre: "Arroz (libras)", cantidad: 2, monto: null }, { nombre: "Fría", cantidad: 1, monto: null }, { nombre: "Aceite", cantidad: 1, monto: null },
     ]);
     // Sin IA y sin WhatsApp.
     expect(llamadasIA).toBe(0);
@@ -145,6 +145,49 @@ describe("bot por pasos del chat de la página (sin IA)", () => {
   });
 });
 
+describe("si hay botones y el cliente escribe otra cosa, se le contesta", () => {
+  it("agrega productos sin perder el paso, contesta preguntas y no toma cualquier texto como dirección", async () => {
+    const id = await abrir("8095556600", "Lia");
+    await decir(id, "hey quiero una libra de arroz, 2 libras de pollo. sopita, verdura");
+    let r = await decir(id, "eso es todo");
+    expect(textos(r)).toContain("¿A dónde te lo llevamos?");
+    // En la ubicación escribe un producto: se anota y se le vuelve a pedir la ubicación.
+    r = await decir(id, "agrégame también una fría");
+    expect(textos(r)).toContain("Anotado también ✍️\n🍺 1 Fría");
+    expect(r.at(-1).opciones).toEqual([{ texto: "📍 Enviar mi ubicación", accion: "ubicacion" }]);
+    // Una pregunta no se guarda como dirección: la contesta la IA y vuelve a pedir la ubicación.
+    respuestaIA = { tipo: "pregunta", productos: [], respuesta: "Sí, el pollo es fresco de hoy." };
+    r = await decir(id, "el pollo es fresco?");
+    expect(textos(r)).toContain("Sí, el pollo es fresco de hoy.");
+    expect(textos(r)).toContain("¿A dónde te lo llevamos?");
+    const [s1] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
+    expect(s1.clienteDireccion).toBeNull();
+    // Una dirección escrita sí pasa a la forma de pago; ahí escribe otra cosa y se le contesta.
+    r = await decir(id, "Calle 5 #12, Los Mina, frente al parque");
+    expect(textos(r)).toContain("¿Cómo vas a pagar?");
+    r = await decir(id, "y dos huevos");
+    expect(textos(r)).toContain("🥚 2 Huevos");
+    expect(r.at(-1).opciones.map((o: any) => o.texto)).toEqual(["💵 Efectivo", "💳 Tarjeta", "🏦 Transferencia"]);
+    const [s2] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
+    expect(s2.estadoConversacion).toBe("esperando_pago");
+    expect((s2.productosCapturados as any[]).map((p) => p.nombre)).toEqual(["Arroz", "Pollo", "Sopita", "Verdura", "Fría", "Huevos"]);
+  });
+
+  it("transferencia: le pasa las cuentas del colmado y el botón para enviar la foto", async () => {
+    await t.db.insert(metodosPago).values({ colmadoId: colmado.id, efectivo: true, transferencia: true,
+      bancos: [{ nombre: "Banco Popular", numeroCuenta: "812345678", tipoCuenta: "Ahorro", titular: "Colmado El Sol" }] })
+      .onConflictDoNothing();
+    const id = await abrir("8095556611", "Rosa");
+    await decir(id, "un aceite");
+    await decir(id, "eso es todo");
+    await c().request("POST", `/api/chat-colmado/sesion/${id}/ubicacion`, { latitude: 18.48, longitude: -69.9 });
+    const r = await decir(id, "🏦 Transferencia");
+    expect(r[0].contenido).toContain("Banco Popular (Ahorro): *812345678* — a nombre de Colmado El Sol");
+    expect(r[0].contenido).toContain("foto del comprobante");
+    expect(r[0].opciones).toEqual([{ texto: "📸 Enviar comprobante", accion: "comprobante" }]);
+  });
+});
+
 describe("la IA de Cloudflare solo cuando no entiende", () => {
   it("lo que entiende la IA se le enseña al diccionario", async () => {
     const id = await abrir("8095553333", "Pepe");
@@ -152,7 +195,7 @@ describe("la IA de Cloudflare solo cuando no entiende", () => {
     respuestaIA = { tipo: "productos", productos: [{ nombre: "Cerveza Heineken", cantidad: 1, unidad: null, jergaOriginal: "la de botella verde" }], respuesta: null };
     const r = await decir(id, "mándame la que siempre me tomo, la de botella verde que me gusta tanto");
     expect(llamadasIA).toBe(antes + 1);
-    expect(r[0].contenido).toContain("• 1 Cerveza Heineken");
+    expect(r[0].contenido).toContain("🍺 1 La de botella verde");
     const dicc = await t.db.select().from(diccionarioJerga).where(and(eq(diccionarioJerga.colmadoId, colmado.id), eq(diccionarioJerga.jerga, "la de botella verde")));
     expect(dicc).toHaveLength(1);
     const [m] = await t.db.select().from(botRegistro).where(eq(botRegistro.colmadoId, colmado.id));
@@ -174,7 +217,7 @@ describe("la IA de Cloudflare solo cuando no entiende", () => {
     expect(r.json).toMatchObject({ ok: true, texto: "dos fundas de pan" });
     const ms = (await c().request("GET", `/api/chat-colmado/sesion/${id}/mensajes`)).json.mensajes;
     expect(ms.map((m: any) => m.contenido)).toContain("🎤 dos fundas de pan");
-    expect(textos(ms)).toContain("• 2 fundas de Pan");
+    expect(textos(ms)).toContain("2 fundas de Pan");
   });
 });
 
@@ -339,14 +382,14 @@ describe("pedido por dinero en el chat", () => {
   it("«10 pesos de ajo» se anota como RD$10 y llega al colmado con ese precio", async () => {
     const id = await abrir("8095554444", "Pedro");
     const r = await decir(id, "dame 10 pesos de ajo y 2 libras de arroz");
-    expect(r[0].contenido).toContain("• RD$10 de Ajo");
-    expect(r[0].contenido).toContain("• 2 libras de Arroz");
+    expect(r[0].contenido).toContain("RD$10 de Ajo");
+    expect(r[0].contenido).toContain("2 libras de Arroz");
     const r2 = await decir(id, "y 15 de ajo");
-    expect(r2[0].contenido).toContain("• RD$15 de Ajo");
+    expect(r2[0].contenido).toContain("RD$15 de Ajo");
     await decir(id, "eso es todo");
     await decir(id, "Calle Sol #5, frente al parque");
     const fin = await decir(id, "tarjeta");
-    expect(fin[0].contenido).toContain("• RD$25 de Ajo");
+    expect(fin[0].contenido).toContain("RD$25 de Ajo");
     const [s] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
     const [p] = await t.db.select().from(pedidos).where(eq(pedidos.id, s.pedidoId!));
     const productos = typeof p.productos === "string" ? JSON.parse(p.productos) : p.productos;

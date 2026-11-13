@@ -132,7 +132,88 @@ const RELLENO = new Set([
   "ademas", "y", "e", "por", "favor", "porfa", "porfavor", "xfa", "pls", "hola", "buenas", "buenos", "dias", "tardes", "noches",
   "saludos", "klk", "oye", "mira", "vecino", "vecina", "jefe", "mi", "amor", "mami", "papi", "loco", "manito", "manin", "tigre",
   "de", "del", "la", "el", "los", "las", "lo", "unos", "unas", "algo", "para", "pa", "que", "q", "si", "puedes", "podrias", "me", "lleva", "llevar",
+  "hey", "ey", "ei", "epa", "epale", "dimelo", "diga", "holi", "hello", "hi", "wey", "saludo", "bendiciones", "bendicion",
 ]);
+
+// ---------- Nombre que se anota: las palabras del cliente ----------
+// El bot NO cambia lo que el cliente escribe por otro producto ("sopita" sigue siendo "Sopita",
+// "verdura" sigue siendo "Verdura"). Solo corrige la ortografía ("arros" → "Arroz", "aseite" → "Aceite").
+// Lo que el colmado enseñó en su jerga ("una fría" → "Cerveza Presidente") sí se respeta.
+
+/** Errores de escritura comunes y cómo se escriben bien. */
+const CORRECCIONES: Record<string, string> = {
+  arros: "arroz", aroz: "arroz", abichuela: "habichuela", abichuelas: "habichuelas", aseite: "aceite", asucar: "azúcar",
+  guevo: "huevo", guevos: "huevos", webo: "huevo", webos: "huevos", sebolla: "cebolla", cerbeza: "cerveza", cerbesa: "cerveza",
+  espaguetti: "espagueti", catchup: "ketchup", champu: "champú", champoo: "champú", jot: "hot", panal: "pañal", panales: "pañales",
+  bano: "baño", malboro: "marlboro", salami: "salami", ielo: "hielo", yelo: "hielo", jamon: "jamón", platano: "plátano",
+  platanos: "plátanos", limon: "limón", jabon: "jabón", atun: "atún", cafe: "café", maiz: "maíz", aji: "ají", oregano: "orégano",
+  salchichon: "salchichón", botellon: "botellón", galon: "galón", sazon: "sazón", fosforo: "fósforo", fosforos: "fósforos",
+  azucar: "azúcar", fria: "fría", frias: "frías", pure: "puré", te: "té", melon: "melón", pina: "piña", jugo: "jugo",
+};
+
+/** Palabras bien escritas que el bot conoce (de los nombres del catálogo y sus sinónimos), con sus tildes. */
+const DICCIONARIO: Map<string, string> = (() => {
+  const d = new Map<string, string>();
+  const errores = new Set(Object.keys(CORRECCIONES).filter((k) => normalizar(CORRECCIONES[k]) !== k));
+  for (const [nombre, sinonimos] of CATALOGO) {
+    for (const w of nombre.toLowerCase().split(" ")) if (w.length >= 3) d.set(normalizar(w), w);
+    for (const sin of sinonimos) for (const w of sin.split(" ")) if (w.length >= 3 && !errores.has(w) && !d.has(w)) d.set(w, CORRECCIONES[w] ?? w);
+  }
+  return d;
+})();
+
+/** Corrige solo la ortografía de cada palabra; nunca la cambia por otra palabra. */
+export function corregirOrtografia(texto: string): string {
+  const palabras = texto.split(" ").filter(Boolean).map((p) => {
+    if (CORRECCIONES[p]) return CORRECCIONES[p];
+    if (DICCIONARIO.has(p)) return DICCIONARIO.get(p)!;
+    // Solo una letra de diferencia y en palabras de 5 letras o más: así no se "corrige" una palabra
+    // que está bien escrita pero no está en la lista ("botella" no se vuelve "botellita").
+    if (p.length >= 5 && !/\d/.test(p)) {
+      const tope = 1;
+      let mejor: string | null = null;
+      let menor = tope + 1;
+      for (const [w, mostrar] of DICCIONARIO) {
+        if (Math.abs(w.length - p.length) > tope || w[0] !== p[0] && distancia(w.slice(1), p.slice(1)) > 0) continue;
+        const dd = distancia(p, w);
+        if (dd < menor) { menor = dd; mejor = mostrar; }
+      }
+      if (mejor) return mejor;
+    }
+    return p;
+  });
+  return palabras.join(" ");
+}
+
+// ---------- Emojis por producto ----------
+const EMOJIS: Record<string, string> = {
+  "Arroz": "🍚", "Habichuelas": "🫘", "Aceite": "🫒", "Azúcar": "🍬", "Sal": "🧂", "Café": "☕", "Leche": "🥛", "Huevos": "🥚",
+  "Pan": "🍞", "Salami": "🥓", "Queso": "🧀", "Jamón": "🍖", "Mantequilla": "🧈", "Plátanos": "🍌", "Guineos": "🍌", "Yuca": "🥔",
+  "Batata": "🍠", "Papas": "🥔", "Cebolla": "🧅", "Ajo": "🧄", "Ají": "🫑", "Tomate": "🍅", "Pasta de tomate": "🥫", "Sazón": "🍲",
+  "Orégano": "🌿", "Vinagre": "🍶", "Espaguetis": "🍝", "Avena": "🥣", "Harina": "🌾", "Galletas": "🍪", "Sardinas": "🐟", "Atún": "🐟",
+  "Pollo": "🍗", "Carne": "🥩", "Cerdo": "🥩", "Longaniza": "🌭", "Salchichas": "🌭", "Agua": "💧", "Botellón de agua": "💧", "Hielo": "🧊",
+  "Cerveza Presidente": "🍺", "Cerveza Bohemia": "🍺", "Cerveza Corona": "🍺", "Ron Brugal": "🥃", "Ron Barceló": "🥃", "Ron Bermúdez": "🥃",
+  "Refresco": "🥤", "Jugo": "🧃", "Malta": "🥤", "Energizante": "⚡", "Cigarrillos": "🚬", "Detergente": "🧴", "Cloro": "🧴",
+  "Jabón de cuaba": "🧼", "Jabón de baño": "🧼", "Papel de baño": "🧻", "Servilletas": "🧻", "Pañales": "👶", "Pasta de dientes": "🪥",
+  "Desodorante": "🧴", "Toallas sanitarias": "🩹", "Shampoo": "🧴", "Fósforos": "🔥", "Velas": "🕯️", "Funda de basura": "🗑️", "Gas": "🔥",
+  "Recarga": "📱", "Pastillas para el dolor": "💊", "Chocolate": "🍫", "Dulces": "🍬", "Picaderas": "🍿", "Yogur": "🥛", "Habas": "🫘",
+  "Maíz": "🌽", "Guandules": "🫛", "Aguacate": "🥑", "Limones": "🍋", "Naranjas": "🍊", "Cilantro": "🌿", "Chinola": "🥭",
+  "Mayonesa": "🥫", "Ketchup": "🥫", "Mostaza": "🥫", "Cereal": "🥣", "Pan de hot dog": "🍞", "Hojas de afeitar": "🪒",
+};
+/** Palabras del cliente que tienen su propio emoji aunque el catálogo las junte con otro producto. */
+const EMOJIS_PALABRA: Array<[RegExp, string]> = [
+  [/\b(verdura|verduras|verdurita|verduritas)\b/, "🥬"], [/\b(sopita|sopitas|caldo|cubito|cubitos)\b/, "🍲"],
+  [/\b(fria|frias|cerveza|cervezas|presidente|bohemia|corona|heineken)\b/, "🍺"], [/\b(ron|brugal|barcelo|bermudez|whisky|vodka|romo)\b/, "🥃"],
+  [/\b(coca|cola|pepsi|refresco|soda|sprite|kola)\b/, "🥤"], [/\b(vino)\b/, "🍷"], [/\b(pica pollo|pollo frito)\b/, "🍗"],
+];
+
+/** Emoji del producto ("Arroz" → 🍚). Si no se conoce, 🛒. */
+export function emojiDe(nombre: string): string {
+  const t = normalizar(nombre);
+  for (const [re, e] of EMOJIS_PALABRA) if (re.test(t)) return e;
+  const delCatalogo = buscarEnCatalogo(t);
+  return (delCatalogo && EMOJIS[delCatalogo]) || "🛒";
+}
 
 /** Distancia de Levenshtein (cuántas letras hay que cambiar) para errores de escritura. */
 export function distancia(a: string, b: string): number {
@@ -199,7 +280,7 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
     } else if (conSigno) {
       monto = Number((conSigno[1] ?? conSigno[2]).replace(",", "."));
       const i = fichas.findIndex((f) => leerNumero(f) === monto || f === `rd${monto}`);
-      if (i >= 0) fichas.splice(i, 1);
+      if (i >= 0) fichas.splice(i > 0 && fichas[i - 1] === "rd" ? i - 1 : i, i > 0 && fichas[i - 1] === "rd" ? 2 : 1);
     } else {
       // "ajo de a 10", "salami de 50" al final.
       const n = fichas.length;
@@ -259,7 +340,7 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
   if (palabras.every((p) => RELLENO.has(p))) return null;
   const delCatalogo = buscarEnCatalogo(resto);
   return {
-    nombre: delCatalogo ?? capitalizar(resto.slice(0, 60)),
+    nombre: capitalizar(corregirOrtografia(resto).slice(0, 60)),
     cantidad: cantidad && cantidad > 0 ? cantidad : 1,
     unidad,
     conocido: Boolean(delCatalogo),
@@ -271,6 +352,7 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
 /** Un mensaje completo ("dame 2 libras de arroz, un aceite y una fría") → lista de productos. */
 export function leerPedido(mensaje: string, jerga: Map<string, string>): Item[] {
   const pedazos = mensaje
+    .replace(/(?<!\d)[.!?¡¿]+(?!\d)/g, ",")
     .replace(/\s+(y|e|mas|más|tambien|también|ademas|además|con|\+)\s+(?=(\d|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|media|medio|[a-záéíóúñ]))/gi, "|")
     .split(/[|,;\n]+/);
   return pedazos.map((p) => leerItem(p, jerga)).filter((x): x is Item => x !== null);

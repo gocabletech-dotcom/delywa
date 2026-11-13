@@ -1,5 +1,6 @@
 import { useState, ReactNode } from "react";
 import { formatDominicanDateTime } from "@/lib/date-utils";
+import { VERSION_APP } from "@/version";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import {
@@ -246,7 +247,7 @@ export default function NegocioLayout({
         }`}
       >
         <div className="px-4 pt-5 pb-3 flex items-center gap-3 shrink-0">
-          {logo("w-10 h-10 rounded-xl")}
+          {logo("w-[54px] h-[54px] rounded-2xl text-xl")}
           <div className="flex-1 min-w-0">
             <p className="font-heading font-bold text-[15px] leading-tight truncate" data-testid="text-header-negocio-name">{colmadoData?.nombre || "Mi Negocio"}</p>
             <p className="text-xs text-slate-500 truncate" data-testid="text-plan-name">{suscripcionData?.plan?.nombre || "Sin Plan"}</p>
@@ -292,6 +293,7 @@ export default function NegocioLayout({
             <LogOut size={19} />
             Cerrar sesión
           </button>
+          <p className="px-3 pt-2 text-[11px] text-slate-400" data-testid="version-app">Delywa versión {VERSION_APP}</p>
         </div>
       </aside>
 
@@ -307,7 +309,7 @@ export default function NegocioLayout({
             >
               <Menu size={24} />
             </button>
-            <div className="lg:hidden">{logo("w-9 h-9 rounded-lg text-sm")}</div>
+            <div className="lg:hidden">{logo("w-12 h-12 rounded-xl text-base")}</div>
             <span className="sr-only" data-testid="text-header-business-name">{colmadoData?.nombre || "Mi Negocio"}</span>
             <div className="min-w-0">
               <h1 className="text-lg sm:text-[22px] leading-tight font-bold font-heading text-slate-900 truncate">{title}</h1>
@@ -385,7 +387,7 @@ export default function NegocioLayout({
               <div className="w-10 h-1 rounded-full bg-slate-300" />
             </div>
             <div className="flex items-center gap-3 px-5 pt-2 pb-4">
-              {logo("w-11 h-11 rounded-xl")}
+              {logo("w-[60px] h-[60px] rounded-2xl text-xl")}
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-slate-900 truncate leading-tight">{colmadoData?.nombre || "Mi Negocio"}</p>
                 <p className="text-xs text-slate-500 truncate">{suscripcionData?.plan?.nombre || "Sin Plan"}</p>
