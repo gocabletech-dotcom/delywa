@@ -131,6 +131,16 @@ export async function cambiarEstadoPedido(
   if (estado === "retorno" && (!["en_camino", "llegando"].includes(antes.estado) || !antes.deliveryId)) {
     return { status: 409, body: { error: "Solo un pedido que salió con el repartidor puede marcarse como no entregado.", reason: "retorno_no_valido" } };
   }
+  // Si el cliente aparece (o pide que se lo lleven) mientras el repartidor todavía tiene el
+  // pedido, se puede entregar. Si ya volvió al negocio o se reenvió, se usa "Volver a enviar".
+  if (antes.estado === "retorno" && estado === "entregado") {
+    if (antes.reenviadoComoPedidoId != null) {
+      return { status: 409, body: { error: `Este pedido ya se volvió a enviar como #${antes.reenviadoComoPedidoId}. Marca ese como entregado.`, reason: "retorno_reenviado" } };
+    }
+    if (antes.retornoRecibidoAt) {
+      return { status: 409, body: { error: "Este pedido ya volvió al negocio. Usa «Volver a enviar» para mandarlo otra vez.", reason: "retorno_recibido" } };
+    }
+  }
   if (["en_camino", "llegando"].includes(estado) && !antes.deliveryId) {
     return { status: 400, body: { error: "Debes asignar un repartidor antes de marcar el pedido como en camino.", reason: "sin_delivery" } };
   }

@@ -527,6 +527,13 @@ export default function RepartidorPage() {
   const moneda = colmado?.simboloMoneda || "RD$";
   const isActivo = delivery?.estado === "activo";
 
+  // La pestaña del navegador dice que es el portal de delivery.
+  useEffect(() => {
+    const anterior = document.title;
+    document.title = colmado?.nombre ? `Portal de delivery · ${colmado.nombre}` : "Portal de delivery";
+    return () => { document.title = anterior; };
+  }, [colmado?.nombre]);
+
   const pedidosActivos = pedidos
     .filter(p => !["entregado", "cancelado", "retorno", "fusionado"].includes(p.estado))
     .sort((a, b) => new Date(a.fechaCreacion).getTime() - new Date(b.fechaCreacion).getTime());
@@ -574,7 +581,24 @@ export default function RepartidorPage() {
             <Navigation size={17} /> Cómo llegar al colmado
           </a>
         )}
-        <p className="text-xs text-slate-500 text-center">Cuando el colmado lo reciba, sale de aquí solo.</p>
+        <div className="rounded-2xl bg-green-50 border border-green-200 p-3 flex flex-col gap-2">
+          <p className="text-sm text-green-900 font-semibold">¿El cliente apareció o te pidió que se lo lleves?</p>
+          <div className="grid grid-cols-2 gap-2">
+            <a href={`tel:${p.clienteWhatsapp}`} className="h-12 px-3 whitespace-nowrap rounded-2xl border border-green-300 bg-white text-green-900 font-semibold flex items-center justify-center gap-2" data-testid={`llamar-retorno-${p.id}`}>
+              <Phone size={17} /> Llamar
+            </a>
+            <button
+              type="button"
+              className="h-12 px-3 whitespace-nowrap rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+              disabled={updateEstadoMutation.isPending}
+              onClick={() => updateEstadoMutation.mutate({ pedidoId: p.id, estado: "entregado" })}
+              data-testid={`entregar-retorno-${p.id}`}
+            >
+              <CheckCircle2 size={18} /> Lo entregué
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 text-center">Si no, llévalo al colmado. Cuando lo reciban, sale de aquí solo.</p>
       </div>
     );
   };
@@ -763,14 +787,16 @@ export default function RepartidorPage() {
       <header className="bg-primary text-primary-foreground px-4 pt-4 pb-4 sticky top-0 z-10">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
+            {/* Logo 54 px (antes 40 px, +35 %) */}
             {colmado?.logo ? (
-              <img src={colmado.logo} alt="" className="w-10 h-10 rounded-xl object-contain bg-white shrink-0" />
+              <img src={colmado.logo} alt="" className="w-[54px] h-[54px] rounded-2xl object-contain bg-white shrink-0" data-testid="logo-portal-repartidor" />
             ) : (
-              <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center font-bold shrink-0">
+              <div className="w-[54px] h-[54px] rounded-2xl bg-white/15 flex items-center justify-center text-xl font-bold shrink-0" data-testid="logo-portal-repartidor">
                 {colmado?.nombre?.charAt(0).toUpperCase() || "N"}
               </div>
             )}
             <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wider opacity-80 leading-tight" data-testid="titulo-portal-repartidor">Portal de delivery</p>
               <p className="font-bold text-lg capitalize leading-tight truncate">{delivery?.nombre}</p>
               <p className="text-xs opacity-80 truncate">{colmado?.nombre || "Repartidor"}</p>
             </div>

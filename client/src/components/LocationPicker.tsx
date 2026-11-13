@@ -5,12 +5,39 @@ import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { MapPin, Navigation } from "lucide-react";
 
+import marcadorRetina from "leaflet/dist/images/marker-icon-2x.png";
+import marcador from "leaflet/dist/images/marker-icon.png";
+import sombraMarcador from "leaflet/dist/images/marker-shadow.png";
+
+// Íconos del marcador incluidos en la app (antes venían de cdnjs).
 delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
-  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
-});
+L.Icon.Default.mergeOptions({ iconRetinaUrl: marcadorRetina, iconUrl: marcador, shadowUrl: sombraMarcador });
+
+/**
+ * El mapa puede crearse dentro de una sección oculta (Configuración monta todas y
+ * muestra una). Leaflet mide 0 px y dibuja solo un pedazo: al cambiar de tamaño
+ * o hacerse visible, se vuelve a medir y se centra en el punto.
+ */
+function AjustarTamano({ position }: { position: L.LatLng }) {
+  const map = useMap();
+  useEffect(() => {
+    const contenedor = map.getContainer();
+    let ancho = contenedor.clientWidth;
+    let alto = contenedor.clientHeight;
+    const observador = new ResizeObserver(() => {
+      if (contenedor.clientWidth === ancho && contenedor.clientHeight === alto) return;
+      ancho = contenedor.clientWidth;
+      alto = contenedor.clientHeight;
+      if (ancho > 0 && alto > 0) {
+        map.invalidateSize();
+        map.setView(position, map.getZoom(), { animate: false });
+      }
+    });
+    observador.observe(contenedor);
+    return () => observador.disconnect();
+  }, [map, position]);
+  return null;
+}
 
 interface LocationPickerProps {
   latitude: string;
@@ -206,6 +233,7 @@ export default function LocationPicker({ latitude, longitude, onLocationChange, 
           <DraggableMarker position={position} onPositionChange={handlePositionChange} />
           <MapClickHandler onLocationChange={handlePositionChange} />
           <RecenterMap position={position} />
+          <AjustarTamano position={position} />
         </MapContainer>
       </div>
       

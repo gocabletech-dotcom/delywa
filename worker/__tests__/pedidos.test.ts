@@ -395,6 +395,21 @@ describe("retorno: el pedido no se entregó y vuelve al negocio", () => {
     expect(fila.reenviadoComoPedidoId).toBe(nuevo.id);
     expect(fila.estado).toBe("retorno"); // la devuelta del original se sigue cuadrando con Rita
     expect((await dueno.request("POST", `/api/pedidos/${p.id}/reenviar`)).status).toBe(409);
+    // Reenviado: el original ya no se entrega, se entrega el nuevo.
+    expect((await dueno.request("PATCH", `/api/pedidos/${p.id}/estado`, { estado: "entregado" })).json.reason).toBe("retorno_reenviado");
+  });
+
+  it("si el cliente aparece mientras el repartidor lo tiene, el negocio lo marca entregado", async () => {
+    const [rep] = await t.db.insert(deliveries).values({ colmadoId: cafe.id, nombre: "Tito", whatsappNumero: "18093330098", estado: "activo" }).returning();
+    const [p] = await t.db.insert(pedidos).values({
+      colmadoId: cafe.id, clienteNombre: "Nena", clienteWhatsapp: "18095550102", clienteUbicacion: "Calle 3",
+      productos: JSON.stringify([{ nombre: "Pan", monto: 50, cantidad: 1 }]), total: "50", totalConfirmado: "50", montoPago: "50", metodoPago: "efectivo",
+      estado: "retorno", deliveryId: rep.id, motivoRetorno: "No contesta el teléfono",
+    }).returning();
+    expect((await operador.request("PATCH", `/api/pedidos/${p.id}/estado`, { estado: "entregado" })).status).toBe(200);
+    const [fila] = await t.db.select().from(pedidos).where(eq(pedidos.id, p.id));
+    expect(fila.estado).toBe("entregado");
+    expect(fila.motivoRetorno).toBe("No contesta el teléfono"); // queda el intento fallido en el historial
   });
 });
 

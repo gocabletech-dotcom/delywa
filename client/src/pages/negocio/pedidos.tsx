@@ -1122,6 +1122,15 @@ export default function PedidosPage() {
                         <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2.5 text-[13px] text-red-900 leading-snug" data-testid={`retorno-abierto-${pedido.id}`}>
                           <p className="font-semibold">No se pudo entregar{pedido.motivoRetorno ? `: ${pedido.motivoRetorno}` : ""}</p>
                           <p className="mt-0.5">{repartidor ? <span className="capitalize">{repartidor}</span> : "El repartidor"} lo trae de vuelta al negocio{devuelta > 0 ? `, junto con la devuelta de ${moneda}${devuelta.toLocaleString("es-DO")}` : ""}.</p>
+                          <button
+                            type="button"
+                            className="mt-2 w-full min-h-[40px] rounded-lg border border-red-300 bg-white px-3 py-1.5 text-[13px] font-semibold text-red-900 hover:bg-red-100 disabled:opacity-60"
+                            disabled={updateEstadoMutation.isPending}
+                            onClick={() => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" })}
+                            data-testid={`entregar-retorno-${pedido.id}`}
+                          >
+                            El cliente apareció: marcar entregado
+                          </button>
                         </div>
                       );
                     }
@@ -1135,6 +1144,9 @@ export default function PedidosPage() {
                       </div>
                     );
                   })()}
+                  {pedido.estado === "entregado" && pedido.motivoRetorno && (
+                    <p className="text-xs text-slate-600" data-testid={`entregado-tras-retorno-${pedido.id}`}>Se entregó después de un intento fallido ({pedido.motivoRetorno}).</p>
+                  )}
                   {pedido.reenvioDePedidoId && (
                     <p className="text-xs font-medium text-slate-600" data-testid={`reenvio-de-${pedido.id}`}>Reenvío del pedido #{pedido.reenvioDePedidoId}</p>
                   )}

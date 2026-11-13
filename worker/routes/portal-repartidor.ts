@@ -173,7 +173,9 @@ portalRepartidorRoutes.patch("/api/portal-repartidor/pedidos/:pedidoId/estado", 
   if (!pedido) return c.json({ error: "Pedido no encontrado" }, 404);
   if (pedido.deliveryId !== c.var.repartidor.id) return c.json({ error: "No tienes permiso para actualizar este pedido" }, 403);
   // Un pedido ya cerrado o cuadrado no lo puede reabrir el repartidor.
-  if (pedido.cuadreId || (["entregado", "cancelado", "retorno"].includes(pedido.estado) && pedido.estado !== estado)) {
+  // Excepción: un retorno que todavía tiene el repartidor se puede entregar si el cliente aparece.
+  const entregaTrasRetorno = pedido.estado === "retorno" && estado === "entregado";
+  if (pedido.cuadreId || (["entregado", "cancelado", "retorno"].includes(pedido.estado) && pedido.estado !== estado && !entregaTrasRetorno)) {
     return c.json({ error: "Este pedido ya fue cerrado. Pide al negocio que lo corrija si hace falta.", reason: "pedido_cerrado" }, 409);
   }
   const error = await cambiarEstadoPedido(c.env, db, pedido, estado, {

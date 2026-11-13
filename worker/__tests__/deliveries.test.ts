@@ -1,7 +1,7 @@
 // @vitest-environment node
 // Pruebas con D1 local en memoria y datos inventados: nunca tocan la base real.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { colmados, cuadres, deliveries, paradasRuta, pedidos, planes, rutas, saldosDelivery, users } from "@shared/schema";
 
 vi.mock("../lib/routeOptimizer", async (original) => ({
@@ -263,6 +263,22 @@ describe("portal del repartidor", () => {
     const [completa] = await t.db.select().from(rutas).where(eq(rutas.id, otra.json.ruta.id));
     expect(completa.estado).toBe("completada");
     expect(await t.db.select().from(paradasRuta).where(eq(paradasRuta.rutaId, otra.json.ruta.id))).toHaveLength(2);
+  });
+
+  it("si el cliente aparece, el repartidor entrega un retorno que todavía lleva; si ya lo devolvió, no", async () => {
+    const lleva = await pedidoListo({ estado: "retorno", deliveryId: repartidor.id, motivoRetorno: "Cliente ausente" });
+    const r = await portal.request("PATCH", `/api/portal-repartidor/pedidos/${lleva.id}/estado`, { estado: "entregado" });
+    expect(r.status).toBe(200);
+    const [fila] = await t.db.select().from(pedidos).where(eq(pedidos.id, lleva.id));
+    expect(fila.estado).toBe("entregado");
+    expect(fila.fechaEntrega).toBeInstanceOf(Date);
+    // Solo a entregado: no puede reabrirlo a otro estado.
+    const otro = await pedidoListo({ estado: "retorno", deliveryId: repartidor.id });
+    expect((await portal.request("PATCH", `/api/portal-repartidor/pedidos/${otro.id}/estado`, { estado: "en_camino" })).json.reason).toBe("pedido_cerrado");
+    const devuelto = await pedidoListo({ estado: "retorno", deliveryId: repartidor.id, retornoRecibidoAt: new Date() });
+    expect((await portal.request("PATCH", `/api/portal-repartidor/pedidos/${devuelto.id}/estado`, { estado: "entregado" })).json.reason).toBe("retorno_recibido");
+    // Se quitan para no cambiar las cuentas de nómina y reportes de las pruebas siguientes.
+    await t.db.delete(pedidos).where(inArray(pedidos.id, [lleva.id, otro.id, devuelto.id]));
   });
 
   it("al ponerse en descanso puede volver a entrar; si el dueño lo deshabilita, no", async () => {
