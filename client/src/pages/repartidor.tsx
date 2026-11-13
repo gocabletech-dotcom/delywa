@@ -66,6 +66,9 @@ interface ColmadoInfo {
   tiempoEstimado: string | null;
   simboloMoneda: string;
   colorPrimario?: string | null;
+  direccion?: string | null;
+  latitud?: string | null;
+  longitud?: string | null;
 }
 
 interface Pedido {
@@ -86,6 +89,9 @@ interface Pedido {
   metodoPago: string | null;
   fechaCreacion: string;
   motivoRetorno: string | null;
+  retornoRecibidoAt?: string | null;
+  fechaEntrega?: string | null;
+  notas?: string | null;
 }
 
 interface CuadreItem {
@@ -524,7 +530,63 @@ export default function RepartidorPage() {
   const pedidosActivos = pedidos
     .filter(p => !["entregado", "cancelado", "retorno", "fusionado"].includes(p.estado))
     .sort((a, b) => new Date(a.fechaCreacion).getTime() - new Date(b.fechaCreacion).getTime());
-  const pedidosHistorial = pedidos.filter(p => ["entregado", "cancelado", "retorno", "fusionado"].includes(p.estado)).slice(0, 10);
+  // Lo que no se entregó vuelve al colmado; sale de aquí cuando el colmado confirma que lo recibió.
+  const porDevolver = pedidos.filter(p => p.estado === "retorno" && !p.retornoRecibidoAt);
+  const pedidosHistorial = pedidos
+    .filter(p => ["entregado", "cancelado", "retorno", "fusionado"].includes(p.estado) && !(p.estado === "retorno" && !p.retornoRecibidoAt))
+    .slice(0, 30);
+  const [historialAbierto, setHistorialAbierto] = useState<number | null>(null);
+  const productosDe = (p: Pedido): Array<{ nombre: string; cantidad: number; monto: number | null }> => {
+    try {
+      const lista = typeof p.productos === "string" ? JSON.parse(p.productos) : p.productos;
+      if (Array.isArray(lista)) return lista.map((x: any) => ({ nombre: String(x.nombre || x.name || "Producto"), cantidad: parseInt(x.cantidad) || 1, monto: Number(x.monto ?? x.precio) || null }));
+    } catch { /* texto libre */ }
+    return [{ nombre: String(p.productos || "Productos"), cantidad: 1, monto: null }];
+  };
+  const mapaColmado = colmado ? buildMapUrl(colmado.direccion || colmado.nombre || "", { latitud: colmado.latitud, longitud: colmado.longitud }) : null;
+
+  /** Un pedido que no se pudo entregar y hay que devolver al colmado. */
+  const tarjetaDevolver = (p: Pedido) => {
+    const devuelta = p.vueltoEntregadoAlDelivery ? parseFloat(p.vueltoEntregado || "0") || 0 : 0;
+    return (
+      <div key={p.id} className="bg-white rounded-3xl border-2 border-red-300 shadow-sm p-4 flex flex-col gap-3" data-testid={`devolver-${p.id}`}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="font-extrabold text-lg leading-tight">#{p.id} · <span className="capitalize">{p.clienteNombre}</span></p>
+            <p className="text-sm text-red-800 mt-0.5">No se entregó{p.motivoRetorno ? `: ${p.motivoRetorno}` : ""}</p>
+          </div>
+          <span className="text-xs font-bold bg-red-100 text-red-800 rounded-full px-2.5 py-1 shrink-0">Devolver</span>
+        </div>
+        <div className="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Lleva de vuelta</p>
+          {productosDe(p).map((x, i) => (
+            <p key={i} className="text-[15px] text-slate-900 flex justify-between"><span>{x.nombre}</span><span className="font-semibold">{x.cantidad}</span></p>
+          ))}
+        </div>
+        {devuelta > 0 && (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-3 py-2 flex justify-between items-center">
+            <span className="text-sm font-semibold text-amber-900">Y la devuelta que te dieron</span>
+            <span className="text-lg font-bold text-amber-900">{moneda}{devuelta.toLocaleString()}</span>
+          </div>
+        )}
+        {mapaColmado && (
+          <a href={mapaColmado} target="_blank" rel="noopener noreferrer" className="h-12 rounded-2xl border border-slate-300 bg-white text-slate-900 font-semibold flex items-center justify-center gap-2" data-testid={`ir-al-colmado-${p.id}`}>
+            <Navigation size={17} /> Cómo llegar al colmado
+          </a>
+        )}
+        <p className="text-xs text-slate-500 text-center">Cuando el colmado lo reciba, sale de aquí solo.</p>
+      </div>
+    );
+  };
+  const seccionDevolver = porDevolver.length > 0 && (
+    <section className="mt-5" data-testid="seccion-devolver">
+      <h2 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
+        <RotateCcw size={17} className="text-red-700" /> Devolver al colmado
+        <span className="text-xs font-bold bg-red-100 text-red-800 rounded-full px-2 py-0.5">{porDevolver.length}</span>
+      </h2>
+      <div className="space-y-3">{porDevolver.map(tarjetaDevolver)}</div>
+    </section>
+  );
 
   const secondsSinceUpdate = lastFetchTime ? Math.floor((Date.now() - lastFetchTime.getTime()) / 1000) : null;
   void tickSeg;
@@ -776,6 +838,7 @@ export default function RepartidorPage() {
             <p className="text-sm text-gray-400 mt-2">Cargando pedidos...</p>
           </div>
         ) : pedidosActivos.length === 0 ? (
+          porDevolver.length > 0 ? seccionDevolver : (
           <div className="bg-white rounded-2xl p-8 text-center border border-dashed border-gray-200" data-testid="no-pedidos">
             <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
               <Package size={26} className="text-gray-300" />
@@ -785,7 +848,9 @@ export default function RepartidorPage() {
               <p className="text-gray-400 text-xs mt-1">Actívate para recibir pedidos</p>
             )}
           </div>
+          )
         ) : (
+          <>
           <div className="space-y-4">
             {pedidosActivos.map((pedido, index) => {
               const total = parseFloat(pedido.totalConfirmado ?? pedido.total) || 0;
@@ -1023,10 +1088,13 @@ export default function RepartidorPage() {
               );
             })}
           </div>
+          {seccionDevolver}
+          </>
         ))}
 
         {/* ── Ruta tab ── */}
         {activeTab === "rutas" && session?.delivery && (
+          <>
           <div className="bg-white rounded-xl border border-gray-100 p-3">
             <RutaEntrega
               deliveryId={session.delivery.id}
@@ -1043,6 +1111,8 @@ export default function RepartidorPage() {
               }}
             />
           </div>
+          {seccionDevolver}
+          </>
         )}
       </div>
 
@@ -1053,27 +1123,72 @@ export default function RepartidorPage() {
       {activeTab === "historial" && pedidosHistorial.length > 0 && (
         <div className="px-4 mt-4">
           <h2 className="font-bold text-slate-900 mb-2">Entregas terminadas</h2>
+          <p className="text-xs text-slate-500 mb-2">Toca un pedido para ver el detalle.</p>
           <div className="space-y-2">
-            {pedidosHistorial.map((pedido) => (
-              <div
-                key={pedido.id}
-                className="bg-white rounded-xl px-4 py-3 flex items-center justify-between opacity-70"
-                data-testid={`historial-${pedido.id}`}
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-700">#{pedido.id} — {pedido.clienteNombre}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTADO_COLORS[pedido.estado] || 'bg-gray-100 text-gray-600'}`}>
-                      {ESTADO_LABELS[pedido.estado] || pedido.estado}
-                    </span>
-                    {pedido.estado === "retorno" && pedido.motivoRetorno && (
-                      <span className="text-xs text-gray-500 italic" data-testid={`motivo-retorno-${pedido.id}`}>{pedido.motivoRetorno}</span>
-                    )}
-                  </div>
+            {pedidosHistorial.map((pedido) => {
+              const abierto = historialAbierto === pedido.id;
+              const total = parseFloat(pedido.totalConfirmado ?? pedido.total) || 0;
+              const devuelta = getDevuelta(pedido);
+              return (
+                <div key={pedido.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden" data-testid={`historial-${pedido.id}`}>
+                  <button
+                    type="button"
+                    aria-expanded={abierto}
+                    onClick={() => setHistorialAbierto(abierto ? null : pedido.id)}
+                    className="w-full px-4 py-3 flex items-center gap-3 text-left min-h-[60px]"
+                    data-testid={`historial-abrir-${pedido.id}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[15px] font-semibold text-slate-900 truncate">#{pedido.id} · <span className="capitalize">{pedido.clienteNombre}</span></p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ESTADO_COLORS[pedido.estado] || "bg-gray-100 text-gray-600"}`}>
+                          {pedido.estado === "retorno" ? "Devuelto al colmado" : ESTADO_LABELS[pedido.estado] || pedido.estado}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {new Date(pedido.fechaEntrega || pedido.fechaCreacion).toLocaleString("es-DO", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="font-bold text-slate-900 shrink-0">{moneda}{total.toLocaleString()}</p>
+                    <ChevronDown size={18} className={`text-slate-400 shrink-0 transition-transform ${abierto ? "rotate-180" : ""}`} />
+                  </button>
+                  {abierto && (
+                    <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 space-y-3 text-sm" data-testid={`historial-detalle-${pedido.id}`}>
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Productos</p>
+                        {productosDe(pedido).map((x, i) => (
+                          <p key={i} className="flex justify-between text-slate-900"><span>{x.cantidad} × {x.nombre}</span>{x.monto ? <span>{moneda}{(x.monto * x.cantidad).toLocaleString()}</span> : null}</p>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
+                          <p className="text-xs text-slate-500">Pago</p>
+                          <p className="font-semibold capitalize">{pedido.metodoPago || "efectivo"}</p>
+                        </div>
+                        <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
+                          <p className="text-xs text-slate-500">{pedido.estado === "entregado" ? "Cobrado" : "Total"}</p>
+                          <p className="font-semibold">{moneda}{total.toLocaleString()}</p>
+                        </div>
+                        {devuelta > 0 && (
+                          <div className="rounded-xl bg-white border border-slate-200 px-3 py-2 col-span-2">
+                            <p className="text-xs text-slate-500">Devuelta {pedido.estado === "entregado" ? "al cliente" : "llevada"}</p>
+                            <p className="font-semibold">{moneda}{devuelta.toLocaleString()}</p>
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Dirección</p>
+                        <p className="text-slate-800">{pedido.clienteUbicacion || "Sin dirección"}</p>
+                      </div>
+                      {pedido.estado === "retorno" && pedido.motivoRetorno && (
+                        <p className="text-slate-700" data-testid={`motivo-retorno-${pedido.id}`}><b>No se entregó:</b> {pedido.motivoRetorno}</p>
+                      )}
+                      {pedido.notas && <p className="text-slate-700"><b>Nota:</b> {pedido.notas}</p>}
+                    </div>
+                  )}
                 </div>
-                <p className="font-semibold text-gray-600">{moneda}{parseFloat(pedido.totalConfirmado ?? pedido.total).toLocaleString()}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1164,7 +1279,7 @@ export default function RepartidorPage() {
       {/* ── Menú de abajo ── */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-slate-200 flex items-stretch gap-1 px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]" aria-label="Secciones">
         {([
-          ["pedidos", "Entregas", Package, pedidosActivos.length],
+          ["pedidos", "Entregas", Package, pedidosActivos.length + porDevolver.length],
           ["rutas", "Ruta", RouteIcon, 0],
           ["cuadre", "Cuadre", ClipboardList, pedidosSinCuadre.length],
           ["historial", "Historial", Clock, 0],

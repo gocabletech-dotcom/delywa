@@ -87,6 +87,8 @@ export function mensajeDeEstado(pedido: Pedido, estado: string, simbolo: string,
       return pedido.tipoEntrega === "pickup"
         ? `✅ ¡Pedido #${pedido.id} entregado en el negocio!\n\n¡Gracias por pasar a recoger tu compra! Esperamos que la disfrutes. 🛒`
         : `✅ ¡Pedido #${pedido.id} entregado!\n\n¡Gracias por tu compra! Esperamos que disfrutes tu pedido. 🛒\n\n¿Tienes alguna duda? Escríbenos.`;
+    case "retorno":
+      return `😔 No pudimos entregar tu pedido #${pedido.id}.${pedido.motivoRetorno ? `\nMotivo: ${pedido.motivoRetorno}` : ""}\n\nEscríbenos por aquí y coordinamos otra entrega. 🙏`;
     case "cancelado":
       return `❌ Tu pedido #${pedido.id} ha sido cancelado. Pedimos disculpas por los inconvenientes. Si tienes alguna pregunta, no dudes en escribirnos. 🙏`;
     default:
@@ -124,6 +126,10 @@ export async function cambiarEstadoPedido(
   }
   if (estado === "en_camino" && antes.estado !== "listo" && antes.estado !== "en_camino") {
     return { status: 409, body: { error: "Cocina debe marcar el pedido como listo antes de iniciar la entrega.", reason: "pedido_no_listo" } };
+  }
+  // Un retorno es un pedido que salió con el repartidor y vuelve al negocio sin entregarse.
+  if (estado === "retorno" && (!["en_camino", "llegando"].includes(antes.estado) || !antes.deliveryId)) {
+    return { status: 409, body: { error: "Solo un pedido que salió con el repartidor puede marcarse como no entregado.", reason: "retorno_no_valido" } };
   }
   if (["en_camino", "llegando"].includes(estado) && !antes.deliveryId) {
     return { status: 400, body: { error: "Debes asignar un repartidor antes de marcar el pedido como en camino.", reason: "sin_delivery" } };

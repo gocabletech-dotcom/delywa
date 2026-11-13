@@ -129,6 +129,7 @@ portalRepartidorRoutes.get("/api/portal-repartidor/me", requirePortal, async (c)
     colmado: conMoneda ? {
       id: conMoneda.id, nombre: conMoneda.nombre, logo: conMoneda.logo, colorPrimario: conMoneda.colorPrimario,
       tiempoEstimado: conMoneda.tiempoEstimado, simboloMoneda: conMoneda.simboloMoneda || "RD$",
+      direccion: conMoneda.direccion, latitud: conMoneda.latitud, longitud: conMoneda.longitud,
     } : null,
     fueraDeHorario: gracia.enGracia,
     horaFinTurno: gracia.terminaEn ? new Date(gracia.terminaEn).toISOString() : null,

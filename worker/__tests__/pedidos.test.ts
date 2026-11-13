@@ -350,3 +350,51 @@ describe("roles: colmadero (encargado) y despachador", () => {
   });
 });
 
+describe("retorno: el pedido no se entregó y vuelve al negocio", () => {
+  it("solo un pedido que salió puede volver; el negocio lo recibe y lo puede volver a enviar una vez", async () => {
+    const [rep] = await t.db.insert(deliveries).values({ colmadoId: cafe.id, nombre: "Rita", whatsappNumero: "18093330099", estado: "activo" }).returning();
+    const [p] = await t.db.insert(pedidos).values({
+      colmadoId: cafe.id, clienteNombre: "Luisa", clienteWhatsapp: "18095550101", clienteUbicacion: "Calle El Sol #5",
+      productos: JSON.stringify([{ nombre: "Mangú", monto: 150, cantidad: 1 }]), total: "200", totalConfirmado: "200", montoPago: "500", metodoPago: "efectivo",
+      estado: "listo", deliveryId: rep.id, vueltoEntregado: "300", vueltoEntregadoAlDelivery: true,
+    }).returning();
+    // Todavía no salió: no puede ser retorno.
+    const antes = await dueno.request("PATCH", `/api/pedidos/${p.id}/estado`, { estado: "retorno", motivoRetorno: "Cliente ausente" });
+    expect(antes.status).toBe(409);
+    expect(antes.json.reason).toBe("retorno_no_valido");
+
+    await t.db.update(pedidos).set({ estado: "en_camino" }).where(eq(pedidos.id, p.id));
+    expect((await operador.request("PATCH", `/api/pedidos/${p.id}/estado`, { estado: "retorno", motivoRetorno: "Cliente ausente" })).status).toBe(200);
+    let [fila] = await t.db.select().from(pedidos).where(eq(pedidos.id, p.id));
+    expect(fila).toMatchObject({ estado: "retorno", motivoRetorno: "Cliente ausente", retornoRecibidoAt: null });
+
+    // Sigue en la lista del día a día aunque sea viejo, hasta que se recibe.
+    await t.db.update(pedidos).set({ fechaCreacion: new Date("2026-01-10T15:00:00Z") }).where(eq(pedidos.id, p.id));
+    const ids = async () => (await dueno.request("GET", `/api/colmados/${cafe.id}/pedidos?recientes=1`)).json.map((x: any) => x.id);
+    expect(await ids()).toContain(p.id);
+
+    // No se puede reenviar sin recibirlo.
+    expect((await dueno.request("POST", `/api/pedidos/${p.id}/reenviar`)).status).toBe(409);
+    expect((await ajeno.request("POST", `/api/pedidos/${p.id}/recibir-retorno`)).status).toBe(403);
+    expect((await operador.request("POST", `/api/pedidos/${p.id}/recibir-retorno`)).status).toBe(200);
+    expect((await operador.request("POST", `/api/pedidos/${p.id}/recibir-retorno`)).status).toBe(409);
+    [fila] = await t.db.select().from(pedidos).where(eq(pedidos.id, p.id));
+    expect(fila.retornoRecibidoAt).toBeInstanceOf(Date);
+    expect(fila.retornoRecibidoPor).toBe("Omar");
+    expect(await ids()).not.toContain(p.id);
+
+    const r = await dueno.request("POST", `/api/pedidos/${p.id}/reenviar`);
+    expect(r.status).toBe(200);
+    const [nuevo] = await t.db.select().from(pedidos).where(eq(pedidos.id, r.json.pedidoId));
+    expect(nuevo).toMatchObject({
+      estado: "pendiente", deliveryId: null, reenvioDePedidoId: p.id, total: fila.total, clienteWhatsapp: "18095550101",
+      vueltoEntregadoAlDelivery: false, cuadreId: null,
+    });
+    expect(nuevo.notas).toContain(`Reenvío del pedido #${p.id}`);
+    [fila] = await t.db.select().from(pedidos).where(eq(pedidos.id, p.id));
+    expect(fila.reenviadoComoPedidoId).toBe(nuevo.id);
+    expect(fila.estado).toBe("retorno"); // la devuelta del original se sigue cuadrando con Rita
+    expect((await dueno.request("POST", `/api/pedidos/${p.id}/reenviar`)).status).toBe(409);
+  });
+});
+

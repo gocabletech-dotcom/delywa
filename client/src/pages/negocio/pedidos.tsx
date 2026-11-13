@@ -42,11 +42,12 @@ import {
   Eye,
   Navigation,
   ChevronDown,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -190,6 +191,10 @@ interface PedidoNegocio {
   metodoPago: string | null;
   fechaCreacion: string;
   motivoRetorno: string | null;
+  retornoRecibidoAt?: string | null;
+  retornoRecibidoPor?: string | null;
+  reenviadoComoPedidoId?: number | null;
+  reenvioDePedidoId?: number | null;
   fusionadoEnPedidoId: number | null;
   cuadreId: number | null;
   sustituciones?: Array<{ original: string; nuevo: string }>;
@@ -274,6 +279,8 @@ export default function PedidosPage() {
   const [tabActual, setTabActual] = useState<"activos" | "historial">("activos");
   const [masAbierto, setMasAbierto] = useState<number[]>([]);
   const [historialAbierto, setHistorialAbierto] = useState<number | null>(null);
+  const [retornoDialog, setRetornoDialog] = useState<{ pedido: PedidoNegocio; paso: "motivo" | "recibir" | "reenviar" } | null>(null);
+  const [retornoMotivo, setRetornoMotivo] = useState("");
   const [columnaMovil, setColumnaMovil] = useState<"confirmar" | "preparando" | "camino" | "cerrados">("confirmar");
   // Historial: por defecto el mes en curso; el día es opcional.
   const [filtroFecha, setFiltroFecha] = useState<string>("");
@@ -502,11 +509,11 @@ export default function PedidosPage() {
   });
 
   const updateEstadoMutation = useMutation({
-    mutationFn: async ({ id, estado }: { id: number; estado: string }) => {
+    mutationFn: async ({ id, estado, motivoRetorno }: { id: number; estado: string; motivoRetorno?: string }) => {
       const res = await fetch(`/api/pedidos/${id}/estado`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado }),
+        body: JSON.stringify({ estado, ...(motivoRetorno ? { motivoRetorno } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "No se pudo actualizar el estado");
@@ -520,6 +527,37 @@ export default function PedidosPage() {
     onError: (error: Error) => {
       toast({ title: "No se pudo actualizar el pedido", description: error.message, variant: "destructive" });
     },
+  });
+
+  const recibirRetornoMutation = useMutation({
+    mutationFn: async (pedido: PedidoNegocio) => {
+      const res = await fetch(`/api/pedidos/${pedido.id}/recibir-retorno`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo registrar la devolución");
+      return pedido;
+    },
+    onSuccess: (pedido) => {
+      queryClient.invalidateQueries({ queryKey: ["pedidos"] });
+      toast({ title: "Devolución recibida", description: `El pedido #${pedido.id} quedó cerrado.` });
+      // Siguiente paso natural: ofrecer volver a enviarlo.
+      setRetornoDialog({ pedido: { ...pedido, retornoRecibidoAt: new Date().toISOString() }, paso: "reenviar" });
+    },
+    onError: (error: Error) => toast({ title: "No se pudo recibir", description: error.message, variant: "destructive" }),
+  });
+
+  const reenviarMutation = useMutation({
+    mutationFn: async (pedido: PedidoNegocio) => {
+      const res = await fetch(`/api/pedidos/${pedido.id}/reenviar`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo volver a enviar");
+      return data as { pedidoId: number };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["pedidos"] });
+      setRetornoDialog(null);
+      toast({ title: `Pedido #${data.pedidoId} creado`, description: "Quedó en Preparando, listo para salir otra vez." });
+    },
+    onError: (error: Error) => toast({ title: "No se pudo volver a enviar", description: error.message, variant: "destructive" }),
   });
 
   const asignarDeliveryMutation = useMutation({
@@ -637,8 +675,10 @@ export default function PedidosPage() {
   });
 
   const hoy = getBusinessDate(new Date(), colmadoData?.codigoPais);
+  // Hoy: lo creado hoy, más los retornos que el negocio todavía no ha recibido (sean del día que sean).
+  const retornoAbierto = (p: any) => p.estado === "retorno" && !p.retornoRecibidoAt;
   const pedidosActivos = pedidos?.filter((p: any) =>
-    p.fechaCreacion && getBusinessDate(p.fechaCreacion, colmadoData?.codigoPais) === hoy && p.estado !== "fusionado"
+    (p.fechaCreacion && getBusinessDate(p.fechaCreacion, colmadoData?.codigoPais) === hoy && p.estado !== "fusionado") || retornoAbierto(p)
   ) || [];
   // El historial se pide al servidor por mes: así la pantalla no carga los pedidos de siempre.
   const mesHistorial = filtroFecha ? filtroFecha.slice(0, 7) : (filtroMes || hoy.slice(0, 7));
@@ -924,7 +964,7 @@ export default function PedidosPage() {
       case "en_camino": return "En Camino";
       case "entregado": return "Entregado";
       case "cancelado": return "Cancelado";
-      case "retorno": return "Retorno";
+      case "retorno": return "No entregado";
       case "fusionado": return "Fusionado";
       default: return estado;
     }
@@ -959,11 +999,21 @@ export default function PedidosPage() {
   ] as const;
   type ClaveColumna = typeof COLUMNAS[number]["clave"];
   const columnaDe = (estado: string): ClaveColumna => (COLUMNAS.find((c) => (c.estados as readonly string[]).includes(estado))?.clave ?? "cerrados");
+  // Un retorno que el repartidor todavía trae de vuelta sigue en la calle: va con "En camino".
+  const columnaDePedido = (p: PedidoNegocio): ClaveColumna => (retornoAbierto(p) ? "camino" : columnaDe(p.estado));
   const porColumna = { confirmar: [], preparando: [], camino: [], cerrados: [] } as Record<ClaveColumna, PedidoNegocio[]>;
-  for (const p of pedidosActivos as PedidoNegocio[]) porColumna[columnaDe(p.estado)].push(p);
+  for (const p of pedidosActivos as PedidoNegocio[]) porColumna[columnaDePedido(p)].push(p);
   // Lo más viejo primero donde hay que actuar; lo más reciente primero en los cerrados.
   for (const c of ["confirmar", "preparando", "camino"] as const) porColumna[c].sort((a, b) => new Date(a.fechaCreacion).getTime() - new Date(b.fechaCreacion).getTime());
   const vendidoHoy = porColumna.cerrados.filter((p) => p.estado === "entregado").reduce((s, p) => s + (parseFloat(p.totalConfirmado || p.total || "0") || 0), 0);
+  const MOTIVOS_RETORNO = ["Cliente ausente", "No contesta el teléfono", "Dirección no encontrada", "Cliente rechazó el pedido", "No tenía el dinero", "Producto dañado"];
+  const productosDe = (p: PedidoNegocio): Array<{ nombre: string; cantidad: number }> => {
+    try {
+      const lista = JSON.parse(p.productos);
+      if (Array.isArray(lista)) return lista.map((x: any) => ({ nombre: String(x.nombre || x.name || "Producto"), cantidad: parseInt(x.cantidad) || 1 }));
+    } catch { /* texto libre */ }
+    return [{ nombre: String(p.productos || "Productos"), cantidad: 1 }];
+  };
   /** El siguiente paso de cada pedido; lo demás queda en "Más". */
   const accionPrincipal = (pedido: PedidoNegocio): { texto: string; accion: () => void } | null => {
     switch (pedido.estado) {
@@ -977,6 +1027,11 @@ export default function PedidosPage() {
       case "listo": return pedido.tipoEntrega === "pickup"
         ? { texto: "Entregado al cliente", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" }) }
         : { texto: "Asignar repartidor", accion: () => abrirAsignar(pedido) };
+      // Retorno: primero se recibe lo que trae el repartidor; después se puede volver a enviar.
+      case "retorno":
+        if (!pedido.retornoRecibidoAt) return { texto: "Recibir devolución", accion: () => setRetornoDialog({ pedido, paso: "recibir" }) };
+        if (!pedido.reenviadoComoPedidoId) return { texto: "Volver a enviar", accion: () => setRetornoDialog({ pedido, paso: "reenviar" }) };
+        return null;
       default: return null;
     }
   };
@@ -1058,6 +1113,32 @@ export default function PedidosPage() {
                     <p className="text-xs text-violet-700" data-testid={`pedido-fusionado-en-${pedido.id}`}>Incluido en #{pedido.fusionadoEnPedidoId}</p>
                   )}
 
+                  {/* ── Retorno: no se entregó; el repartidor lo trae de vuelta ── */}
+                  {pedido.estado === "retorno" && (() => {
+                    const devuelta = pedido.vueltoEntregadoAlDelivery ? parseFloat(pedido.vueltoEntregado || "0") || 0 : 0;
+                    const repartidor = (deliveries as any[] | undefined)?.find((d) => d.id === pedido.deliveryId)?.nombre;
+                    if (!pedido.retornoRecibidoAt) {
+                      return (
+                        <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2.5 text-[13px] text-red-900 leading-snug" data-testid={`retorno-abierto-${pedido.id}`}>
+                          <p className="font-semibold">No se pudo entregar{pedido.motivoRetorno ? `: ${pedido.motivoRetorno}` : ""}</p>
+                          <p className="mt-0.5">{repartidor ? <span className="capitalize">{repartidor}</span> : "El repartidor"} lo trae de vuelta al negocio{devuelta > 0 ? `, junto con la devuelta de ${moneda}${devuelta.toLocaleString("es-DO")}` : ""}.</p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5 text-[13px] text-slate-700 leading-snug" data-testid={`retorno-recibido-${pedido.id}`}>
+                        <p><b>Devuelto al negocio</b>{pedido.motivoRetorno ? ` · ${pedido.motivoRetorno}` : ""}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Recibido {new Date(pedido.retornoRecibidoAt).toLocaleString("es-DO", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}{pedido.retornoRecibidoPor ? ` por ${pedido.retornoRecibidoPor}` : ""}
+                          {pedido.reenviadoComoPedidoId ? ` · se volvió a enviar como #${pedido.reenviadoComoPedidoId}` : ""}
+                        </p>
+                      </div>
+                    );
+                  })()}
+                  {pedido.reenvioDePedidoId && (
+                    <p className="text-xs font-medium text-slate-600" data-testid={`reenvio-de-${pedido.id}`}>Reenvío del pedido #{pedido.reenvioDePedidoId}</p>
+                  )}
+
                   {/* ── Devuelta: el negocio le da el cambio al repartidor y él lo cuadra al volver ── */}
                   {(() => {
                     if (pedido.metodoPago !== "efectivo" || pedido.tipoEntrega === "pickup" || !["en_camino", "llegando"].includes(pedido.estado)) return null;
@@ -1090,7 +1171,7 @@ export default function PedidosPage() {
                   {(() => {
                     const principal = accionPrincipal(pedido);
                     // Sin un paso claro, las opciones salen abiertas (menos en los pedidos ya cerrados).
-                    const abiertoDeEntrada = !principal && tabActual === "activos" && columnaDe(pedido.estado) !== "cerrados";
+                    const abiertoDeEntrada = !principal && tabActual === "activos" && columnaDePedido(pedido) !== "cerrados";
                     const abierto = abiertoDeEntrada !== masAbierto.includes(pedido.id);
                     return (
                       <>
@@ -1409,6 +1490,17 @@ export default function PedidosPage() {
                                 ));
                               })()}
                             </>
+                          )}
+                          {["en_camino", "llegando"].includes(pedido.estado) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-red-200 text-red-700 hover:bg-red-50"
+                              onClick={() => { setRetornoMotivo(""); setRetornoDialog({ pedido, paso: "motivo" }); }}
+                              data-testid={`no-se-pudo-entregar-${pedido.id}`}
+                            >
+                              <RotateCcw size={14} className="mr-1" /> No se pudo entregar
+                            </Button>
                           )}
                           {pedido.estado === "en_camino" && (
                             <>
@@ -2581,6 +2673,81 @@ export default function PedidosPage() {
         </DialogContent>
       </Dialog>
       {/* ── Controlled delivery assignment dialog (with devuelta step for cash orders) ── */}
+      {/* ── Retorno: motivo, recibir la devolución y volver a enviar ── */}
+      <Dialog open={!!retornoDialog} onOpenChange={(o) => { if (!o) { setRetornoDialog(null); setRetornoMotivo(""); } }}>
+        <DialogContent className="max-w-md rounded-2xl" data-testid="retorno-dialog">
+          {retornoDialog?.paso === "motivo" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>No se pudo entregar el pedido #{retornoDialog.pedido.id}</DialogTitle>
+                <DialogDescription>El repartidor lo trae de vuelta. Al cliente le avisamos por el chat.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-2">
+                {MOTIVOS_RETORNO.map((m) => (
+                  <Button key={m} variant="outline" className="h-11 justify-start rounded-xl border-slate-300 text-slate-800 text-[15px]" disabled={updateEstadoMutation.isPending}
+                    onClick={() => updateEstadoMutation.mutate({ id: retornoDialog.pedido.id, estado: "retorno", motivoRetorno: m }, { onSuccess: () => setRetornoDialog(null) })}
+                    data-testid={`panel-motivo-${m.replace(/\s+/g, "-").toLowerCase()}`}>
+                    {m}
+                  </Button>
+                ))}
+                <div className="flex gap-2">
+                  <Input value={retornoMotivo} onChange={(e) => setRetornoMotivo(e.target.value)} placeholder="Otro motivo" className="h-11 rounded-xl" data-testid="panel-motivo-otro" />
+                  <Button className="h-11 rounded-xl" disabled={!retornoMotivo.trim() || updateEstadoMutation.isPending}
+                    onClick={() => updateEstadoMutation.mutate({ id: retornoDialog.pedido.id, estado: "retorno", motivoRetorno: retornoMotivo.trim() }, { onSuccess: () => { setRetornoDialog(null); setRetornoMotivo(""); } })}>
+                    Guardar
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+          {retornoDialog?.paso === "recibir" && (() => {
+            const p = retornoDialog.pedido;
+            const devuelta = p.vueltoEntregadoAlDelivery ? parseFloat(p.vueltoEntregado || "0") || 0 : 0;
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Recibir la devolución del pedido #{p.id}</DialogTitle>
+                  <DialogDescription>Revisa que el repartidor trajo todo de vuelta.</DialogDescription>
+                </DialogHeader>
+                <div className="rounded-xl border border-slate-200 divide-y divide-slate-200">
+                  {productosDe(p).map((x, i) => (
+                    <div key={i} className="flex justify-between px-3 py-2 text-sm"><span>{x.nombre}</span><span className="font-semibold">{x.cantidad}</span></div>
+                  ))}
+                </div>
+                {devuelta > 0 && (
+                  <p className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
+                    También debe traer la devuelta de <b>{moneda}{devuelta.toLocaleString("es-DO")}</b>. Ese dinero se cuadra con el repartidor en <b>Cuadres</b>.
+                  </p>
+                )}
+                {p.motivoRetorno && <p className="text-sm text-slate-600">Motivo: {p.motivoRetorno}</p>}
+                <DialogFooter className="gap-2">
+                  <Button variant="outline" className="h-11 rounded-xl" onClick={() => setRetornoDialog(null)}>Todavía no</Button>
+                  <Button className="h-11 rounded-xl" disabled={recibirRetornoMutation.isPending} onClick={() => recibirRetornoMutation.mutate(p)} data-testid="confirmar-recibir-retorno">
+                    {recibirRetornoMutation.isPending ? "Guardando…" : "Sí, lo recibí"}
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
+          {retornoDialog?.paso === "reenviar" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>¿Volver a enviar el pedido #{retornoDialog.pedido.id}?</DialogTitle>
+                <DialogDescription>
+                  Se crea un pedido nuevo con los mismos productos, el mismo total y la misma dirección, listo para preparar. Al cliente le avisamos.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" className="h-11 rounded-xl" onClick={() => setRetornoDialog(null)} data-testid="no-reenviar">No, dejarlo así</Button>
+                <Button className="h-11 rounded-xl" disabled={reenviarMutation.isPending} onClick={() => reenviarMutation.mutate(retornoDialog.pedido)} data-testid="confirmar-reenviar">
+                  {reenviarMutation.isPending ? "Creando…" : "Volver a enviar"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={asignarDialogOpen} onOpenChange={(o) => { if (!o) { setAsignarDialogOpen(false); setAsignarDialogPedido(null); setAsignarDialogStep("select"); setAsignarDialogVuelto(""); setAsignarDialogDelivery(null); } }}>
         <DialogContent>
           {asignarDialogStep === "select" && (

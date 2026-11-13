@@ -186,7 +186,18 @@ export default function RutaEntrega({
       ? { lat: parseFloat(ruta.inicioLatitud), lon: parseFloat(ruta.inicioLongitud) }
       : null;
 
-  const paradasParaMapa: ParadaMapa[] = paradas
+  // Solo lo que falta por entregar: lo entregado pasa al Historial y lo no entregado a "Devolver al colmado".
+  const estadoDeParada = (p: Parada): "pendiente" | "entregado" | "no_entregado" => {
+    const estadoPedido = pedidosConEstado.find((pe) => pe.id === p.pedidoId)?.estado ?? "";
+    if (p.estado === "entregado" || estadoPedido === "entregado") return "entregado";
+    if (p.estado === "no_entregado" || ["retorno", "cancelado", "fusionado"].includes(estadoPedido)) return "no_entregado";
+    return "pendiente";
+  };
+  const pendientes = paradas.filter((p) => estadoDeParada(p) === "pendiente");
+  const enRuta = new Set(paradas.map((p) => p.pedidoId));
+  const nuevosFueraDeRuta = pedidosDisponibles.filter((p) => !enRuta.has(p.id)).length;
+
+  const paradasParaMapa: ParadaMapa[] = pendientes
     .map((p) => {
       const coords = extraerCoordsDePedido(p.pedido);
       if (!coords) return null;
@@ -210,14 +221,16 @@ export default function RutaEntrega({
     );
   }
 
-  if (!ruta || paradas.length === 0) {
+  if (!ruta || pendientes.length === 0) {
+    const terminoRuta = !!ruta && paradas.length > 0;
     return (
-      <div className="text-center py-10 px-4">
-        <RouteIcon size={44} className="mx-auto mb-3 text-gray-300" />
-        <p className="text-sm text-gray-500 mb-4">
+      <div className="text-center py-10 px-4" data-testid={terminoRuta ? "ruta-terminada" : "ruta-vacia"}>
+        <RouteIcon size={44} className="mx-auto mb-3 text-slate-300" />
+        {terminoRuta && <p className="font-bold text-slate-900 mb-1">Terminaste esta ruta</p>}
+        <p className="text-sm text-slate-600 mb-4">
           {pedidosDisponibles.length === 0
-            ? "No tienes pedidos activos para armar una ruta"
-            : `Tienes ${pedidosDisponibles.length} pedido(s) activos. Optimiza la ruta para verlos en el orden más corto.`}
+            ? (terminoRuta ? "Las entregas hechas están en Historial." : "No tienes pedidos por entregar.")
+            : `Tienes ${pedidosDisponibles.length} pedido${pedidosDisponibles.length === 1 ? "" : "s"} por entregar. Arma la ruta para verlos en el orden más corto.`}
         </p>
         {pedidosDisponibles.length > 0 && (
           <Button
@@ -234,13 +247,12 @@ export default function RutaEntrega({
     );
   }
 
-  const entregadas = paradas.filter((p) => p.estado === "entregado").length;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2 px-1">
         <div className="text-sm text-gray-600">
-          <span className="font-semibold text-gray-800">{entregadas}/{paradas.length}</span> entregadas ·{" "}
+          <span className="font-semibold text-gray-800">{pendientes.length}</span> por entregar ·{" "}
           {ruta.distanciaTotal ? mostrarDistancia(parseFloat(ruta.distanciaTotal)) : ""}{" "}
           {ruta.tiempoEstimadoMinutos ? `· ~${formatearDuracionMinutos(ruta.tiempoEstimadoMinutos)}` : ""}
           <span className={`ml-1 font-medium ${ruta.fuenteDistancias === "vial" ? "text-green-600" : "text-orange-600"}`}>
@@ -262,10 +274,17 @@ export default function RutaEntrega({
         </Button>
       </div>
 
+      {nuevosFueraDeRuta > 0 && (
+        <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 flex items-center justify-between gap-2" data-testid="pedidos-fuera-de-ruta">
+          <p className="text-sm text-amber-900">Te asignaron {nuevosFueraDeRuta} pedido{nuevosFueraDeRuta === 1 ? "" : "s"} nuevo{nuevosFueraDeRuta === 1 ? "" : "s"} que no está{nuevosFueraDeRuta === 1 ? "" : "n"} en esta ruta.</p>
+          <Button size="sm" variant="outline" className="h-9 rounded-lg border-amber-400 bg-white text-amber-900 shrink-0" onClick={() => optimizar.mutate()} disabled={optimizar.isPending}>Recalcular</Button>
+        </div>
+      )}
+
       {inicio && paradasParaMapa.length > 0 && <MapaRuta inicio={inicio} paradas={paradasParaMapa} />}
 
       <div className="space-y-3">
-        {paradas.map((p) => {
+        {pendientes.map((p) => {
           const mapUrl = buildMapUrl(p.pedido.clienteUbicacion, {
             latitud: p.pedido.clienteLatitud,
             longitud: p.pedido.clienteLongitud,

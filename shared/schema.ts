@@ -401,6 +401,12 @@ export const pedidos = sqliteTable("pedidos", {
   vueltoEntregadoAt: integer("vuelto_entregado_at", { mode: "timestamp_ms" }),
   vueltoEntregadoPor: text("vuelto_entregado_por"),
   motivoRetorno: text("motivo_retorno"),
+  /** DELYWA: el negocio confirmó que el repartidor trajo de vuelta los productos de un retorno. */
+  retornoRecibidoAt: integer("retorno_recibido_at", { mode: "timestamp_ms" }),
+  retornoRecibidoPor: text("retorno_recibido_por"),
+  /** DELYWA: un retorno que se volvió a enviar apunta al pedido nuevo, y el nuevo al original. */
+  reenviadoComoPedidoId: integer("reenviado_como_pedido_id"),
+  reenvioDePedidoId: integer("reenvio_de_pedido_id"),
   // Estados: pendiente_confirmacion, esperando_confirmacion_sustituciones, esperando_pago, pendiente, en_camino, entregado, cancelado, retorno, fusionado
   estado: text("estado").notNull().default("pendiente_confirmacion"),
   // When this order is absorbed into another pending order, this points to the

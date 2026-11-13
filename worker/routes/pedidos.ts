@@ -19,7 +19,7 @@ import { getClientesByColmado, getConversacionByCliente, getOrCreateConversacion
 import {
   contarConfirmadosHoy, claimTransicionEstado, confirmarPagoTransferencia, confirmarPedido, convertirAPickup, deletePedido,
   entregarVueltoAlDelivery, fusionarPedidos, getDeliveryById, getPedidoById, getPedidosByColmado, getPedidosEntre, getPedidosRecientes, getVueltosLog, leerProductos,
-  registrarEnVentas, updateMetodoPago, updatePedidoCoordenadas, updatePedidoEstado, updatePedidoProductos,
+  marcarRetornoRecibido, registrarEnVentas, reenviarRetorno, updateMetodoPago, updatePedidoCoordenadas, updatePedidoEstado, updatePedidoProductos,
   updateProductosYTotalConfirmado, updateVuelto, ESTADOS_TERMINALES, type Sustitucion,
 } from "../storage/pedidos";
 import { pedidos, whatsappConversaciones } from "@shared/schema";
@@ -132,6 +132,44 @@ pedidoRoutes.patch("/api/pedidos/:id/estado", requireAuth, async (c) => {
   });
   if (error) return c.json(error.body, error.status);
   return c.json({ success: true });
+});
+
+// ---------- Retorno: el pedido no se entregó y vuelve al negocio ----------
+
+pedidoRoutes.post("/api/pedidos/:id/recibir-retorno", requireAuth, async (c) => {
+  const db = getDb(c.env.DB);
+  const r = await cargarPedidoOperable(db, c.var.user, Number(c.req.param("id")));
+  if ("error" in r) return c.json(r.error!.body, r.error!.status);
+  if (r.pedido.estado !== "retorno") return c.json({ error: "Este pedido no está volviendo al negocio." }, 409);
+  if (r.pedido.retornoRecibidoAt) return c.json({ error: "Este retorno ya se recibió." }, 409);
+  if (!(await marcarRetornoRecibido(db, r.pedido.id, nombreUsuario(c.var.user)))) {
+    return c.json({ error: "Este retorno ya se recibió." }, 409);
+  }
+  await avisarNegocio(c.env, r.pedido.colmadoId, ["pedidos"]);
+  return c.json({ success: true });
+});
+
+pedidoRoutes.post("/api/pedidos/:id/reenviar", requireAuth, async (c) => {
+  const db = getDb(c.env.DB);
+  const r = await cargarPedidoOperable(db, c.var.user, Number(c.req.param("id")));
+  if ("error" in r) return c.json(r.error!.body, r.error!.status);
+  const original = r.pedido;
+  if (original.estado !== "retorno") return c.json({ error: "Solo se puede volver a enviar un pedido que no se entregó." }, 409);
+  if (!original.retornoRecibidoAt) return c.json({ error: "Primero confirma que recibiste los productos de vuelta." }, 409);
+  if (original.reenviadoComoPedidoId) return c.json({ error: `Este pedido ya se volvió a enviar como #${original.reenviadoComoPedidoId}.` }, 409);
+  const colmado = await getColmado(db, original.colmadoId);
+  if (!colmado || colmado.estado !== "activo") return c.json({ error: "El negocio no está activo." }, 409);
+  const nuevo = await reenviarRetorno(db, original);
+  if (!nuevo) return c.json({ error: "Este pedido ya se volvió a enviar." }, 409);
+  try {
+    await notificarCliente(c.env, db, colmado, nuevo,
+      `🔁 Vamos a enviarte tu pedido otra vez. Ahora es el pedido #${nuevo.id} (antes #${original.id}). Te avisamos cuando salga. 🛵`,
+      { buscarChatPorTelefono: true });
+  } catch (err) {
+    console.error(`[pedidos] No se pudo avisar el reenvío del pedido #${original.id}:`, err);
+  }
+  await avisarNegocio(c.env, original.colmadoId, ["pedidos", "conversaciones"]);
+  return c.json({ success: true, pedidoId: nuevo.id });
 });
 
 // ---------- Borrar y fusionar ----------

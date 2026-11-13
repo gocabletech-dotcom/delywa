@@ -19,6 +19,9 @@ export async function avisarNegocio(env: Env, colmadoId: number | null | undefin
 /** Qué partes del panel cambian según la ruta de la API que se llamó. */
 export function temasDeRuta(ruta: string): Tema[] {
   if (/^\/api\/portal-repartidor\/heartbeat/.test(ruta) || /^\/api\/deliveries\/\d+\/ubicacion/.test(ruta)) return [];
+  // Solo calculan (no guardan nada): si avisaran, el panel recargaría pedidos, volvería a
+  // calcular y se quedaría en un ciclo sin fin que no deja ver los cambios.
+  if (/\/pedidos\/distancias-ruta$/.test(ruta) || /^\/api\/deliveries\/\d+\/pagos\/calcular$/.test(ruta)) return [];
   if (/^\/api\/conversaciones\//.test(ruta)) return ["conversaciones"];
   if (/^\/api\/pedidos\//.test(ruta) || /\/pedidos(\/|$)/.test(ruta)) return ["pedidos"];
   if (/^\/api\/(deliveries|portal-repartidor|pagos-delivery|saldos-delivery|paradas-ruta)/.test(ruta) || /\/deliveries(\/|$)/.test(ruta)) return ["deliveries", "pedidos"];

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lt, not, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, not, notInArray, or, sql } from "drizzle-orm";
 import { pedidos, ventas, deliveries, colmados, paradasRuta, chatWebSesiones, type Pedido, type Venta, type Delivery } from "@shared/schema";
 import type { Db } from "../db";
 import { mismoTelefono } from "../lib/telefono";
@@ -39,6 +39,55 @@ export async function getPedidosByColmado(db: Db, colmadoId: number): Promise<Pe
   return db.select().from(pedidos).where(eq(pedidos.colmadoId, colmadoId)).orderBy(desc(pedidos.fechaCreacion), desc(pedidos.id));
 }
 
+/** El negocio confirma que el repartidor trajo de vuelta un retorno. Solo una vez. */
+export async function marcarRetornoRecibido(db: Db, id: number, por: string): Promise<boolean> {
+  const rows = await db.update(pedidos).set({ retornoRecibidoAt: new Date(), retornoRecibidoPor: por })
+    .where(and(eq(pedidos.id, id), eq(pedidos.estado, "retorno"), isNull(pedidos.retornoRecibidoAt)))
+    .returning({ id: pedidos.id });
+  return rows.length > 0;
+}
+
+/**
+ * Vuelve a enviar un retorno ya recibido: crea un pedido nuevo con lo mismo, listo para preparar,
+ * y deja el original apuntando a él. El original no cambia (su devuelta se sigue cuadrando con su repartidor).
+ */
+export async function reenviarRetorno(db: Db, original: Pedido): Promise<Pedido | null> {
+  // Se reclama el original primero (id 0 = en proceso) para que dos clics no creen dos pedidos.
+  const reclamado = await db.update(pedidos).set({ reenviadoComoPedidoId: 0 })
+    .where(and(eq(pedidos.id, original.id), eq(pedidos.estado, "retorno"), isNotNull(pedidos.retornoRecibidoAt), isNull(pedidos.reenviadoComoPedidoId)))
+    .returning({ id: pedidos.id });
+  if (!reclamado.length) return null;
+  try {
+    const [nuevo] = await db.insert(pedidos).values({
+      colmadoId: original.colmadoId,
+      clienteNombre: original.clienteNombre,
+      clienteWhatsapp: original.clienteWhatsapp,
+      clienteUbicacion: original.clienteUbicacion,
+      clienteLatitud: original.clienteLatitud,
+      clienteLongitud: original.clienteLongitud,
+      productos: original.productos,
+      total: original.total,
+      totalConfirmado: original.totalConfirmado,
+      montoPago: original.montoPago,
+      necesitaDevuelta: original.necesitaDevuelta,
+      metodoPago: original.metodoPago,
+      comprobanteUrl: original.comprobanteUrl,
+      comprobanteConfirmado: original.comprobanteConfirmado,
+      tipoEntrega: "delivery",
+      costoDeliveryAplicado: original.costoDeliveryAplicado,
+      costoDeliveryAplicadoFijado: original.costoDeliveryAplicadoFijado,
+      notas: `Reenvío del pedido #${original.id}${original.motivoRetorno ? ` (no se entregó: ${original.motivoRetorno})` : ""}${original.notas ? ` · ${original.notas}` : ""}`,
+      estado: "pendiente",
+      reenvioDePedidoId: original.id,
+    }).returning();
+    await db.update(pedidos).set({ reenviadoComoPedidoId: nuevo.id }).where(eq(pedidos.id, original.id));
+    return nuevo;
+  } catch (err) {
+    await db.update(pedidos).set({ reenviadoComoPedidoId: null }).where(eq(pedidos.id, original.id));
+    throw err;
+  }
+}
+
 /** Pedidos creados entre dos momentos (el historial de un mes). */
 export async function getPedidosEntre(db: Db, colmadoId: number, desde: Date, hasta: Date): Promise<Pedido[]> {
   return db.select().from(pedidos)
@@ -49,7 +98,12 @@ export async function getPedidosEntre(db: Db, colmadoId: number, desde: Date, ha
 /** Lo que el panel necesita a diario: los pedidos desde `desde` y todos los que siguen abiertos, sean de cuando sean. */
 export async function getPedidosRecientes(db: Db, colmadoId: number, desde: Date): Promise<Pedido[]> {
   return db.select().from(pedidos)
-    .where(and(eq(pedidos.colmadoId, colmadoId), or(gte(pedidos.fechaCreacion, desde), notInArray(pedidos.estado, ESTADOS_TERMINALES))))
+    .where(and(eq(pedidos.colmadoId, colmadoId), or(
+      gte(pedidos.fechaCreacion, desde),
+      notInArray(pedidos.estado, ESTADOS_TERMINALES),
+      // Un retorno sigue abierto hasta que el negocio confirma que lo recibió.
+      and(eq(pedidos.estado, "retorno"), isNull(pedidos.retornoRecibidoAt)),
+    )))
     .orderBy(desc(pedidos.fechaCreacion), desc(pedidos.id));
 }
 
