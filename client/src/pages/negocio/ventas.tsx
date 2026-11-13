@@ -151,85 +151,57 @@ export default function VentasPage() {
   );
 
   return (
-    <NegocioLayout title={soloReportes ? "Reportes" : "Ventas y Cuadre"} activeNav={soloReportes ? "reportes" : "ventas"} headerRight={headerRight}>
+    <NegocioLayout title={soloReportes ? "Reportes" : "Ventas"} activeNav={soloReportes ? "reportes" : "ventas"} headerRight={headerRight}>
       <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">
-        {/* Ventas de Hoy */}
-        {!soloReportes && <Card className="border-none shadow-sm mb-4 sm:mb-6 bg-gradient-to-br from-primary to-green-600 text-white">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
+        {/* Ventas de hoy: misma tarjeta blanca que el resto del portal */}
+        {!soloReportes && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 mb-3 sm:mb-4" aria-label="Ventas de hoy">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-green-100 mb-1 text-sm sm:text-base">Ventas de Hoy</p>
-                <p className="text-2xl sm:text-4xl font-bold font-heading">
+                <p className="text-sm text-slate-500">Ventas de hoy</p>
+                <p className="text-3xl sm:text-4xl font-bold font-heading text-slate-900 leading-tight" data-testid="ventas-hoy-total">
                   {moneda}{parseFloat(ventasHoy?.totalVentas || 0).toLocaleString()}
                 </p>
-                <div className="flex gap-4 mt-3 text-sm">
-                  <span className="flex items-center gap-1">
-                    <CheckCircle2 size={16} /> {ventasHoy?.pedidosEntregados || 0} entregados
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <XCircle size={16} /> {ventasHoy?.pedidosCancelados || 0} cancelados
-                  </span>
-                </div>
               </div>
-              <div className="flex flex-col items-end gap-2">
-                <Badge variant="outline" className={`text-white border-white/50 ${ventasHoy?.cuadrado ? "bg-white/20" : ""}`}>
-                  {ventasHoy?.cuadrado ? "✓ Caja Cuadrada" : "Pendiente de Cuadrar"}
-                </Badge>
-                {!ventasHoy?.cuadrado && (
-                  <Button
-                    variant="secondary"
-                    className="bg-white text-primary hover:bg-green-50"
-                    onClick={() => cuadrarCajaMutation.mutate()}
-                    disabled={cuadrarCajaMutation.isPending}
-                    data-testid="cuadrar-caja-btn"
-                  >
-                    <CheckCircle2 size={16} className="mr-1" />
-                    {cuadrarCajaMutation.isPending ? "Cuadrando..." : "Cuadrar Caja"}
-                  </Button>
-                )}
-              </div>
+              <span className={`text-xs sm:text-sm font-semibold rounded-full px-3 py-1.5 ${ventasHoy?.cuadrado ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-800"}`} data-testid="estado-caja">
+                {ventasHoy?.cuadrado ? "Caja cuadrada" : "Caja sin cuadrar"}
+              </span>
             </div>
-          </CardContent>
-        </Card>}
+            <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-sm text-slate-700">
+              <span className="flex items-center gap-1.5"><CheckCircle2 size={16} className="text-primary" /> {ventasHoy?.pedidosEntregados || 0} entregados</span>
+              <span className="flex items-center gap-1.5"><XCircle size={16} className="text-slate-400" /> {ventasHoy?.pedidosCancelados || 0} cancelados</span>
+            </div>
+            {!ventasHoy?.cuadrado && (
+              <Button
+                className="mt-4 w-full sm:w-auto h-11 rounded-xl px-5 text-sm font-semibold"
+                onClick={() => cuadrarCajaMutation.mutate()}
+                disabled={cuadrarCajaMutation.isPending}
+                data-testid="cuadrar-caja-btn"
+              >
+                <CheckCircle2 size={16} className="mr-1.5" />
+                {cuadrarCajaMutation.isPending ? "Cuadrando…" : "Cuadrar la caja de hoy"}
+              </Button>
+            )}
+          </section>
+        )}
 
-        {/* Resumen del Mes */}
-        {!soloReportes && <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
-          <Card className="border-none shadow-sm" data-testid="stat-total-mes">
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-                  <BarChart3 size={18} />
-                </div>
-                <span className="text-gray-500 text-sm sm:text-base">Total del Mes</span>
-              </div>
-              <p className="text-xl sm:text-2xl font-bold font-heading">{moneda}{totalDelMes.toLocaleString()}</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-none shadow-sm" data-testid="stat-entregados-mes">
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-green-100 text-green-600 flex items-center justify-center shrink-0">
-                  <CheckCircle2 size={18} />
-                </div>
-                <span className="text-gray-500 text-sm sm:text-base">Entregados</span>
-              </div>
-              <p className="text-xl sm:text-2xl font-bold font-heading">{totalEntregadosMes} pedidos</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-none shadow-sm" data-testid="stat-cancelados-mes">
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-                  <XCircle size={18} />
-                </div>
-                <span className="text-gray-500 text-sm sm:text-base">Cancelados</span>
-              </div>
-              <p className="text-xl sm:text-2xl font-bold font-heading">{totalCanceladosMes} pedidos</p>
-            </CardContent>
-          </Card>
-        </div>}
+        {/* Resumen del mes */}
+        {!soloReportes && (
+          <section className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4 mb-4 sm:mb-6" aria-label="Resumen del mes">
+            <div className="col-span-2 sm:col-span-1 rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:p-5" data-testid="stat-total-mes">
+              <p className="text-xs sm:text-sm text-slate-500">Vendido este mes</p>
+              <p className="text-xl sm:text-2xl font-bold font-heading text-slate-900">{moneda}{totalDelMes.toLocaleString()}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:p-5" data-testid="stat-entregados-mes">
+              <p className="text-xs sm:text-sm text-slate-500">Entregados</p>
+              <p className="text-xl sm:text-2xl font-bold font-heading text-slate-900">{totalEntregadosMes}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:p-5" data-testid="stat-cancelados-mes">
+              <p className="text-xs sm:text-sm text-slate-500">Cancelados</p>
+              <p className="text-xl sm:text-2xl font-bold font-heading text-slate-900">{totalCanceladosMes}</p>
+            </div>
+          </section>
+        )}
 
         {puedeReporteConsolidado && (
           <Card className="border-none shadow-sm mb-4 sm:mb-6">

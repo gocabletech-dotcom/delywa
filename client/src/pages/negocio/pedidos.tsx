@@ -273,6 +273,7 @@ export default function PedidosPage() {
   const [filtroEstado, setFiltroEstado] = useState<string>("todos");
   const [tabActual, setTabActual] = useState<"activos" | "historial">("activos");
   const [masAbierto, setMasAbierto] = useState<number[]>([]);
+  const [historialAbierto, setHistorialAbierto] = useState<number | null>(null);
   const [columnaMovil, setColumnaMovil] = useState<"confirmar" | "preparando" | "camino" | "cerrados">("confirmar");
   // Historial: por defecto el mes en curso; el día es opcional.
   const [filtroFecha, setFiltroFecha] = useState<string>("");
@@ -654,6 +655,24 @@ export default function PedidosPage() {
     if (!filtroFecha) return true;
     return p.fechaCreacion && getBusinessDate(p.fechaCreacion, colmadoData?.codigoPais) === filtroFecha;
   });
+
+  const vendidoHistorial = pedidosHistorial.filter((p: any) => p.estado === "entregado").reduce((t: number, p: any) => t + (parseFloat(p.totalConfirmado || p.total || "0") || 0), 0);
+  const ESTADOS_HISTORIAL = [
+    { value: "todos", label: "Todos" },
+    { value: "entregado", label: "Entregados" },
+    { value: "cancelado", label: "Cancelados" },
+    { value: "retorno", label: "No entregados" },
+    { value: "en_camino", label: "En camino" },
+    { value: "listo", label: "Listos" },
+    { value: "en_preparacion", label: "En preparación" },
+    { value: "pendiente", label: "Por preparar" },
+    { value: "pendiente_confirmacion", label: "Por confirmar" },
+    { value: "esperando_confirmacion_pago", label: "Revisar pago" },
+    { value: "esperando_comprobante", label: "Esperando comprobante" },
+    { value: "esperando_pago", label: "Esperando pago" },
+    { value: "esperando_confirmacion_sustituciones", label: "Esperando cambio" },
+    { value: "fusionado", label: "Unidos a otro" },
+  ];
 
   const pedidosFiltrados = tabActual === "activos"
     ? pedidosActivos.filter((p: any) => filtroEstado === "todos" || p.estado === filtroEstado)
@@ -1604,69 +1623,63 @@ export default function PedidosPage() {
                 </span>
               </button>
             ))}
-            {tabActual === "historial" && (
-              <div className="ml-0 sm:ml-auto flex w-full sm:w-auto min-w-0 items-center gap-1.5 pr-0 sm:pr-2 py-1">
-                <label className="text-xs text-slate-600 flex items-center gap-1.5 min-w-0 flex-1 sm:flex-none">
+          </div>
+          {/* ── Filtros del historial: mes, día y estado ── */}
+          {tabActual === "historial" && (
+            <div className="px-3 sm:px-4 lg:px-6 pt-3 pb-3 border-t border-slate-200 flex flex-col gap-3" data-testid="filtros-historial">
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600 flex-1 min-w-[130px] sm:flex-none sm:w-44">
                   Mes
                   <input
                     type="month"
                     value={filtroMes || hoy.slice(0, 7)}
                     max={hoy.slice(0, 7)}
-                    onChange={(e) => { setFiltroMes(e.target.value); setFiltroFecha(""); }}
-                    className="text-sm border border-slate-300 rounded-lg px-2 h-10 min-w-0 flex-1 sm:flex-none bg-white"
+                    onChange={(e) => { setFiltroMes(e.target.value || hoy.slice(0, 7)); setFiltroFecha(""); setFiltroEstado("todos"); }}
+                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-[15px] font-normal text-slate-900"
                     data-testid="filtro-mes"
                   />
                 </label>
-                <label className="text-xs text-slate-600 flex items-center gap-1.5 min-w-0 flex-1 sm:flex-none">
-                  Día
+                <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600 flex-1 min-w-[130px] sm:flex-none sm:w-44">
+                  Un día (opcional)
                   <input
                     type="date"
                     value={filtroFecha}
-                    onChange={(e) => setFiltroFecha(e.target.value)}
-                    className="text-sm border border-slate-300 rounded-lg px-2 h-10 min-w-0 flex-1 sm:flex-none bg-white"
+                    max={hoy}
+                    onChange={(e) => { setFiltroFecha(e.target.value); setFiltroEstado("todos"); }}
+                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-[15px] font-normal text-slate-900"
                     data-testid="filtro-dia"
                   />
                 </label>
                 {filtroFecha && (
-                  <button type="button" className="text-xs font-semibold text-primary h-10 px-1 shrink-0" onClick={() => setFiltroFecha("")}>Todo el mes</button>
+                  <button type="button" className="h-11 px-2 text-sm font-semibold text-primary" onClick={() => setFiltroFecha("")} data-testid="filtro-todo-el-mes">Ver todo el mes</button>
                 )}
+                <p className="w-full sm:w-auto sm:ml-auto text-sm text-slate-600 sm:pb-2.5" data-testid="resumen-historial">
+                  <b className="text-slate-900">{pedidosHistorial.length}</b> pedido{pedidosHistorial.length === 1 ? "" : "s"} · <b className="text-slate-900">{moneda}{vendidoHistorial.toLocaleString("es-DO", { maximumFractionDigits: 0 })}</b> entregado
+                </p>
               </div>
-            )}
-          </div>
-          {/* Filtros por estado: solo en el historial; hoy se ve en columnas */}
-          <div className={`flex-wrap gap-1.5 px-3 py-2 ${tabActual === "historial" ? "flex" : "hidden"}`}>
-            {[
-              { value: "todos", label: "Todos", color: "bg-gray-100 text-gray-700 border-gray-300" },
-              { value: "pendiente_confirmacion", label: "Por Confirmar", color: "bg-yellow-100 text-yellow-700 border-yellow-300" },
-              { value: "esperando_comprobante", label: "Esp. Recibo", color: "bg-indigo-100 text-indigo-600 border-indigo-300" },
-              { value: "esperando_pago", label: "Esp. Pago", color: "bg-purple-100 text-purple-600 border-purple-300" },
-              { value: "esperando_confirmacion_pago", label: "Conf. Pago", color: "bg-cyan-100 text-cyan-600 border-cyan-300" },
-              { value: "esperando_confirmacion_sustituciones", label: "Conf. Cambios", color: "bg-amber-100 text-amber-700 border-amber-300" },
-              { value: "pendiente", label: "Por preparar", color: "bg-orange-100 text-orange-600 border-orange-300" },
-               { value: "en_preparacion", label: "En Preparación", color: "bg-blue-100 text-blue-600 border-blue-300" },
-               { value: "listo", label: "Listo", color: "bg-purple-100 text-purple-600 border-purple-300" },
-              { value: "en_camino", label: "En Camino", color: "bg-blue-100 text-blue-600 border-blue-300" },
-              { value: "entregado", label: "Entregado", color: "bg-green-100 text-green-600 border-green-300" },
-              { value: "cancelado", label: "Cancelado", color: "bg-red-100 text-red-600 border-red-300" },
-              { value: "retorno", label: "Retorno", color: "bg-gray-100 text-gray-600 border-gray-300" },
-              { value: "fusionado", label: "Fusionado", color: "bg-violet-100 text-violet-700 border-violet-300" },
-            ].map((s) => {
-              const source = tabActual === "activos" ? pedidosActivos : pedidosHistorial;
-              const cnt = s.value === "todos" ? source.length : source.filter((p: any) => p.estado === s.value).length;
-              return (
-                <button
-                  key={s.value}
-                  onClick={() => setFiltroEstado(s.value)}
-                  data-testid={`filter-chip-${s.value}`}
-                  className={`px-3 h-8 rounded-full text-xs font-medium border transition-all ${s.color} ${
-                    filtroEstado === s.value ? "ring-2 ring-offset-1 ring-primary/40 border-2" : "opacity-70 hover:opacity-100"
-                  }`}
-                >
-                  {s.label} <span className="opacity-60">({cnt})</span>
-                </button>
-              );
-            })}
-          </div>
+              {/* Solo salen los estados que tienen pedidos */}
+              <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-0.5" role="tablist" aria-label="Estado">
+                {ESTADOS_HISTORIAL.map((e) => {
+                  const cnt = e.value === "todos" ? pedidosHistorial.length : pedidosHistorial.filter((p: any) => p.estado === e.value).length;
+                  if (e.value !== "todos" && cnt === 0 && filtroEstado !== e.value) return null;
+                  const activo = filtroEstado === e.value;
+                  return (
+                    <button
+                      key={e.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={activo}
+                      onClick={() => setFiltroEstado(e.value)}
+                      data-testid={`filter-chip-${e.value}`}
+                      className={`h-10 px-4 rounded-full text-sm whitespace-nowrap shrink-0 border ${activo ? "bg-primary border-primary text-primary-foreground font-semibold" : "bg-white border-slate-300 text-slate-800 font-medium"}`}
+                    >
+                      {e.label} <span className={activo ? "opacity-80" : "text-slate-500"}>{cnt}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Content */}
@@ -1722,9 +1735,43 @@ export default function PedidosPage() {
                 </div>
               </div>
             ) : (
+            tabActual === "historial" ? (
+              <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-200 overflow-hidden max-w-4xl" data-testid="lista-historial">
+                {pedidosFiltrados.map((pedido: PedidoNegocio) => {
+                  const abierto = historialAbierto === pedido.id;
+                  const totalFila = parseFloat(pedido.totalConfirmado || pedido.total || "0");
+                  return (
+                    <div key={pedido.id}>
+                      <button
+                        type="button"
+                        aria-expanded={abierto}
+                        onClick={() => setHistorialAbierto(abierto ? null : pedido.id)}
+                        className={`w-full text-left px-3.5 sm:px-4 py-3 flex items-center gap-3 ${abierto ? "bg-slate-50" : "hover:bg-slate-50"}`}
+                        data-testid={`fila-historial-${pedido.id}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-[15px] text-slate-900 truncate">#{pedido.id} · {pedido.clienteNombre}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {new Date(pedido.fechaCreacion).toLocaleString("es-DO", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                            {pedido.tipoEntrega === "pickup" ? " · recoge" : ""}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold text-[15px] text-slate-900">{totalFila > 0 ? `${moneda}${totalFila.toLocaleString("es-DO", { maximumFractionDigits: 2 })}` : "—"}</p>
+                          <Badge variant="outline" className={`mt-0.5 text-[11px] h-5 px-2 rounded-full ${getEstadoColor(pedido.estado)}`}>{getEstadoLabel(pedido.estado)}</Badge>
+                        </div>
+                        <ChevronDown size={18} className={`text-slate-400 shrink-0 transition-transform ${abierto ? "rotate-180" : ""}`} />
+                      </button>
+                      {abierto && <div className="px-2.5 sm:px-3 pb-3 bg-slate-50">{tarjetaPedido(pedido)}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3 items-start">
               {pedidosFiltrados.map((pedido: PedidoNegocio) => tarjetaPedido(pedido))}
             </div>
+            )
             )
           )}
         </main>

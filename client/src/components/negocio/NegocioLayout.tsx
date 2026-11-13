@@ -121,6 +121,7 @@ export default function NegocioLayout({
   const unreadCount = unreadData?.count || 0;
   const tieneMenu = colmadoData?.tipoNegocio && !["colmado", "colmadon"].includes(colmadoData.tipoNegocio);
 
+  const NOMBRE_ROL: Record<string, string> = { colmado_owner: "Dueño", admin_pedidos: "Colmadero", operador_sucursal: "Despachador" };
   const esDueno = roleData?.role === "colmado_owner";
   const esAdmin = esDueno || roleData?.role === "admin_pedidos";
   const inicial = colmadoData?.nombre?.charAt(0).toUpperCase() || "N";
@@ -249,6 +250,7 @@ export default function NegocioLayout({
           <div className="flex-1 min-w-0">
             <p className="font-heading font-bold text-[15px] leading-tight truncate" data-testid="text-header-negocio-name">{colmadoData?.nombre || "Mi Negocio"}</p>
             <p className="text-xs text-slate-500 truncate" data-testid="text-plan-name">{suscripcionData?.plan?.nombre || "Sin Plan"}</p>
+            {NOMBRE_ROL[roleData?.role ?? ""] && <p className="text-[11px] font-semibold text-primary truncate" data-testid="text-rol">{NOMBRE_ROL[roleData?.role ?? ""]}</p>}
           </div>
           <button className="lg:hidden w-10 h-10 flex items-center justify-center rounded-lg text-slate-600" onClick={() => setSidebarOpen(false)} aria-label="Cerrar menú">
             <X size={20} />
@@ -266,14 +268,15 @@ export default function NegocioLayout({
           {navLink("/negocio/clientes", "clientes", Users, "Clientes")}
           {esAdmin && navLink("/negocio/empleados", "empleados", Contact, "Empleados")}
 
-          {grupo("Dinero")}
-          {navLink("/negocio/ventas", "ventas", DollarSign, "Ventas")}
-          {navLink("/negocio/cuadres", "cuadres", ClipboardList, "Cuadres")}
+          {esAdmin && grupo("Dinero")}
+          {/* El despachador no maneja dinero ni configuración */}
+          {esAdmin && navLink("/negocio/ventas", "ventas", DollarSign, "Ventas")}
+          {esAdmin && navLink("/negocio/cuadres", "cuadres", ClipboardList, "Cuadres")}
           {esAdmin && navLink("/negocio/reportes", "reportes", BarChart3, "Reportes")}
 
           {grupo("Ajustes")}
-          {navLink("/negocio/settings", "settings", Settings, "Configuración")}
-          {navLink("/negocio/whatsapp-config", "whatsapp-config", Smartphone, "WhatsApp")}
+          {esAdmin && navLink("/negocio/settings", "settings", Settings, "Configuración")}
+          {esAdmin && navLink("/negocio/whatsapp-config", "whatsapp-config", Smartphone, "WhatsApp")}
           {esDueno && navLink("/negocio/sucursales", "sucursales", Building2, "Sucursales")}
           {esDueno && navLink("/negocio/usuarios", "usuarios", UserCog, "Usuarios y permisos")}
           {navLink("/negocio/manual", "manual", BookOpen, "Manual de uso")}
@@ -401,11 +404,11 @@ export default function NegocioLayout({
                 {tieneMenu && otrasCard("/negocio/menu", "menu", UtensilsCrossed, "Menú")}
                 {otrasCard("/negocio/clientes", "clientes", Users, "Clientes")}
                 {esAdmin && otrasCard("/negocio/empleados", "empleados", Contact, "Empleados")}
-                {otrasCard("/negocio/ventas", "ventas", DollarSign, "Ventas")}
-                {otrasCard("/negocio/cuadres", "cuadres", ClipboardList, "Cuadres")}
+                {esAdmin && otrasCard("/negocio/ventas", "ventas", DollarSign, "Ventas")}
+                {esAdmin && otrasCard("/negocio/cuadres", "cuadres", ClipboardList, "Cuadres")}
                 {esAdmin && otrasCard("/negocio/reportes", "reportes", BarChart3, "Reportes")}
-                {otrasCard("/negocio/settings", "settings", Settings, "Configuración")}
-                {otrasCard("/negocio/whatsapp-config", "whatsapp-config", Smartphone, "WhatsApp")}
+                {esAdmin && otrasCard("/negocio/settings", "settings", Settings, "Configuración")}
+                {esAdmin && otrasCard("/negocio/whatsapp-config", "whatsapp-config", Smartphone, "WhatsApp")}
                 {esDueno && otrasCard("/negocio/sucursales", "sucursales", Building2, "Sucursales")}
                 {esDueno && otrasCard("/negocio/usuarios", "usuarios", UserCog, "Usuarios")}
                 {otrasCard("/negocio/manual", "manual", BookOpen, "Manual")}

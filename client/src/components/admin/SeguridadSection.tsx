@@ -15,7 +15,7 @@ type Respaldo = { dia: string; estado: "en_curso" | "listo" | "fallido"; totalTa
 
 const fecha = (v: string) => new Date(v).toLocaleString("es-DO", { dateStyle: "short", timeStyle: "medium" });
 const tamano = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
-const ROLES: Record<string, string> = { platform_admin: "Plataforma", colmado_owner: "Dueño", admin_pedidos: "Admin. pedidos", operador_sucursal: "Operador", delivery: "Repartidor" };
+const ROLES: Record<string, string> = { platform_admin: "Plataforma", colmado_owner: "Dueño", admin_pedidos: "Colmadero", operador_sucursal: "Despachador", delivery: "Repartidor" };
 
 export function SeguridadSection() {
   const [pestana, setPestana] = useState<"bitacora" | "errores" | "respaldos">("bitacora");

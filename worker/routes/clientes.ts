@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAuth, requireBusinessAccess } from "../lib/auth";
-import { puedeOperar } from "../lib/permisos";
+import { ADMINISTRADORES, puedeOperar } from "../lib/permisos";
 import { soloDigitos } from "../lib/telefono";
 import { getColmado, getColmadoTimezone } from "../storage/colmados";
 import { getAccessibleColmadoIds } from "../storage/users";
@@ -68,6 +68,8 @@ clienteRoutes.patch("/api/clientes/:id", requireAuth, async (c) => {
 // ---------- Ventas ----------
 
 clienteRoutes.get("/api/colmados/:id/ventas", requireAuth, requireBusinessAccess(), async (c) => {
+  // El historial de ventas es del dueño y del colmadero; el despachador solo ve el día en curso.
+  if (!ADMINISTRADORES.includes(c.var.user.role ?? "")) return c.json({ error: "No tienes permiso para ver el historial de ventas" }, 403);
   const db = getDb(c.env.DB);
   const colmadoId = Number(c.req.param("id"));
   const dias = Math.min(366, Math.max(1, parseInt(c.req.query("limit") || "") || 30));
@@ -84,6 +86,7 @@ clienteRoutes.get("/api/colmados/:id/ventas/hoy", requireAuth, requireBusinessAc
 });
 
 clienteRoutes.patch("/api/colmados/:id/ventas/cuadrar", requireAuth, requireBusinessAccess(), async (c) => {
+  if (!ADMINISTRADORES.includes(c.var.user.role ?? "")) return c.json({ error: "Solo el dueño o el colmadero pueden cuadrar la caja" }, 403);
   const db = getDb(c.env.DB);
   const colmadoId = Number(c.req.param("id"));
   const body = (await c.req.json().catch(() => null)) || {};

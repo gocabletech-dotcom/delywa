@@ -16,7 +16,7 @@ import { enviarRecordatoriosComprobante } from "../lib/cron";
 
 let t: Awaited<ReturnType<typeof createTestApp>>;
 type Client = ReturnType<Awaited<ReturnType<typeof createTestApp>>["client"]>;
-let dueno: Client, operador: Client, ajeno: Client, anon: Client;
+let dueno: Client, operador: Client, colmadero: Client, ajeno: Client, anon: Client;
 let cafe: any, otro: any;
 
 async function login(email: string, password: string) {
@@ -50,6 +50,9 @@ beforeAll(async () => {
   const aj = await createUser(t.db, { idPrefix: "owner", email: "ajeno@delywa.test", password: "ajeno123", firstName: "Abel", role: "colmado_owner", colmadoId: otro.id });
   await t.db.update(colmados).set({ ownerUserId: aj.id }).where(eq(colmados.id, otro.id));
   dueno = await login("dueno@delywa.test", "dueno1234");
+  const col = await createUser(t.db, { idPrefix: "staff", email: "colmadero@delywa.test", password: "colmadero123", firstName: "Cora", role: "admin_pedidos", colmadoId: cafe.id });
+  await setUserSucursalIds(t.db, col.id, [cafe.id]);
+  colmadero = await login("colmadero@delywa.test", "colmadero123");
   operador = await login("op@delywa.test", "op123456");
   ajeno = await login("ajeno@delywa.test", "ajeno123");
   anon = t.client();
@@ -318,3 +321,32 @@ describe("chat web, pagos y límites", () => {
     await t.db.update(planes).set({ limitePedidosDiarios: null }).where(eq(planes.id, 1));
   });
 });
+
+describe("roles: colmadero (encargado) y despachador", () => {
+  it("el despachador atiende pedidos pero no toca caja, formas de pago ni configuración", async () => {
+    expect((await operador.request("GET", `/api/colmados/${cafe.id}/pedidos?recientes=1`)).status).toBe(200);
+    expect((await operador.request("GET", `/api/colmados/${cafe.id}/ventas/hoy`)).status).toBe(200);
+    expect((await operador.request("GET", `/api/colmados/${cafe.id}/ventas`)).status).toBe(403);
+    expect((await operador.request("PATCH", `/api/colmados/${cafe.id}/ventas/cuadrar`, {})).status).toBe(403);
+    expect((await operador.request("PUT", `/api/colmados/${cafe.id}/metodos-pago`, { efectivo: false })).status).toBe(403);
+    expect((await operador.request("PATCH", `/api/colmados/${cafe.id}`, { horaCierre: "23:00" })).status).toBe(403);
+    expect((await operador.request("POST", "/api/negocio/usuarios", { email: "x@delywa.test", password: "clave-larga-123", firstName: "X", role: "operador_sucursal" })).status).toBe(403);
+  });
+
+  it("el colmadero maneja caja, pagos y configuración del día a día, pero no la identidad del negocio ni los usuarios", async () => {
+    expect((await colmadero.request("GET", `/api/colmados/${cafe.id}/ventas`)).status).toBe(200);
+    expect((await colmadero.request("PUT", `/api/colmados/${cafe.id}/metodos-pago`, { efectivo: true, tarjeta: true })).status).toBe(200);
+    const [antes] = await t.db.select().from(colmados).where(eq(colmados.id, cafe.id));
+    const r = await colmadero.request("PATCH", `/api/colmados/${cafe.id}`, { horaCierre: "23:30", nombre: "Otro nombre", whatsappNumero: "18090000000" });
+    expect(r.status).toBe(200);
+    const [despues] = await t.db.select().from(colmados).where(eq(colmados.id, cafe.id));
+    expect(despues.horaCierre).toBe("23:30");
+    expect(despues.nombre).toBe(antes.nombre);
+    expect(despues.whatsappNumero).toBe(antes.whatsappNumero);
+    // Otro negocio: nada.
+    expect((await colmadero.request("PATCH", `/api/colmados/${otro.id}`, { horaCierre: "20:00" })).status).toBe(403);
+    expect((await colmadero.request("POST", "/api/negocio/usuarios", { email: "y@delywa.test", password: "clave-larga-123", firstName: "Y", role: "operador_sucursal" })).status).toBe(403);
+    expect((await colmadero.request("PATCH", `/api/colmados/${cafe.id}/ventas/cuadrar`, {})).status).toBe(200);
+  });
+});
+

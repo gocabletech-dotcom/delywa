@@ -393,7 +393,7 @@ export default function SucursalesPage() {
                             <div>
                               <div className="font-medium">
                                 {[usuario.firstName, usuario.lastName].filter(Boolean).join(" ") || "Usuario"}
-                                <span className="text-xs text-gray-500 ml-1">({usuario.role === "colmado_owner" ? "Administrador general" : usuario.role === "delivery" ? "Repartidor" : usuario.role === "admin_pedidos" ? "Administrador de pedidos" : "Operador de sucursal"})</span>
+                                <span className="text-xs text-gray-500 ml-1">({usuario.role === "colmado_owner" ? "Dueño" : usuario.role === "delivery" ? "Repartidor" : usuario.role === "admin_pedidos" ? "Colmadero" : "Despachador"})</span>
                               </div>
                               <p className="text-sm text-gray-500">{usuario.email || "Sin correo"}</p>
                             </div>
@@ -412,7 +412,7 @@ export default function SucursalesPage() {
                             <div><Label>Apellido</Label><Input value={editingUser.lastName || ""} onChange={(e) => setEditingUser({ ...editingUser, lastName: e.target.value })} /></div>
                             <div><Label>Correo *</Label><Input type="email" value={editingUser.email || ""} onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })} /></div>
                             <div><Label>Nueva contraseña (opcional)</Label><Input type="password" minLength={10} placeholder="Dejar vacía para conservarla (mínimo 10)" value={editingUser.password} onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })} /></div>
-                            <div><Label>Rol</Label><select disabled={editingUser.role === "colmado_owner"} className="w-full h-10 rounded-md border px-3 text-sm disabled:bg-gray-100" value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}><option value="colmado_owner">Administrador general</option><option value="admin_pedidos">Administrador de pedidos</option><option value="operador_sucursal">Operador de sucursal</option><option value="delivery">Repartidor</option></select></div>
+                            <div><Label>Rol</Label><select disabled={editingUser.role === "colmado_owner"} className="w-full h-10 rounded-md border px-3 text-sm disabled:bg-gray-100" value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}><option value="colmado_owner">Dueño</option><option value="admin_pedidos">Colmadero (encargado)</option><option value="operador_sucursal">Despachador</option><option value="delivery">Repartidor</option></select></div>
                           </div>
                           <div>
                             <Label>Sucursales asignadas</Label>
@@ -436,7 +436,7 @@ export default function SucursalesPage() {
           {soloUsuarios && <Card id="usuarios">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2"><UserPlus size={18} /> Agregar un usuario</CardTitle>
-              <p className="text-sm text-gray-500">Crea administradores de pedidos u operadores y asigna las sucursales que pueden manejar.</p>
+              <p className="text-sm text-gray-500">Crea colmaderos o despachadores y elige las sucursales que pueden manejar.</p>
             </CardHeader>
             <CardContent>
               <form className="space-y-4" onSubmit={submitUserForm}>
@@ -447,9 +447,14 @@ export default function SucursalesPage() {
                 <div><Label>Contraseña temporal * (mínimo 10 caracteres)</Label><Input name="password" required type="password" minLength={10} autoComplete="new-password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} /></div>
                 <div><Label>Tipo de rol</Label>
                   <select name="role" className="w-full h-10 rounded-md border px-3 text-sm" value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
-                    <option value="admin_pedidos">Administrador de pedidos</option>
-                    <option value="operador_sucursal">Operador de sucursal</option>
+                    <option value="admin_pedidos">Colmadero (encargado)</option>
+                    <option value="operador_sucursal">Despachador</option>
                   </select>
+                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed" data-testid="descripcion-rol">
+                    {userForm.role === "admin_pedidos"
+                      ? "Colmadero: maneja el negocio casi como el dueño. Pedidos, repartidores, caja y cuadres, empleados y nómina, reportes y configuración. No crea usuarios ni sucursales."
+                      : "Despachador: atiende a los clientes. Pedidos, chats, clientes y asignar repartidores. No ve caja, cuadres, nómina ni configuración, y no crea usuarios."}
+                  </p>
                 </div>
               </div>
               <div>

@@ -6,6 +6,7 @@ import { getDb, type Db } from "../db";
 import { requireAdmin, requireAuth, requireBusinessAccess } from "../lib/auth";
 import { isUniqueViolation } from "../lib/d1";
 import { claveDebil } from "../lib/claves";
+import { ADMINISTRADORES } from "../lib/permisos";
 import { archivosDelNegocio, borrarArchivosHuerfanos } from "../lib/archivos";
 import {
   aplicarPlantillaMenu, assignColmadoOwner, createColmado, createSucursal, deleteColmado, enrichColmadoWithMoneda,
@@ -159,10 +160,17 @@ negocioRoutes.patch("/api/colmados/:id", requireAuth, async (c) => {
   const db = getDb(c.env.DB);
   const user = c.var.user;
   const esAdmin = user.role === "platform_admin";
-  if (!Number.isInteger(id) || !(esAdmin || (user.role === "colmado_owner" && await isOwnerOfColmado(db, user.id, id)))) {
+  const esDueno = user.role === "colmado_owner" && Number.isInteger(id) && await isOwnerOfColmado(db, user.id, id);
+  // El colmadero (encargado) cambia la configuración del día a día de las sucursales que maneja.
+  const esColmadero = user.role === "admin_pedidos" && Number.isInteger(id) && await canUserAccessColmado(db, user, id);
+  if (!Number.isInteger(id) || !(esAdmin || esDueno || esColmadero)) {
     return c.json({ error: "No tienes permiso para modificar este colmado" }, 403);
   }
   const body = (await c.req.json().catch(() => null)) || {};
+  if (esColmadero) {
+    // Identidad del negocio y su número de WhatsApp: solo el dueño.
+    for (const reservado of ["nombre", "tipoNegocio", "whatsappNumero", "logo", "colorPrimario", "rnc", "paisId", "codigoPais"]) delete (body as Record<string, unknown>)[reservado];
+  }
   const updateData: Record<string, unknown> = {};
 
   const texto = [
@@ -341,6 +349,8 @@ negocioRoutes.get("/api/colmados/:id/metodos-pago", async (c) => {
 });
 
 negocioRoutes.put("/api/colmados/:id/metodos-pago", requireAuth, requireBusinessAccess(), async (c) => {
+  // Las cuentas de banco donde paga el cliente: solo el dueño o el colmadero.
+  if (!ADMINISTRADORES.includes(c.var.user.role ?? "")) return c.json({ error: "No tienes permiso para cambiar las formas de pago" }, 403);
   const body = (await c.req.json().catch(() => null)) || {};
   const data: Parameters<typeof createOrUpdateMetodosPago>[2] = {};
   for (const key of ["efectivo", "transferencia", "tarjeta"] as const) {
