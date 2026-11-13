@@ -55,6 +55,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import NegocioLayout from "@/components/negocio/NegocioLayout";
 import { stripInternalAddressContext } from "@shared/visible-message";
+import { Avatar, Burbuja, Checks, IOS, IPhone, IconoIOS, SeparadorFecha, fondoWhatsApp, horaCorta, textoFecha } from "@/components/whatsapp/ios";
 
 type Conversacion = {
   id: number;
@@ -65,7 +66,34 @@ type Conversacion = {
   ultimoPedidoEstado: string | null;
   ultimoMensaje: string;
   esDelivery: boolean;
+  ultimoTexto?: string | null;
+  ultimoRol?: string | null;
 };
+
+const esDelCliente = (rol: string) => rol === "user" || rol === "cliente";
+const ETIQUETAS_ESTADO: Record<string, string> = {
+  pendiente_confirmacion: "Por confirmar", esperando_pago: "Esperando pago", esperando_confirmacion_pago: "Revisar pago", pendiente: "Pendiente",
+  en_preparacion: "Preparando", listo: "Listo", en_camino: "En camino", llegando: "Llegando", entregado: "Entregado", cancelado: "Cancelado", retorno: "Devuelto",
+};
+const etiquetaEstado = (e: string | null) => (e ? ETIQUETAS_ESTADO[e] ?? null : null);
+function colorEstado(e: string): React.CSSProperties {
+  if (e === "entregado") return { background: "#D8FDD2", color: "#15603E" };
+  if (e === "cancelado" || e === "retorno") return { background: "#FDE2E1", color: "#B42318" };
+  if (e === "en_camino" || e === "llegando") return { background: "#E1F0FF", color: "#0B57D0" };
+  return { background: "#FFF1D6", color: "#8A5300" };
+}
+function vistaPrevia(texto: string | null | undefined): string {
+  if (!texto) return "";
+  return stripInternalAddressContext(texto).replace(/\*/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+function horaLista(fecha: string): string {
+  const f = new Date(fecha);
+  const hoy = new Date();
+  const ayer = new Date(hoy); ayer.setDate(hoy.getDate() - 1);
+  if (f.toDateString() === hoy.toDateString()) return f.toLocaleTimeString("es-DO", { hour: "numeric", minute: "2-digit" });
+  if (f.toDateString() === ayer.toDateString()) return "Ayer";
+  return f.toLocaleDateString("es-DO", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
 
 type Mensaje = {
   id: number;
@@ -422,9 +450,10 @@ export default function ConversacionesPage() {
   }, [selectedConversacion?.id]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const caja = messagesEndRef.current?.closest(".overflow-y-auto"); if (caja) caja.scrollTo({ top: caja.scrollHeight, behavior: "smooth" });
   }, [mensajes]);
 
+  const totalNoLeidos = (conversaciones || []).reduce((n, c) => n + (c.noLeidosColmado > 0 ? 1 : 0), 0);
   const filteredConversaciones = (conversaciones || []).filter((c) =>
     (c.clienteNombre || c.clienteWhatsapp).toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -524,302 +553,212 @@ export default function ConversacionesPage() {
     <NegocioLayout title="Conversaciones" activeNav="conversaciones" headerRight={conversacionesHeaderRight}>
 
 
-        <main className="flex-1 flex overflow-hidden min-h-0">
-          <div className={`w-full md:w-80 lg:w-96 border-r bg-white flex flex-col ${selectedConversacion ? 'hidden md:flex' : 'flex'}`}>
-            <div className="p-4 border-b">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <Input
-                  placeholder="Buscar cliente..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                  data-testid="input-search-cliente"
-                />
-              </div>
-            </div>
-
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-              <TabsList className="grid grid-cols-4 mx-2 md:mx-4 mt-2 text-xs md:text-sm">
-                <TabsTrigger value="todas" data-testid="tab-todas" className="px-1 md:px-3">Todas</TabsTrigger>
-                <TabsTrigger value="pendiente" className="data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700 px-1 md:px-3" data-testid="tab-pendiente">
-                  <span className="hidden sm:inline">Pendientes</span>
-                  <span className="sm:hidden">Pend.</span>
-                </TabsTrigger>
-                <TabsTrigger value="entregado" className="data-[state=active]:bg-green-100 data-[state=active]:text-green-700 px-1 md:px-3" data-testid="tab-entregado">
-                  <span className="hidden sm:inline">Entregados</span>
-                  <span className="sm:hidden">Entreg.</span>
-                </TabsTrigger>
-                <TabsTrigger value="cancelado" className="data-[state=active]:bg-red-100 data-[state=active]:text-red-700 px-1 md:px-3" data-testid="tab-cancelado">
-                  <span className="hidden sm:inline">Cancelados</span>
-                  <span className="sm:hidden">Canc.</span>
-                </TabsTrigger>
-              </TabsList>
-
-              <ScrollArea className="flex-1">
-                <div className="p-2">
+        <main className="flex-1 flex overflow-hidden min-h-0 bg-[#e9edef] md:bg-gradient-to-br md:from-[#dfe7e3] md:to-[#cfd8dc]">
+          {/* Se ve como WhatsApp en un iPhone: en computadora con el marco del teléfono, en el celular a pantalla completa. */}
+          <IPhone alto="calc(100dvh - 8rem)" altoMovil="calc(100dvh - 147px)" arriba>
+            {!selectedConversacion ? (
+              <div className="flex-1 min-h-0 flex flex-col bg-white" data-testid="lista-chats">
+                <div className="px-4 pt-2 pb-2 shrink-0">
+                  <div className="flex items-center justify-between h-8">
+                    <span className="text-[17px]" style={{ color: IOS.azul }}>{totalNoLeidos > 0 ? `${totalNoLeidos} sin leer` : ""}</span>
+                    {chatWebUrl && (
+                      <button onClick={() => setShowQrDialog(true)} className="p-1" title="Mi link de pedidos" aria-label="Mi link de pedidos">
+                        <QrCode size={22} color={IOS.azul} />
+                      </button>
+                    )}
+                  </div>
+                  <h1 className="text-[34px] font-bold leading-tight tracking-tight text-black">Chats</h1>
+                  <div className="mt-2 flex items-center gap-2 rounded-[10px] bg-[#EEEEF0] px-2.5 h-9">
+                    <Search size={17} color={IOS.gris} />
+                    <input
+                      placeholder="Buscar"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="flex-1 bg-transparent outline-none text-[17px] placeholder:text-[#8E8E93]"
+                      data-testid="input-search-cliente"
+                    />
+                  </div>
+                  <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar">
+                    {[["todas", "Todos"], ["pendiente", "Pendientes"], ["entregado", "Entregados"], ["cancelado", "Cancelados"]].map(([valor, texto]) => (
+                      <button
+                        key={valor}
+                        onClick={() => setActiveTab(valor)}
+                        className={`shrink-0 rounded-full px-3.5 py-1.5 text-[14px] font-medium ${activeTab === valor ? "bg-[#D8FDD2] text-[#15603E]" : "bg-[#F0F2F5] text-[#54656F]"}`}
+                        data-testid={`tab-${valor}`}
+                      >
+                        {texto}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto pb-6">
                   {loadingConversaciones ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                    </div>
+                    <div className="flex justify-center py-10"><Loader2 className="animate-spin" color={IOS.gris} /></div>
                   ) : filteredConversaciones.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <MessageCircle size={48} className="mx-auto mb-2 opacity-50" />
-                      <p>No hay conversaciones</p>
+                    <div className="text-center py-16 px-6 text-[#8E8E93]">
+                      <MessageCircle size={44} className="mx-auto mb-3 opacity-40" />
+                      <p className="text-[15px]">No hay conversaciones todavía</p>
                     </div>
                   ) : (
-                    filteredConversaciones.map((conv) => (
-                      <div
-                        key={conv.id}
-                        onClick={() => setSelectedConversacion(conv)}
-                        className={`p-3 rounded-lg cursor-pointer mb-1 transition-colors ${
-                          selectedConversacion?.id === conv.id
-                            ? "bg-primary/10 border-l-4 border-primary"
-                            : conv.noLeidosColmado > 0
-                            ? "bg-green-50 hover:bg-green-100"
-                            : "hover:bg-gray-50"
-                        }`}
-                        data-testid={`conversacion-${conv.id}`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="relative">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 ${
-                              conv.esDelivery
-                                ? "bg-[#075e54] text-white"
-                                : conv.noLeidosColmado > 0 
-                                ? "bg-[#25D366] text-white" 
-                                : "bg-gray-200 text-gray-600"
-                            }`}>
-                              {conv.esDelivery ? (
-                                <Truck size={20} />
-                              ) : (
-                                (conv.clienteNombre || conv.clienteWhatsapp)[0].toUpperCase()
-                              )}
+                    filteredConversaciones.map((conv) => {
+                      const nombre = conv.clienteNombre || conv.clienteWhatsapp;
+                      const sinLeer = conv.noLeidosColmado > 0;
+                      const mioUltimo = conv.ultimoRol && !["user", "cliente"].includes(conv.ultimoRol);
+                      return (
+                        <button
+                          key={conv.id}
+                          onClick={() => setSelectedConversacion(conv)}
+                          className="w-full flex items-center gap-3 pl-4 text-left active:bg-[#E5E5EA]"
+                          data-testid={`conversacion-${conv.id}`}
+                        >
+                          {conv.esDelivery
+                            ? <div className="w-[52px] h-[52px] rounded-full bg-[#1DAA61] flex items-center justify-center shrink-0"><Truck size={24} color="#fff" /></div>
+                            : <Avatar nombre={nombre} tamano={52} color={sinLeer ? IOS.verde : "#BFC8CD"} />}
+                          <div className="flex-1 min-w-0 py-2.5 pr-4 border-b border-[#E5E5EA]">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="text-[17px] font-semibold text-black truncate">{nombre}</span>
+                              <span className={`text-[14px] shrink-0 ${sinLeer ? "text-[#1DAA61] font-medium" : "text-[#8E8E93]"}`}>{horaLista(conv.ultimoMensaje)}</span>
                             </div>
-                            {conv.noLeidosColmado > 0 && (
-                              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1">
-                                {conv.noLeidosColmado > 99 ? "99+" : conv.noLeidosColmado}
+                            <div className="flex items-center justify-between gap-2 mt-0.5">
+                              <span className="text-[15px] text-[#8E8E93] truncate flex items-center gap-1">
+                                {mioUltimo && <Checks />}
+                                {conv.esDelivery ? "Mensajes de delivery" : vistaPrevia(conv.ultimoTexto) || etiquetaEstado(conv.ultimoPedidoEstado) || conv.clienteWhatsapp}
                               </span>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="flex items-center gap-1.5">
-                                {conv.esDelivery && (
-                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-[#075e54]/10 text-[#075e54] border-[#075e54]/30">
-                                    Delivery
-                                  </Badge>
-                                )}
-                                <span className={`text-sm truncate ${conv.noLeidosColmado > 0 ? "font-bold text-gray-900" : "font-medium"}`}>
-                                  {conv.clienteNombre || conv.clienteWhatsapp}
+                              {sinLeer ? (
+                                <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-[#25D366] text-white text-[13px] font-semibold flex items-center justify-center">
+                                  {conv.noLeidosColmado > 99 ? "99+" : conv.noLeidosColmado}
                                 </span>
-                                <span className="text-[10px] text-gray-400 font-mono">#{conv.id}</span>
-                              </div>
-                              <span className={`text-xs ${conv.noLeidosColmado > 0 ? "text-[#25D366] font-medium" : "text-gray-500"}`}>
-                                {formatDate(conv.ultimoMensaje)}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              {conv.esDelivery ? (
-                                <span className="text-xs text-gray-500">Mensajes de delivery</span>
-                              ) : (
-                                getEstadoBadge(conv.ultimoPedidoEstado)
-                              )}
+                              ) : conv.ultimoPedidoEstado && !conv.esDelivery ? (
+                                <span className="shrink-0 text-[11px] font-medium rounded-full px-2 py-0.5" style={colorEstado(conv.ultimoPedidoEstado)}>{etiquetaEstado(conv.ultimoPedidoEstado)}</span>
+                              ) : null}
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    ))
+                        </button>
+                      );
+                    })
                   )}
                 </div>
-              </ScrollArea>
-            </Tabs>
-          </div>
-
-          <div className={`flex-1 flex-col bg-[#e5ddd5] ${selectedConversacion ? 'flex' : 'hidden md:flex'}`}>
-            {selectedConversacion ? (
-              <>
-                <div className="bg-[#075e54] text-white px-3 py-2 flex items-center gap-2 min-w-0">
-                  <button
-                    className="md:hidden p-1 hover:bg-white/20 rounded shrink-0"
-                    onClick={() => setSelectedConversacion(null)}
-                  >
-                    <ChevronLeft size={20} />
+              </div>
+            ) : (
+              <div className="flex-1 min-h-0 flex flex-col" data-testid="pantalla-chat">
+                {/* Cabecera del chat (iOS) */}
+                <div className="shrink-0 flex items-center gap-2 px-2 h-[52px] bg-[#F6F6F6]/95 backdrop-blur border-b border-[#D1D1D6]">
+                  <button className="flex items-center gap-1 px-1 h-full" onClick={() => setSelectedConversacion(null)} aria-label="Volver a los chats">
+                    {IconoIOS.atras()}
+                    {totalNoLeidos > 0 && <span className="text-[17px]" style={{ color: IOS.azul }}>{totalNoLeidos}</span>}
                   </button>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
-                    selectedConversacion.esDelivery
-                      ? "bg-white/20 text-white"
-                      : "bg-gray-300 text-gray-700"
-                  }`}>
-                    {selectedConversacion.esDelivery ? (
-                      <Truck size={18} />
-                    ) : (
-                      (selectedConversacion.clienteNombre || selectedConversacion.clienteWhatsapp)[0].toUpperCase()
-                    )}
+                  {selectedConversacion.esDelivery
+                    ? <div className="w-9 h-9 rounded-full bg-[#1DAA61] flex items-center justify-center shrink-0"><Truck size={18} color="#fff" /></div>
+                    : <Avatar nombre={selectedConversacion.clienteNombre || selectedConversacion.clienteWhatsapp} tamano={36} color="#BFC8CD" />}
+                  <div className="flex-1 min-w-0 leading-tight">
+                    <p className="text-[16px] font-semibold text-black truncate">{selectedConversacion.clienteNombre || selectedConversacion.clienteWhatsapp}</p>
+                    <p className="text-[12px] text-[#8E8E93] truncate">
+                      {selectedConversacion.esDelivery ? "Repartidor" : etiquetaEstado(selectedConversacion.ultimoPedidoEstado) || "Cliente"} · +{selectedConversacion.clienteWhatsapp}
+                    </p>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      {selectedConversacion.esDelivery && (
-                        <Badge className="text-[10px] px-1.5 py-0 h-4 bg-white/20 text-white border-white/30 shrink-0">
-                          Delivery
-                        </Badge>
-                      )}
-                      <p className="font-medium text-sm truncate">
-                        {selectedConversacion.clienteNombre || selectedConversacion.clienteWhatsapp}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <p className="text-xs opacity-80 truncate">#{selectedConversacion.id} • {selectedConversacion.clienteWhatsapp}</p>
-                      {!selectedConversacion.esDelivery && (
-                        <span className="hidden sm:block shrink-0">{getEstadoBadge(selectedConversacion.ultimoPedidoEstado)}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <a
-                      href={`https://wa.me/${selectedConversacion.clienteWhatsapp.replace(/\D/g, "")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 hover:bg-white/20 rounded transition-colors"
-                      title="Abrir WhatsApp"
-                      data-testid="button-whatsapp-manual"
-                    >
-                      <Phone size={18} />
-                    </a>
-                    <button
-                      onClick={handleDeleteConversacion}
-                      className="p-1.5 hover:bg-red-500/30 rounded transition-colors"
-                      title="Eliminar conversación"
-                      data-testid="button-delete-conversacion"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
+                  <a
+                    href={`https://wa.me/${selectedConversacion.clienteWhatsapp.replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2"
+                    title="Llamar o abrir en WhatsApp"
+                    data-testid="button-whatsapp-manual"
+                  >
+                    {IconoIOS.telefono()}
+                  </a>
+                  <button onClick={handleDeleteConversacion} className="p-2" title="Eliminar conversación" data-testid="button-delete-conversacion">
+                    <Trash2 size={20} color="#FF3B30" />
+                  </button>
                 </div>
 
-                <ScrollArea className="flex-1 p-2 md:p-3">
-                  <div className="space-y-1.5">
-                    {loadingMensajes ? (
-                      <div className="flex items-center justify-center py-8">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                      </div>
-                    ) : (
-                      [...(mensajes || [])].reverse().map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={`flex ${msg.rol === "user" ? "justify-start" : "justify-end"}`}
-                        >
-                          <div
-                            className={`max-w-[85%] md:max-w-[70%] lg:max-w-[60%] rounded-lg px-2 py-1.5 shadow text-sm ${
-                              msg.rol === "user"
-                                ? "bg-white text-gray-800 border border-gray-200"
-                                : "bg-[#dcf8c6] text-gray-800"
-                            }`}
-                            data-testid={`mensaje-${msg.id}`}
-                          >
-                            <p className="text-[13px] whitespace-pre-wrap">
-                              {stripInternalAddressContext(msg.contenido)}
-                            </p>
-                            <p className="text-[9px] text-gray-500 text-right mt-0.5">
-                              {formatTime(msg.fechaEnvio)}
-                            </p>
+                {/* Mensajes sobre el fondo de WhatsApp */}
+                <div className="flex-1 min-h-0 overflow-y-auto py-2" style={fondoWhatsApp}>
+                  {loadingMensajes ? (
+                    <div className="flex justify-center py-10"><Loader2 className="animate-spin" color={IOS.gris} /></div>
+                  ) : (
+                    (() => {
+                      const lista = [...(mensajes || [])].reverse();
+                      return lista.map((msg, i) => {
+                        const fecha = new Date(msg.fechaEnvio);
+                        const anterior = lista[i - 1];
+                        const nuevoDia = !anterior || new Date(anterior.fechaEnvio).toDateString() !== fecha.toDateString();
+                        const mio = !esDelCliente(msg.rol);
+                        const cola = nuevoDia || !anterior || esDelCliente(anterior.rol) !== esDelCliente(msg.rol);
+                        return (
+                          <div key={msg.id}>
+                            {nuevoDia && <SeparadorFecha texto={textoFecha(fecha)} />}
+                            <Burbuja mia={mio} cola={cola} hora={horaCorta(fecha)} testId={`mensaje-${msg.id}`}>
+                              <span className="whitespace-pre-wrap">{stripInternalAddressContext(msg.contenido)}</span>
+                            </Burbuja>
                           </div>
-                        </div>
-                      ))
-                    )}
-                    <div ref={messagesEndRef} />
-                  </div>
-                </ScrollArea>
+                        );
+                      });
+                    })()
+                  )}
+                  <div ref={messagesEndRef} className="h-2" />
+                </div>
 
-                <div className="bg-[#f0f0f0] p-2 border-t">
+                {/* Barra para escribir (iOS) */}
+                <div className="shrink-0 bg-[#F6F6F6] border-t border-[#D1D1D6] px-2 pt-1.5 pb-2 md:pb-7">
                   {sendError && (
-                    <div className="bg-amber-100 border border-amber-300 text-amber-800 px-3 py-2 rounded-lg mb-2 text-xs flex items-start gap-2" data-testid="send-error-banner">
+                    <div className="bg-[#FFF8E1] border border-[#FFE082] text-[#7A5B00] px-3 py-2 rounded-xl mb-1.5 text-[13px] flex items-start gap-2" data-testid="send-error-banner">
                       <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                       <div className="flex-1">
                         <p>{sendError}</p>
-                        <button 
-                          onClick={() => setSendError(null)} 
-                          className="text-amber-600 underline mt-1 text-xs"
-                        >
-                          Cerrar
-                        </button>
+                        <button onClick={() => setSendError(null)} className="underline mt-1 text-[12px]">Cerrar</button>
                       </div>
                     </div>
                   )}
                   {isRecording ? (
-                    <div className="flex items-center gap-2 bg-white rounded-full px-3 py-1.5">
-                      <div className="flex items-center gap-2 flex-1">
-                        <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-                        <span className="text-red-500 font-medium text-sm">Grabando... {formatRecordingTime(recordingTime)}</span>
-                      </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={stopRecording}
-                        className="text-red-500 hover:text-red-700 h-8 w-8"
-                        data-testid="button-stop-recording"
-                      >
-                        <Square size={16} fill="currentColor" />
-                      </Button>
+                    <div className="flex items-center gap-3 h-9 px-2">
+                      <span className="w-2.5 h-2.5 bg-[#FF3B30] rounded-full animate-pulse" />
+                      <span className="flex-1 text-[16px] text-black tabular-nums">{formatRecordingTime(recordingTime)}</span>
+                      <button onClick={stopRecording} className="w-9 h-9 rounded-full bg-[#25D366] flex items-center justify-center" data-testid="button-stop-recording" aria-label="Enviar nota de voz">
+                        {IconoIOS.enviar()}
+                      </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1 bg-white rounded-full px-3 py-1">
-                      <Input
-                        placeholder="Escribe un mensaje..."
-                        className="border-0 shadow-none focus-visible:ring-0 h-8 text-sm"
-                        value={messageText}
-                        onChange={(e) => setMessageText(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                        disabled={sendMessageMutation.isPending || sendVoiceMutation.isPending}
-                        data-testid="input-message"
-                      />
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1 flex items-center rounded-[18px] bg-white border border-[#D1D1D6] px-3 min-h-[36px]">
+                        <input
+                          placeholder="Mensaje"
+                          className="flex-1 bg-transparent outline-none text-[16px] py-1.5"
+                          value={messageText}
+                          onChange={(e) => setMessageText(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                          disabled={sendMessageMutation.isPending || sendVoiceMutation.isPending}
+                          data-testid="input-message"
+                        />
+                      </div>
                       {messageText.trim() ? (
-                        <Button
-                          size="icon"
-                          variant="ghost"
+                        <button
                           onClick={handleSendMessage}
                           disabled={sendMessageMutation.isPending}
-                          className="h-8 w-8"
+                          className="w-9 h-9 rounded-full bg-[#25D366] flex items-center justify-center shrink-0"
+                          aria-label="Enviar"
                           data-testid="button-send-message"
                         >
-                          {sendMessageMutation.isPending ? (
-                            <Loader2 size={16} className="animate-spin text-[#075e54]" />
-                          ) : (
-                            <Send size={16} className="text-[#075e54]" />
-                          )}
-                        </Button>
+                          {sendMessageMutation.isPending ? <Loader2 size={16} className="animate-spin text-white" /> : IconoIOS.enviar()}
+                        </button>
                       ) : (
-                        <Button
-                          size="icon"
-                          variant="ghost"
+                        <button
                           onClick={startRecording}
                           disabled={sendVoiceMutation.isPending}
-                          className="h-8 w-8"
+                          className="w-9 h-9 flex items-center justify-center shrink-0"
+                          aria-label="Grabar nota de voz"
                           data-testid="button-start-recording"
                         >
-                          {sendVoiceMutation.isPending ? (
-                            <Loader2 size={16} className="animate-spin text-[#075e54]" />
-                          ) : (
-                            <Mic size={16} className="text-[#075e54]" />
-                          )}
-                        </Button>
+                          {sendVoiceMutation.isPending ? <Loader2 size={18} className="animate-spin" color={IOS.azul} /> : IconoIOS.microfono()}
+                        </button>
                       )}
                     </div>
                   )}
                 </div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center text-gray-500">
-                  <MessageCircle size={64} className="mx-auto mb-4 opacity-30" />
-                  <p className="text-lg font-medium">Selecciona una conversación</p>
-                  <p className="text-sm">Elige un cliente para ver el historial de chat</p>
-                </div>
               </div>
             )}
-          </div>
+          </IPhone>
         </main>
-      
+
       {/* QR Code Dialog */}
       {showQrDialog && chatWebUrl && (
         <div

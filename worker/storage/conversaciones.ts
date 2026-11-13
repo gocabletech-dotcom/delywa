@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { getTableColumns, and, desc, eq, sql } from "drizzle-orm";
 import {
   clientes, whatsappConversaciones, whatsappMensajes, chatWebSesiones, chatWebMensajes, pedidos,
   type Cliente, type WhatsappConversacion, type ChatWebSesion,
@@ -181,8 +181,13 @@ export async function getConversacionById(db: Db, id: number): Promise<WhatsappC
   return row;
 }
 
-export async function getConversaciones(db: Db, colmadoId: number, estado?: string): Promise<WhatsappConversacion[]> {
-  return db.select().from(whatsappConversaciones)
+export async function getConversaciones(db: Db, colmadoId: number, estado?: string): Promise<Array<WhatsappConversacion & { ultimoTexto: string | null; ultimoRol: string | null }>> {
+  // Con el último mensaje (para mostrarlo en la lista, como en WhatsApp).
+  return db.select({
+    ...getTableColumns(whatsappConversaciones),
+    ultimoTexto: sql<string | null>`(select m.contenido from whatsapp_mensajes m where m.conversacion_id = "whatsapp_conversaciones"."id" order by m.id desc limit 1)`,
+    ultimoRol: sql<string | null>`(select m.rol from whatsapp_mensajes m where m.conversacion_id = "whatsapp_conversaciones"."id" order by m.id desc limit 1)`,
+  }).from(whatsappConversaciones)
     .where(estado
       ? and(eq(whatsappConversaciones.colmadoId, colmadoId), eq(whatsappConversaciones.ultimoPedidoEstado, estado))
       : eq(whatsappConversaciones.colmadoId, colmadoId))

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
-import { Camera, Loader2, MapPin, Mic, Send, Square } from "lucide-react";
+import { Loader2, Square } from "lucide-react";
+import { Avatar, Burbuja, IOS, IPhone, IconoIOS, SeparadorFecha, fondoWhatsApp, horaCorta, textoFecha } from "@/components/whatsapp/ios";
 import { prepararFoto } from "@/lib/imagen";
 import { businessTheme } from "@/lib/temaNegocio";
 
@@ -51,6 +52,7 @@ export default function PedirPage() {
   const [entrando, setEntrando] = useState(false);
   const [grabando, setGrabando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
+  const [menuAdjuntar, setMenuAdjuntar] = useState(false);
   const ultimoId = useRef(0);
   const desde = useRef(0);
   const abajo = useRef<HTMLDivElement>(null);
@@ -95,7 +97,7 @@ export default function PedirPage() {
     return () => clearTimeout(t);
   }, [esperando]);
 
-  useEffect(() => { abajo.current?.scrollIntoView({ behavior: "smooth" }); }, [mensajes.length, esperando]);
+  useEffect(() => { const caja = abajo.current?.closest(".overflow-y-auto"); if (caja) caja.scrollTo({ top: caja.scrollHeight, behavior: "smooth" }); }, [mensajes.length, esperando]);
 
   const entrar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,83 +212,91 @@ export default function PedirPage() {
   }
   if (!info) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>;
 
+  // Cabecera de chat de WhatsApp en iPhone.
   const cabecera = (
-    <header className="flex items-center gap-3 px-4 py-3 text-white shadow bg-primary">
-      <div className="w-10 h-10 rounded-full bg-white/20 overflow-hidden flex items-center justify-center shrink-0">
-        {info.logo ? <img src={info.logo} alt="" className="w-full h-full object-cover" /> : <span className="font-bold">{info.nombre.charAt(0)}</span>}
-      </div>
-      <div className="min-w-0">
-        <h1 className="font-semibold truncate" data-testid="text-nombre-colmado">{info.nombre}</h1>
-        <p className="text-xs text-white/80 truncate">{esperando ? "escribiendo…" : info.estaAbierto ? "En línea" : info.mensajeCerrado || "Cerrado ahora"}</p>
+    <header className="shrink-0 flex items-center gap-2.5 px-3 h-[54px] bg-[#F6F6F6]/95 backdrop-blur border-b border-[#D1D1D6]">
+      <Avatar nombre={info.nombre} foto={info.logo} tamano={38} color={IOS.verdeOscuro} />
+      <div className="flex-1 min-w-0 leading-tight">
+        <h1 className="text-[16px] font-semibold text-black truncate flex items-center gap-1" data-testid="text-nombre-colmado">
+          {info.nombre}
+          <svg width="15" height="15" viewBox="0 0 24 24" aria-label="Negocio verificado"><path d="M12 1.5l2.6 1.9 3.2-.2 1 3 2.7 1.8-1 3 1 3-2.7 1.8-1 3-3.2-.2L12 22.5l-2.6-1.9-3.2.2-1-3-2.7-1.8 1-3-1-3 2.7-1.8 1-3 3.2.2z" fill="#25D366"/><path d="M8 12.3l2.6 2.6L16.3 9" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </h1>
+        <p className={`text-[12.5px] truncate ${esperando ? "text-[#1DAA61]" : "text-[#8E8E93]"}`}>
+          {esperando ? "escribiendo…" : info.estaAbierto ? "en línea" : info.mensajeCerrado || "cerrado ahora"}
+        </p>
       </div>
     </header>
   );
 
-  if (!sesion) {
-    return (
-      <div className="min-h-[100dvh] flex flex-col bg-[#efeae2]" style={tema}>
-        {cabecera}
-        <main className="flex-1 flex items-center justify-center p-4">
-          <form onSubmit={entrar} className="w-full max-w-sm bg-white rounded-2xl shadow p-6 space-y-4" data-testid="form-entrar-chat">
-            <div className="text-center">
-              <h2 className="text-xl font-bold">Escríbele a {info.nombre}</h2>
-              <p className="text-sm text-gray-500 mt-1">Pide lo que necesites como si fuera por WhatsApp. Te responden aquí mismo.</p>
-            </div>
-            <label className="block text-sm font-medium">Tu nombre
-              <input className="mt-1 w-full h-11 rounded-lg border px-3" value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={80} autoComplete="name" required data-testid="input-nombre-chat" />
-            </label>
-            <label className="block text-sm font-medium">Tu teléfono
-              <input className="mt-1 w-full h-11 rounded-lg border px-3" type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="809 555 1234" autoComplete="tel" required data-testid="input-telefono-chat" />
-            </label>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <button type="submit" disabled={entrando} className="w-full h-12 rounded-full text-white font-semibold disabled:opacity-60 bg-primary" data-testid="button-entrar-chat">
-              {entrando ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Empezar a chatear"}
-            </button>
-            <p className="text-xs text-gray-400 text-center">Usamos tu número solo para tu pedido y la entrega. <a className="underline" href="/legal#privacidad" target="_blank" rel="noopener">Privacidad</a></p>
-          </form>
-        </main>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-[100dvh] flex flex-col bg-[#efeae2]" style={tema}>
+  const pantalla = !sesion ? (
+    // Bienvenida: como la tarjeta de "este negocio usa WhatsApp" pero para entrar al chat.
+    <div className="flex-1 min-h-0 flex flex-col" style={{ ...tema, ...fondoWhatsApp }}>
+      {cabecera}
+      <main className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-4 gap-3">
+        <div className="max-w-[300px] text-center text-[12.5px] text-[#54656F] bg-[#FFEECD] rounded-lg px-3 py-2 shadow-[0_1px_0.5px_rgba(11,20,26,.13)]">
+          🔒 Este es el chat oficial de {info.nombre} en DelyWa. Te atiende al instante.
+        </div>
+        <form onSubmit={entrar} className="w-full max-w-[320px] bg-white rounded-2xl shadow-[0_1px_3px_rgba(11,20,26,.2)] p-5 space-y-3" data-testid="form-entrar-chat">
+          <div className="flex flex-col items-center text-center gap-2">
+            <Avatar nombre={info.nombre} foto={info.logo} tamano={72} color={IOS.verdeOscuro} />
+            <h2 className="text-[19px] font-semibold text-black">{info.nombre}</h2>
+            <p className="text-[14px] text-[#667781]">Pide lo que necesites como por WhatsApp. Te responden aquí mismo.</p>
+          </div>
+          <input className="w-full h-11 rounded-xl bg-[#F0F2F5] px-3 text-[16px] outline-none focus:ring-2 focus:ring-[#25D366]" value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={80} autoComplete="name" placeholder="Tu nombre" aria-label="Tu nombre" required data-testid="input-nombre-chat" />
+          <input className="w-full h-11 rounded-xl bg-[#F0F2F5] px-3 text-[16px] outline-none focus:ring-2 focus:ring-[#25D366]" type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Tu teléfono (809 555 1234)" aria-label="Tu teléfono" autoComplete="tel" required data-testid="input-telefono-chat" />
+          {error && <p className="text-[13px] text-[#B42318]">{error}</p>}
+          <button type="submit" disabled={entrando} className="w-full h-11 rounded-full text-white text-[16px] font-semibold disabled:opacity-60 bg-primary active:opacity-90" data-testid="button-entrar-chat">
+            {entrando ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Empezar a chatear"}
+          </button>
+          <p className="text-[11.5px] text-[#8E8E93] text-center">Usamos tu número solo para tu pedido y la entrega. <a className="underline" href="/legal#privacidad" target="_blank" rel="noopener">Privacidad</a></p>
+        </form>
+      </main>
+    </div>
+  ) : (
+    <div className="flex-1 min-h-0 flex flex-col" style={tema}>
       {cabecera}
       {pedido && (
-        <div className="bg-white/90 border-b px-4 py-2 text-sm flex justify-between" data-testid="estado-pedido">
-          <span>Pedido #{pedido.id}: <b>{ESTADOS[pedido.estado] ?? pedido.estado}</b></span>
-          {pedido.total && <span className="text-gray-500">RD${Number(pedido.total).toLocaleString("es-DO")}</span>}
+        <div className="shrink-0 bg-white/95 border-b border-[#E5E5EA] px-4 py-2 text-[13.5px] flex justify-between items-center" data-testid="estado-pedido">
+          <span className="flex items-center gap-1.5">📌 Pedido #{pedido.id}: <b>{ESTADOS[pedido.estado] ?? pedido.estado}</b></span>
+          {pedido.total && Number(pedido.total) > 0 && <span className="text-[#667781]">RD${Number(pedido.total).toLocaleString("es-DO")}</span>}
         </div>
       )}
-      <main className="flex-1 overflow-y-auto px-3 py-4 space-y-2" data-testid="lista-mensajes">
+      <main className="flex-1 min-h-0 overflow-y-auto py-2" style={fondoWhatsApp} data-testid="lista-mensajes">
+        <div className="flex justify-center my-2 px-6">
+          <span className="text-center text-[12px] text-[#54656F] bg-[#FFEECD] rounded-lg px-3 py-1.5 shadow-[0_1px_0.5px_rgba(11,20,26,.13)]">🔒 Chat directo con {info.nombre}. Tus datos solo los ve el colmado.</span>
+        </div>
         {mensajes.length === 0 && !esperando && (
-          <div className="mx-auto max-w-xs text-center text-sm bg-[#fff5c4] rounded-lg px-3 py-2 text-gray-700">
-            Hola {sesion.nombre.split(" ")[0]} 👋 Escribe tu pedido, por ejemplo: «una funda de pan y un litro de leche».
-          </div>
+          <Burbuja mia={false} cola hora={horaCorta(new Date())}>
+            <span>Hola {sesion.nombre.split(" ")[0]} 👋 Escribe tu pedido, por ejemplo: «una funda de pan y un litro de leche».</span>
+          </Burbuja>
         )}
-        {mensajes.map((m) => {
+        {mensajes.map((m, i) => {
+          const fecha = new Date(m.fecha);
+          const anterior = mensajes[i - 1];
+          const nuevoDia = !anterior || new Date(anterior.fecha).toDateString() !== fecha.toDateString();
           const mio = m.rol === "user";
+          const cola = nuevoDia || !anterior || (anterior.rol === "user") !== mio;
           return (
-            <div key={m.id} className={`flex ${mio ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[80%] rounded-lg px-3 py-2 text-[15px] shadow-sm ${mio ? "bg-[#d9fdd3]" : "bg-white"}`}>
+            <div key={m.id}>
+              {nuevoDia && <SeparadorFecha texto={textoFecha(fecha)} />}
+              <Burbuja mia={mio} cola={cola} hora={horaCorta(fecha)} leido={m.id > 0}>
                 <Texto t={m.contenido} />
-                <span className="block text-right text-[11px] text-gray-400 mt-1">{hora(m.fecha)}</span>
-              </div>
+              </Burbuja>
             </div>
           );
         })}
-        {/* Botones de respuesta rápida bajo el último mensaje del bot. */}
+        {/* Botones de respuesta rápida bajo el último mensaje del bot (como los botones de WhatsApp). */}
         {!esperando && (() => {
           const ultimo = mensajes[mensajes.length - 1];
           if (!ultimo || ultimo.rol === "user" || !ultimo.opciones?.length) return null;
           return (
-            <div className="flex flex-wrap gap-2 justify-start pl-1" data-testid="opciones-rapidas">
+            <div className="px-3 mt-1 flex flex-col gap-1 max-w-[80%]" data-testid="opciones-rapidas">
               {ultimo.opciones.map((o) => (
                 <button
                   key={o.texto}
                   type="button"
                   onClick={() => (o.accion === "ubicacion" ? enviarUbicacion() : o.accion === "comprobante" ? foto.current?.click() : mandar("mensaje", { texto: o.texto }, o.texto))}
-                  className="px-4 py-2 rounded-full bg-white border border-primary text-primary text-sm font-medium shadow-sm active:scale-95"
+                  className="w-full rounded-[10px] bg-white py-2.5 text-[15px] font-medium text-[#027EB5] shadow-[0_1px_0.5px_rgba(11,20,26,.13)] active:bg-[#F0F2F5]"
                 >
                   {o.texto}
                 </button>
@@ -295,35 +305,64 @@ export default function PedirPage() {
           );
         })()}
         {esperando && (
-          <div className="flex justify-start"><div className="bg-white rounded-lg px-4 py-3 shadow-sm"><span className="inline-flex gap-1"><i className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" /><i className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" /><i className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" /></span></div></div>
+          <div className="flex justify-start px-3 mt-2">
+            <div className="bg-white rounded-[10px] rounded-tl-none px-4 py-3 shadow-[0_1px_0.5px_rgba(11,20,26,.13)]">
+              <span className="inline-flex gap-1"><i className="w-2 h-2 bg-[#8E8E93] rounded-full animate-bounce" /><i className="w-2 h-2 bg-[#8E8E93] rounded-full animate-bounce [animation-delay:150ms]" /><i className="w-2 h-2 bg-[#8E8E93] rounded-full animate-bounce [animation-delay:300ms]" /></span>
+            </div>
+          </div>
         )}
-        <div ref={abajo} />
+        <div ref={abajo} className="h-2" />
       </main>
-      {error && <p className="px-4 py-1 text-sm text-red-600 bg-white">{error}</p>}
-      <form onSubmit={enviarTexto} className="flex items-end gap-2 p-2 bg-[#f0f2f5]">
-        <button type="button" onClick={enviarUbicacion} className="p-2 text-gray-600" title="Enviar mi ubicación" aria-label="Enviar mi ubicación"><MapPin /></button>
-        <button type="button" onClick={() => foto.current?.click()} disabled={subiendo} className="p-2 text-gray-600" title="Enviar comprobante de pago" aria-label="Enviar comprobante de pago">
-          {subiendo ? <Loader2 className="animate-spin" /> : <Camera />}
+      {error && <p className="shrink-0 px-4 py-1.5 text-[13px] text-[#7A5B00] bg-[#FFF8E1] border-t border-[#FFE082]">{error}</p>}
+      {menuAdjuntar && (
+        <div className="shrink-0 bg-white border-t border-[#E5E5EA] grid grid-cols-2 gap-2 p-3" data-testid="menu-adjuntar">
+          <button type="button" onClick={() => { setMenuAdjuntar(false); enviarUbicacion(); }} className="flex flex-col items-center gap-1.5 py-2 rounded-xl active:bg-[#F0F2F5]">
+            <span className="w-12 h-12 rounded-full bg-[#1DAA61] flex items-center justify-center">{IconoIOS.ubicacion("#fff")}</span>
+            <span className="text-[13px] text-black">Ubicación</span>
+          </button>
+          <button type="button" onClick={() => { setMenuAdjuntar(false); foto.current?.click(); }} className="flex flex-col items-center gap-1.5 py-2 rounded-xl active:bg-[#F0F2F5]">
+            <span className="w-12 h-12 rounded-full bg-[#007AFF] flex items-center justify-center">{IconoIOS.camara("#fff")}</span>
+            <span className="text-[13px] text-black">Comprobante de pago</span>
+          </button>
+        </div>
+      )}
+      <form onSubmit={enviarTexto} className="shrink-0 flex items-end gap-2 px-2 pt-1.5 pb-2 md:pb-7 bg-[#F6F6F6] border-t border-[#D1D1D6]">
+        <button type="button" onClick={() => setMenuAdjuntar((v) => !v)} className="w-9 h-9 flex items-center justify-center shrink-0" title="Adjuntar ubicación o comprobante" aria-label="Adjuntar ubicación o comprobante">
+          {IconoIOS.mas()}
         </button>
         <input ref={foto} type="file" accept="image/*" className="hidden" onChange={subirComprobante} data-testid="input-comprobante" />
-        <textarea
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarTexto(); } }}
-          rows={1}
-          maxLength={1500}
-          placeholder="Escribe un mensaje"
-          className="flex-1 resize-none rounded-2xl px-4 py-2.5 bg-white outline-none max-h-32"
-          data-testid="input-mensaje"
-        />
+        <div className="flex-1 min-w-0 flex items-end rounded-[18px] bg-white border border-[#D1D1D6] pl-3 pr-2 min-h-[36px]">
+          <textarea
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarTexto(); } }}
+            rows={1}
+            maxLength={1500}
+            placeholder=""
+            aria-label="Mensaje"
+            className="flex-1 min-w-0 w-full resize-none bg-transparent outline-none text-[16px] py-[7px] max-h-28"
+            data-testid="input-mensaje"
+          />
+        </div>
         {texto.trim() ? (
-          <button type="submit" className="p-3 rounded-full text-white bg-primary" aria-label="Enviar" data-testid="button-enviar"><Send size={20} /></button>
+          <button type="submit" className="w-9 h-9 rounded-full bg-[#25D366] flex items-center justify-center shrink-0" aria-label="Enviar" data-testid="button-enviar">{IconoIOS.enviar()}</button>
         ) : (
-          <button type="button" onClick={alternarVoz} className={`p-3 rounded-full text-white ${grabando ? "bg-red-500 animate-pulse" : "bg-primary"}`} aria-label={grabando ? "Detener y enviar" : "Grabar nota de voz"}>
-            {grabando ? <Square size={20} /> : <Mic size={20} />}
-          </button>
+          <>
+            <button type="button" onClick={() => foto.current?.click()} disabled={subiendo} className="w-9 h-9 flex items-center justify-center shrink-0" title="Enviar comprobante de pago" aria-label="Enviar comprobante de pago">
+              {subiendo ? <Loader2 className="animate-spin" color={IOS.azul} /> : IconoIOS.camara()}
+            </button>
+            <button type="button" onClick={alternarVoz} className={`w-9 h-9 flex items-center justify-center shrink-0 rounded-full ${grabando ? "bg-[#FF3B30] animate-pulse" : ""}`} aria-label={grabando ? "Detener y enviar" : "Grabar nota de voz"}>
+              {grabando ? <Square size={16} color="#fff" fill="#fff" /> : IconoIOS.microfono()}
+            </button>
+          </>
         )}
       </form>
+    </div>
+  );
+
+  return (
+    <div className="h-[100dvh] w-full flex bg-[#efeae2] md:bg-gradient-to-br md:from-[#dfe7e3] md:to-[#cfd8dc]" style={{ ...businessTheme(colmado?.colorPrimario) }}>
+      <IPhone alto="calc(100dvh - 2rem)">{pantalla}</IPhone>
     </div>
   );
 }
