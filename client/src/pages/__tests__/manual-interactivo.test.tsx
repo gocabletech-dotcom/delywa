@@ -24,8 +24,10 @@ describe("manual interactivo", () => {
       for (const [, lista] of M.grupos) for (const id of lista) expect(ids).toContain(id);
       for (const id of M.empieza) expect(ids).toContain(id);
       for (const m of M.modulos) {
-        const cap = (CAPTURAS as Record<string, { spots: unknown[] }>)[`${clave}.${m.id}`];
-        if (m.cap && cap) expect(cap.spots).toHaveLength(m.spots.length);
+        for (const sufijo of ["", "@cel"]) {
+          const cap = (CAPTURAS as Record<string, { spots: unknown[] }>)[`${clave}.${m.id}${sufijo}`];
+          if (m.cap && cap) expect(cap.spots).toHaveLength(m.spots.length);
+        }
       }
     }
   });

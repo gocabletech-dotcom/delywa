@@ -1851,16 +1851,17 @@ export default function PedidosPage() {
                       <p className={`text-2xl font-bold ${col.clave === "confirmar" && porColumna[col.clave].length > 0 ? "text-amber-700" : "text-slate-900"}`} data-testid={`resumen-${col.clave}`}>{porColumna[col.clave].length}</p>
                     </div>
                   ))}
-                  <div className="rounded-2xl bg-primary text-primary-foreground px-4 py-3 col-span-2 md:col-span-4 lg:col-span-1">
-                    <p className="text-xs opacity-90">Vendido hoy (entregados)</p>
-                    <p className="text-2xl font-bold" data-testid="resumen-vendido">{moneda}{vendidoHoy.toLocaleString("es-DO", { maximumFractionDigits: 0 })}</p>
+                  {/* Tarjeta blanca como en las demás pantallas (antes era un bloque verde). En el celular, en una línea. */}
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 col-span-2 md:col-span-4 lg:col-span-1 flex items-center justify-between gap-3 lg:block">
+                    <p className="text-xs text-slate-500">Vendido hoy (entregados)</p>
+                    <p className="text-xl lg:text-2xl font-bold text-slate-900" data-testid="resumen-vendido">{moneda}{vendidoHoy.toLocaleString("es-DO", { maximumFractionDigits: 0 })}</p>
                   </div>
                 </div>
                 {/* En el celular se ve una columna a la vez */}
                 <div className="flex gap-2 overflow-x-auto md:hidden -mx-1 px-1 pb-1" role="tablist" aria-label="Estado del pedido">
                   {COLUMNAS.map((col) => (
                     <button key={col.clave} type="button" role="tab" aria-selected={columnaMovil === col.clave} onClick={() => setColumnaMovil(col.clave)} data-testid={`columna-tab-${col.clave}`}
-                      className={`h-11 px-4 rounded-full text-sm whitespace-nowrap shrink-0 ${columnaMovil === col.clave ? "bg-primary text-primary-foreground font-semibold" : "bg-white border border-slate-300 text-slate-800 font-medium"}`}>
+                      className={`h-11 px-4 rounded-full text-sm whitespace-nowrap shrink-0 ${columnaMovil === col.clave ? "bg-green-50 text-green-900 border border-green-600 font-semibold" : "bg-white border border-slate-300 text-slate-800 font-medium"}`}>
                       {col.titulo} {porColumna[col.clave].length}
                     </button>
                   ))}
@@ -2911,25 +2912,26 @@ export default function PedidosPage() {
                         <Banknote size={15} className="text-orange-500" /> Devuelta para el repartidor
                       </p>
                       {devueltaCalc > 0 && (
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-gray-600">
                           <span>Calculado:</span>
                           <span className="font-semibold text-orange-600">{moneda}{devueltaCalc.toFixed(2)}</span>
                           <span className="text-xs text-gray-400">(paga {moneda}{montoPago} · total {moneda}{total})</span>
                         </div>
                       )}
-                      <div className="flex items-center gap-2">
+                      {/* En el celular el monto y el botón van uno debajo del otro para que no se salgan de la ventana. */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <Input
                           type="number"
                           min="0"
                           placeholder={devueltaCalc > 0 ? devueltaCalc.toFixed(2) : "Monto"}
                           value={asignarDialogVuelto}
                           onChange={(e) => setAsignarDialogVuelto(e.target.value)}
-                          className="h-9 w-32 text-sm"
+                          className="h-11 sm:h-9 w-full sm:w-32 text-base sm:text-sm"
                           data-testid={`asignar-input-vuelto-${asignarDialogPedido.id}`}
                           autoFocus
                         />
                         <Button
-                          className="bg-orange-500 hover:bg-orange-600 text-white"
+                          className="bg-orange-500 hover:bg-orange-600 text-white h-11 sm:h-9"
                           disabled={entregarVueltoDeliveryMutation.isPending}
                           onClick={async () => {
                             if (!asignarDialogPedido) return;

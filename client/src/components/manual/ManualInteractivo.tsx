@@ -35,6 +35,20 @@ const LS = {
 };
 
 const CLAVES = Object.keys(GUIA) as ClaveManual[];
+
+/** En el teléfono se muestran las fotos tomadas en celular ("@cel"), que se entienden mejor que las de computadora encogidas. */
+function useEnCelular(): boolean {
+  const consulta = "(max-width: 767px)";
+  const [en, setEn] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(consulta).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(consulta);
+    if (!mq) return;
+    const cambio = () => setEn(mq.matches);
+    mq.addEventListener?.("change", cambio);
+    return () => mq.removeEventListener?.("change", cambio);
+  }, []);
+  return en;
+}
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const sinNumero = (t: string) => t.replace(/^\d+\.\s*/, "");
 
@@ -92,7 +106,7 @@ export default function ManualInteractivo({ embebido = false, porDefecto = "nego
 function Barra({ man, solo, embebido }: { man: ClaveManual; solo: ClaveManual | null; embebido: boolean }) {
   const lista = solo ? [] : CLAVES;
   return (
-    <header className={`${embebido ? "" : "sticky top-0"} z-20 bg-white/95 backdrop-blur border-b border-slate-200`}>
+    <header className={`${embebido ? "" : "md:sticky md:top-0"} z-20 bg-white/95 backdrop-blur border-b border-slate-200`}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
         {!embebido && (
           <a href={solo ? `#${solo}` : "/"} className="flex items-center gap-2 font-bold text-lg mr-2" data-testid="manual-logo">
@@ -101,14 +115,14 @@ function Barra({ man, solo, embebido }: { man: ClaveManual; solo: ClaveManual | 
           </a>
         )}
         {lista.length > 0 && (
-          <nav className="flex gap-1.5 overflow-x-auto" aria-label="Manuales" data-testid="manual-switch">
+          <nav className="w-full sm:w-auto grid grid-cols-3 sm:flex gap-1.5" aria-label="Manuales" data-testid="manual-switch">
             {lista.map((k) => {
               const on = k === man;
               return (
                 <a
                   key={k}
                   href={`#${k}`}
-                  className={`flex items-center gap-1.5 rounded-full px-3.5 h-10 text-sm font-semibold whitespace-nowrap border transition-colors ${on ? "text-white border-transparent" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"}`}
+                  className={`flex items-center justify-center gap-1.5 rounded-full px-2 sm:px-3.5 h-10 text-[13px] sm:text-sm font-semibold whitespace-nowrap border transition-colors ${on ? "text-white border-transparent" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"}`}
                   style={on ? { background: GUIA[k].color } : undefined}
                   aria-current={on ? "page" : undefined}
                   data-testid={`manual-tab-${k}`}
@@ -247,7 +261,8 @@ function VistaInicio({ man, M }: { man: ClaveManual; M: Manual }) {
 function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: Manual; m: Modulo; embebido: boolean; alCambiar: () => void }) {
   const i = M.modulos.findIndex((x) => x.id === m.id);
   const prev = M.modulos[i - 1], next = M.modulos[i + 1];
-  const cap = m.cap ? CAP[`${man}.${m.id}`] : undefined;
+  const enCelular = useEnCelular();
+  const cap = m.cap ? (enCelular && CAP[`${man}.${m.id}@cel`]) || CAP[`${man}.${m.id}`] : undefined;
   const movil = !!cap && cap.w < 600;
   const spots = m.spots.map(([, t], k) => ({ t, s: cap?.spots[k] ?? null })).filter((x): x is { t: string; s: NonNullable<Punto> } => !!x.s);
   const [ok, setOk] = useState<string[]>(() => LS.get("ok_" + man, []));
@@ -313,8 +328,8 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
       <article className="min-w-0">
         <nav className="text-sm text-slate-500 mb-3"><a href={`#${man}`} className="hover:underline">{M.titulo}</a> › {m.titulo}</nav>
         <div className="flex items-start gap-4">
-          <span className="w-12 h-12 rounded-2xl grid place-items-center text-white shrink-0" style={{ background: M.color }}><Ic n={m.icono} className="w-6 h-6" /></span>
-          <div>
+          <span className="hidden sm:grid w-12 h-12 rounded-2xl place-items-center text-white shrink-0" style={{ background: M.color }}><Ic n={m.icono} className="w-6 h-6" /></span>
+          <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-extrabold leading-tight">{m.titulo}</h1>
             <p className="text-slate-600 text-[17px] mt-1.5 max-w-3xl">{m.que}</p>
             {embebido && man === "negocio" && m.ruta && (
@@ -349,7 +364,7 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
                       type="button"
                       data-spot={k}
                       onClick={() => enfocar(k === actual ? -1 : k)}
-                      className={`absolute -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full text-white text-sm font-bold grid place-items-center shadow-lg ring-2 ring-white transition-transform ${k === actual ? "scale-125" : "hover:scale-110"} ${actual < 0 ? "animate-[pulse_2.4s_ease-in-out_infinite]" : ""}`}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 ${movil ? "w-6 h-6 text-xs" : "w-7 h-7 text-sm"} rounded-full text-white font-bold grid place-items-center shadow-lg ring-2 ring-white transition-transform ${k === actual ? "scale-125" : "hover:scale-110"} ${actual < 0 ? "animate-[pulse_2.4s_ease-in-out_infinite]" : ""}`}
                       style={{ left: `${x.s.x}%`, top: `${x.s.y}%`, background: M.color }}
                       aria-label={`Punto ${k + 1}: ${x.t}`}
                       data-testid={`manual-punto-${k + 1}`}
@@ -360,7 +375,7 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
                 </div>
               </div>
               {spots.length > 0 && (
-                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-white border border-slate-200 p-2.5 sticky bottom-3 shadow-sm" data-testid="manual-recorrido">
+                <div className={`mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-white border border-slate-200 p-2.5 shadow-sm ${actual >= 0 ? "sticky bottom-3 z-10" : ""}`} data-testid="manual-recorrido">
                   <span className="text-xs font-bold px-2 py-1 rounded-lg text-white shrink-0" style={{ background: M.color }}>{actual >= 0 ? `${actual + 1} de ${spots.length}` : "Recorrido"}</span>
                   <p className="flex-1 basis-48 text-sm leading-snug min-w-0">{foco ? foco.t : "Toca los números de la pantalla, o inicia el recorrido guiado."}</p>
                   <span className="ml-auto flex gap-2 shrink-0">

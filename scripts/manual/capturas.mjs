@@ -75,8 +75,16 @@ async function nueva(movil, contexto) {
 }
 
 /** Toma la captura y calcula los puntos de cada tema que la usa. */
-async function capturar(page, cap) {
+async function capturar(page, cap, sufijo = "") {
   await espera(900);
+  // Sin avisos flotantes ("Estado actualizado") tapando la pantalla.
+  await page.evaluate(() => {
+    if (document.getElementById("manual-sin-avisos")) return;
+    const st = document.createElement("style");
+    st.id = "manual-sin-avisos";
+    st.textContent = "ol[tabindex='-1'], [data-sonner-toaster], li[role='status'] { display: none !important; }";
+    document.head.appendChild(st);
+  });
   // En las capturas se ve la dirección real de Delywa, no la del servidor local.
   await page.evaluate((origen) => {
     const fuera = (t) => t.split(origen).join("https://delywa.com");
@@ -84,7 +92,7 @@ async function capturar(page, cap) {
     const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n = w.nextNode(); n; n = w.nextNode()) if (n.nodeValue.includes(origen)) n.nodeValue = fuera(n.nodeValue);
   }, B);
-  const archivo = `${cap}.jpg`;
+  const archivo = `${cap}${sufijo}.jpg`;
   await page.screenshot({ path: path.join(IMG, archivo), type: "jpeg", quality: 74 });
   const vp = page.viewport();
   for (const [man, M] of Object.entries(GUIA)) for (const mod of M.modulos.filter((m) => m.cap === cap)) {
@@ -105,10 +113,31 @@ async function capturar(page, cap) {
       const pc = (v, t) => Math.round((v / t) * 10000) / 100;
       spots.push({ x: pc(px, vp.width), y: pc(py, vp.height), bx: pc(x0, vp.width), by: pc(y0, vp.height), bw: pc(x1 - x0, vp.width), bh: pc(y1 - y0, vp.height) });
     }
-    CAP[`${man}.${mod.id}`] = { img: archivo, w: vp.width, h: vp.height, spots };
+    CAP[`${man}.${mod.id}${sufijo}`] = { img: archivo, w: vp.width, h: vp.height, spots };
   }
-  console.log("✓", cap);
+  console.log("✓", cap + sufijo);
 }
+
+/**
+ * Pantallas del negocio: una foto en computadora y otra igual en celular ("@cel"), que el manual
+ * muestra cuando se abre desde un teléfono. `antesCel` prepara la vista del celular (por ejemplo,
+ * elegir la columna del tablero que se quiere enseñar).
+ */
+async function ambas(page, cap, antesCel) {
+  await capturar(page, cap);
+  const vp = page.viewport();
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+  await espera(900);
+  if (antesCel) await antesCel(page);
+  await capturar(page, cap, "@cel");
+  await page.setViewport(vp);
+  await espera(700);
+}
+const columna = (clave, ver) => async (page) => {
+  await page.evaluate((c) => document.querySelector(`[data-testid="columna-tab-${c}"]`)?.click(), clave);
+  await espera(600);
+  if (ver) await page.evaluate((s) => document.querySelector(s)?.scrollIntoView({ block: "center" }), ver);
+};
 
 const ir = async (page, ruta, selector) => {
   await page.goto(B + ruta, { waitUntil: "networkidle0" });
@@ -170,39 +199,50 @@ try {
   await neg.click('[data-testid="button-submit-login"]');
   await neg.waitForNavigation({ waitUntil: "networkidle0" }).catch(() => {});
   await ir(neg, "/negocio/dashboard", '[data-testid="stat-pendientes"]');
-  await capturar(neg, "inicio");
+  await ambas(neg, "inicio");
   await ir(neg, "/negocio/pedidos", '[data-testid="columna-confirmar"]');
-  await capturar(neg, "pedidos");
+  await ambas(neg, "pedidos");
+  await verAlCentro(neg, '[data-testid="principal-3"]');
+  await ambas(neg, "preparar", columna("preparando", '[data-testid="principal-3"]'));
   await verAlCentro(neg, '[data-testid="retorno-abierto-6"]');
-  await capturar(neg, "retorno");
+  await ambas(neg, "retorno", columna("camino", '[data-testid="retorno-abierto-6"]'));
   await verAlCentro(neg, '[data-testid="transferencia-10"]');
-  await capturar(neg, "transferencia");
+  await ambas(neg, "transferencia", columna("camino", '[data-testid="transferencia-10"]'));
   await ir(neg, "/negocio/pedidos", '[data-testid="principal-1"]');
   await neg.click('[data-testid="principal-1"]');
   await neg.waitForSelector('[role="dialog"]', { visible: true, timeout: 8000 }).catch(() => {});
   const precios = await neg.$$('[role="dialog"] input[step="0.01"]');
-  for (const [k, v] of [[0, "45"], [1, "280"]]) if (precios[k]) { await precios[k].click({ clickCount: 3 }); await precios[k].type(v); }
+  await espera(900); // el panel entra deslizándose
+  for (const [k, v] of [[0, "45"], [1, "280"]]) if (precios[k]) {
+    await precios[k].evaluate((el) => { el.focus(); el.select(); });
+    await precios[k].type(v);
+  }
   await neg.evaluate(() => document.activeElement?.blur());
-  await capturar(neg, "confirmar");
+  await ambas(neg, "confirmar");
   await ir(neg, "/negocio/pedidos", '[data-testid="principal-4"]');
   await neg.click('[data-testid="principal-4"]');
   await neg.waitForSelector('[role="dialog"]', { visible: true, timeout: 8000 }).catch(() => {});
-  await capturar(neg, "asignar");
-  await neg.click('[data-testid="select-delivery-1"]');
+  await ambas(neg, "asignar");
+  await neg.evaluate(() => document.querySelector('[data-testid="select-delivery-1"]')?.click());
   await neg.waitForSelector('[data-testid^="asignar-input-vuelto"]', { visible: true, timeout: 10000 }).catch(() => {});
   const vuelto = await neg.$('[data-testid^="asignar-input-vuelto"]');
-  if (vuelto) { await vuelto.click({ clickCount: 3 }); await vuelto.type("420"); }
-  await capturar(neg, "devuelta");
+  if (vuelto) { await vuelto.evaluate((el) => { el.focus(); el.select(); }); await vuelto.type("420"); }
+  await neg.evaluate(() => document.activeElement?.blur());
+  await ambas(neg, "devuelta");
   await neg.keyboard.press("Escape");
   await ir(neg, "/negocio/pedidos", '[data-testid="columna-confirmar"]');
   await neg.evaluate(() => [...document.querySelectorAll('button, [role="tab"]')].find((b) => b.innerText.trim().startsWith("Historial"))?.click());
   await neg.waitForSelector('[data-testid="lista-historial"]', { visible: true, timeout: 8000 }).catch(() => {});
-  await capturar(neg, "historial");
+  await ambas(neg, "historial");
   await ir(neg, "/negocio/conversaciones", '[data-testid^="conversacion-"]');
-  await capturar(neg, "chats");
-  await neg.click('[data-testid^="conversacion-"]');
+  await ambas(neg, "chats");
+  await neg.evaluate(() => document.querySelector('[data-testid^="conversacion-"]')?.click());
   await espera(1500);
-  await capturar(neg, "chat-abierto");
+  await ambas(neg, "chat-abierto", async (page) => {
+    // En el celular la lista y el chat son pantallas aparte: se abre la conversación otra vez.
+    if (!(await page.$('[data-testid="pantalla-chat"]'))) await page.evaluate(() => document.querySelector('[data-testid^="conversacion-"]')?.click());
+    await espera(1200);
+  });
   // ===================== REPARTIDOR (celular) =====================
   const rep0 = await nueva(true);
   await ir(rep0, "/repartidor/colmado-el-sol", '[data-testid="input-whatsapp-login"]');
@@ -256,17 +296,20 @@ try {
     ["configuracion", "/negocio/settings", '[data-testid="seccion-datos"]'],
   ]) {
     await ir(neg, ruta, sel);
-    await capturar(neg, cap);
+    await ambas(neg, cap);
     if (cap === "cuadres") {
       await neg.evaluate(() => document.querySelector('[data-testid^="ver-cuadre-"]')?.click());
       await neg.waitForSelector('[data-testid^="input-monto-recibido-"]', { visible: true, timeout: 8000 }).catch(() => {});
-      await capturar(neg, "cuadre-ver");
+      await ambas(neg, "cuadre-ver");
       await neg.keyboard.press("Escape");
     }
   }
-  await neg.click('[data-testid="seccion-chat"]');
+  await neg.evaluate(() => document.querySelector('[data-testid="seccion-chat"]')?.click());
   await espera(800);
-  await capturar(neg, "chat-pagina");
+  await ambas(neg, "chat-pagina", async (page) => {
+    await page.select('[data-testid="select-seccion-config"]', "chat").catch(() => {});
+    await espera(800);
+  });
 } finally {
   await navegador.close();
   apagar();
