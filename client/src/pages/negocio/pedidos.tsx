@@ -304,9 +304,9 @@ export default function PedidosPage() {
   }, [authLoading, isAuthenticated]);
 
   const { data: pedidos, isLoading } = useQuery({
-    queryKey: ["pedidos", colmadoId],
+    queryKey: ["pedidos", colmadoId, "recientes"],
     queryFn: async () => {
-      const res = await fetch(`/api/colmados/${colmadoId}/pedidos`);
+      const res = await fetch(`/api/colmados/${colmadoId}/pedidos?recientes=1`);
       if (!res.ok) throw new Error("Error al cargar pedidos");
       return res.json();
     },
@@ -639,11 +639,21 @@ export default function PedidosPage() {
   const pedidosActivos = pedidos?.filter((p: any) =>
     p.fechaCreacion && getBusinessDate(p.fechaCreacion, colmadoData?.codigoPais) === hoy && p.estado !== "fusionado"
   ) || [];
-  const pedidosHistorial = pedidos?.filter((p: any) => {
-    const dia = p.fechaCreacion ? getBusinessDate(p.fechaCreacion, colmadoData?.codigoPais) : "";
-    if (filtroFecha) return dia === filtroFecha;
-    return dia.startsWith(filtroMes || hoy.slice(0, 7));
-  }) || [];
+  // El historial se pide al servidor por mes: así la pantalla no carga los pedidos de siempre.
+  const mesHistorial = filtroFecha ? filtroFecha.slice(0, 7) : (filtroMes || hoy.slice(0, 7));
+  const { data: pedidosDelMes, isLoading: cargandoMes } = useQuery<PedidoNegocio[]>({
+    queryKey: ["pedidos", colmadoId, "mes", mesHistorial],
+    queryFn: async () => {
+      const res = await fetch(`/api/colmados/${colmadoId}/pedidos?mes=${mesHistorial}`);
+      if (!res.ok) throw new Error("Error al cargar el historial");
+      return res.json();
+    },
+    enabled: !!colmadoId && tabActual === "historial",
+  });
+  const pedidosHistorial = (pedidosDelMes ?? []).filter((p: any) => {
+    if (!filtroFecha) return true;
+    return p.fechaCreacion && getBusinessDate(p.fechaCreacion, colmadoData?.codigoPais) === filtroFecha;
+  });
 
   const pedidosFiltrados = tabActual === "activos"
     ? pedidosActivos.filter((p: any) => filtroEstado === "todos" || p.estado === filtroEstado)
@@ -1590,7 +1600,7 @@ export default function PedidosPage() {
               >
                 {tab === "activos" ? "Hoy" : "Historial"}
                 <span className="ml-1.5 text-xs opacity-60">
-                  ({tab === "activos" ? pedidosActivos.length : pedidosHistorial.length})
+                  {tab === "activos" ? `(${pedidosActivos.length})` : pedidosDelMes ? `(${pedidosHistorial.length})` : ""}
                 </span>
               </button>
             ))}
@@ -1661,7 +1671,7 @@ export default function PedidosPage() {
 
         {/* Content */}
         <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">
-          {isLoading ? (
+          {isLoading || (tabActual === "historial" && cargandoMes) ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>

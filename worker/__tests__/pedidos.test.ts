@@ -178,6 +178,31 @@ describe("fusionar, pickup, vuelto y borrado", () => {
     return p;
   }
 
+  it("el panel pide solo lo reciente y el historial se pide por mes", async () => {
+    const viejoCerrado = await nuevoPedidoPendiente({ estado: "entregado", fechaCreacion: new Date("2026-03-15T16:00:00Z") });
+    const viejoAbierto = await nuevoPedidoPendiente({ estado: "en_camino", fechaCreacion: new Date("2026-03-20T16:00:00Z") });
+    const deHoy = await nuevoPedidoPendiente();
+    const ids = (r: any) => r.json.map((p: any) => p.id);
+
+    const recientes = await dueno.request("GET", `/api/colmados/${cafe.id}/pedidos?recientes=1`);
+    expect(recientes.status).toBe(200);
+    expect(ids(recientes)).toContain(deHoy.id);
+    expect(ids(recientes)).toContain(viejoAbierto.id); // sigue abierto: no se pierde de vista
+    expect(ids(recientes)).not.toContain(viejoCerrado.id);
+
+    const marzo = await dueno.request("GET", `/api/colmados/${cafe.id}/pedidos?mes=2026-03`);
+    expect(ids(marzo).sort()).toEqual([viejoCerrado.id, viejoAbierto.id].sort());
+    expect(ids(await dueno.request("GET", `/api/colmados/${cafe.id}/pedidos?mes=2026-02`))).toEqual([]);
+    // El borde del mes es el del negocio (UTC-4): las 2:00 UTC del 1 de abril todavía son 31 de marzo.
+    const borde = await nuevoPedidoPendiente({ estado: "entregado", fechaCreacion: new Date("2026-04-01T02:00:00Z") });
+    expect(ids(await dueno.request("GET", `/api/colmados/${cafe.id}/pedidos?mes=2026-03`))).toContain(borde.id);
+    expect(ids(await dueno.request("GET", `/api/colmados/${cafe.id}/pedidos?mes=2026-04`))).not.toContain(borde.id);
+
+    expect((await dueno.request("GET", `/api/colmados/${cafe.id}/pedidos?mes=marzo`)).status).toBe(400);
+    const todos = await dueno.request("GET", `/api/colmados/${cafe.id}/pedidos`);
+    expect(ids(todos)).toEqual(expect.arrayContaining([viejoCerrado.id, viejoAbierto.id, deHoy.id]));
+  });
+
   it("un pedido ya confirmado se puede editar mientras no haya salido", async () => {
     const p = await nuevoPedidoPendiente();
     const r = await dueno.request("PATCH", `/api/pedidos/${p.id}/revisar-productos`, {

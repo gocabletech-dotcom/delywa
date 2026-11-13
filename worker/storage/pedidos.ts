@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lt, not, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, not, notInArray, or, sql } from "drizzle-orm";
 import { pedidos, ventas, deliveries, colmados, paradasRuta, chatWebSesiones, type Pedido, type Venta, type Delivery } from "@shared/schema";
 import type { Db } from "../db";
 import { mismoTelefono } from "../lib/telefono";
@@ -37,6 +37,20 @@ export async function getPedidoById(db: Db, id: number): Promise<Pedido | undefi
 
 export async function getPedidosByColmado(db: Db, colmadoId: number): Promise<Pedido[]> {
   return db.select().from(pedidos).where(eq(pedidos.colmadoId, colmadoId)).orderBy(desc(pedidos.fechaCreacion), desc(pedidos.id));
+}
+
+/** Pedidos creados entre dos momentos (el historial de un mes). */
+export async function getPedidosEntre(db: Db, colmadoId: number, desde: Date, hasta: Date): Promise<Pedido[]> {
+  return db.select().from(pedidos)
+    .where(and(eq(pedidos.colmadoId, colmadoId), gte(pedidos.fechaCreacion, desde), lt(pedidos.fechaCreacion, hasta)))
+    .orderBy(desc(pedidos.fechaCreacion), desc(pedidos.id));
+}
+
+/** Lo que el panel necesita a diario: los pedidos desde `desde` y todos los que siguen abiertos, sean de cuando sean. */
+export async function getPedidosRecientes(db: Db, colmadoId: number, desde: Date): Promise<Pedido[]> {
+  return db.select().from(pedidos)
+    .where(and(eq(pedidos.colmadoId, colmadoId), or(gte(pedidos.fechaCreacion, desde), notInArray(pedidos.estado, ESTADOS_TERMINALES))))
+    .orderBy(desc(pedidos.fechaCreacion), desc(pedidos.id));
 }
 
 export async function getPedidosByClienteWhatsapp(db: Db, colmadoId: number, whatsapp: string): Promise<Pedido[]> {

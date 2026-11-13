@@ -81,9 +81,9 @@ export default function NegocioLayout({
 
   type PedidoMin = { id: number; estado: string };
   const { data: pedidosData } = useQuery<PedidoMin[]>({
-    queryKey: ["pedidos", colmadoId],
+    queryKey: ["pedidos", colmadoId, "recientes"],
     queryFn: async () => {
-      const res = await fetch(`/api/colmados/${colmadoId}/pedidos`);
+      const res = await fetch(`/api/colmados/${colmadoId}/pedidos?recientes=1`);
       if (!res.ok) throw new Error("Error al cargar pedidos");
       return res.json();
     },

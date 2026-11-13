@@ -75,7 +75,7 @@ function buildFetchMock(confirmResponse: Record<string, unknown>, colmado: Recor
       return jsonResponse(confirmResponse);
     }
     if (path.includes("/api/user/role")) return jsonResponse({ colmadoId: 1, role: "admin" });
-    if (path === "/api/colmados/1/pedidos") return jsonResponse([PEDIDO]);
+    if (path === "/api/colmados/1/pedidos?recientes=1") return jsonResponse([PEDIDO]);
     if (path === "/api/colmados/1/deliveries") return jsonResponse([]);
     if (path === "/api/colmados/1") return jsonResponse(colmado);
     if (path.includes("conversaciones/unread")) return jsonResponse({ count: 0 });

@@ -176,9 +176,9 @@ export default function ConversacionesPage() {
   });
 
   const { data: pedidosData } = useQuery({
-    queryKey: ["pedidos", colmadoId],
+    queryKey: ["pedidos", colmadoId, "recientes"],
     queryFn: async () => {
-      const res = await fetch(`/api/colmados/${colmadoId}/pedidos`);
+      const res = await fetch(`/api/colmados/${colmadoId}/pedidos?recientes=1`);
       if (!res.ok) throw new Error("Error al cargar pedidos");
       return res.json();
     },

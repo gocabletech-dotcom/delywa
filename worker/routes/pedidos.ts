@@ -11,13 +11,14 @@ import { cambiarEstadoPedido, conDireccionUtil, coordenadasDelPedido } from "../
 import { calcularMetricasDistanciaPedido, parseCoordinatePair, type CoordinatePair } from "../lib/orderDistance";
 import { calcularEtaSencilla, extraerCoordenadas, geocodificarDireccion } from "../lib/routeOptimizer";
 import { soloDigitos } from "../lib/telefono";
+import { inicioDiaLocal } from "../lib/fechas";
 import { enrichColmadoWithMoneda, getColmado, getColmadoTimezone } from "../storage/colmados";
 import { getAccessibleColmadoIds } from "../storage/users";
 import { getPlan } from "../storage/catalogos";
 import { getClientesByColmado, getConversacionByCliente, getOrCreateConversacion, addMensaje } from "../storage/conversaciones";
 import {
   contarConfirmadosHoy, claimTransicionEstado, confirmarPagoTransferencia, confirmarPedido, convertirAPickup, deletePedido,
-  entregarVueltoAlDelivery, fusionarPedidos, getDeliveryById, getPedidoById, getPedidosByColmado, getVueltosLog, leerProductos,
+  entregarVueltoAlDelivery, fusionarPedidos, getDeliveryById, getPedidoById, getPedidosByColmado, getPedidosEntre, getPedidosRecientes, getVueltosLog, leerProductos,
   registrarEnVentas, updateMetodoPago, updatePedidoCoordenadas, updatePedidoEstado, updatePedidoProductos,
   updateProductosYTotalConfirmado, updateVuelto, ESTADOS_TERMINALES, type Sustitucion,
 } from "../storage/pedidos";
@@ -50,9 +51,26 @@ async function cargarPedidoOperable(db: Db, user: AppEnv["Variables"]["user"], i
 pedidoRoutes.get("/api/colmados/:id/pedidos", requireAuth, requireBusinessAccess(), async (c) => {
   const db = getDb(c.env.DB);
   const colmadoId = Number(c.req.param("id"));
+  // ?recientes=1 → ayer, hoy y todo lo que sigue abierto. ?mes=AAAA-MM → ese mes (hora del negocio). Sin nada → todos.
+  const mes = c.req.query("mes");
+  const recientes = c.req.query("recientes") === "1";
+  if (mes !== undefined && !/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return c.json({ error: "Mes inválido" }, 400);
+  const colmadoPrevio = mes || recientes ? await getColmado(db, colmadoId) : undefined;
+  const zona = colmadoPrevio ? await getColmadoTimezone(db, colmadoPrevio) : "UTC";
+  const pedir = () => {
+    if (mes) {
+      const [anio, numero] = mes.split("-").map(Number);
+      // El mediodía UTC del día 1 cae en el día 1 en cualquier zona horaria de América.
+      const desde = inicioDiaLocal(zona, new Date(Date.UTC(anio, numero - 1, 1, 12)));
+      const hasta = inicioDiaLocal(zona, new Date(Date.UTC(anio, numero, 1, 12)));
+      return getPedidosEntre(db, colmadoId, desde, hasta);
+    }
+    if (recientes) return getPedidosRecientes(db, colmadoId, new Date(inicioDiaLocal(zona).getTime() - 24 * 3600_000));
+    return getPedidosByColmado(db, colmadoId);
+  };
   const [lista, colmado, clientes, conversaciones] = await Promise.all([
-    getPedidosByColmado(db, colmadoId),
-    getColmado(db, colmadoId),
+    pedir(),
+    colmadoPrevio ? Promise.resolve(colmadoPrevio) : getColmado(db, colmadoId),
     getClientesByColmado(db, colmadoId),
     db.select().from(whatsappConversaciones).where(eq(whatsappConversaciones.colmadoId, colmadoId)),
   ]);

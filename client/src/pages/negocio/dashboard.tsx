@@ -88,9 +88,9 @@ export default function Dashboard() {
   type DeliveryBasico = { id: number; estado: string; nombre: string };
 
   const { data: pedidos } = useQuery<PedidoBasico[]>({
-    queryKey: ["pedidos", colmadoId],
+    queryKey: ["pedidos", colmadoId, "recientes"],
     queryFn: async () => {
-      const res = await fetch(`/api/colmados/${colmadoId}/pedidos`);
+      const res = await fetch(`/api/colmados/${colmadoId}/pedidos?recientes=1`);
       if (!res.ok) throw new Error("Error al cargar pedidos");
       return res.json();
     },
@@ -449,7 +449,7 @@ export default function Dashboard() {
                   <div className="text-center py-6 sm:py-8 text-gray-500 col-span-2 sm:col-span-1">
                     <Package size={32} className="mx-auto mb-2 opacity-50 sm:hidden" />
                     <Package size={40} className="mx-auto mb-2 opacity-50 hidden sm:block" />
-                    <p className="text-sm">No hay pedidos aún</p>
+                    <p className="text-sm">No hay pedidos de ayer ni de hoy</p>
                   </div>
                 )}
               </div>
