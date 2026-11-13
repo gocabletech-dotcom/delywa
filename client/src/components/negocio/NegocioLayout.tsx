@@ -6,7 +6,7 @@ import {
   MessageCircle, Truck, Package, DollarSign, TrendingUp,
   Menu, X, LogOut, Settings, Users, BookOpen, UtensilsCrossed,
    Smartphone, ClipboardList, MoreHorizontal, ChevronRight, Building2,
-  Home, BarChart3, UserCog, ChefHat, Contact,
+  Home, BarChart3, UserCog, Contact,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
@@ -259,7 +259,6 @@ export default function NegocioLayout({
           {navLink("/negocio/dashboard", "dashboard", Home, "Inicio")}
           {navLink("/negocio/pedidos", "pedidos", Package, "Pedidos", pedidosPendientes.length || 0)}
           {navLink("/negocio/conversaciones", "conversaciones", MessageCircle, "Chats", unreadCount)}
-          {navLink("/negocio/cocina", "cocina", ChefHat, "Cocina")}
 
           {grupo("Mi negocio")}
           {tieneMenu && navLink("/negocio/menu", "menu", UtensilsCrossed, "Menú y productos")}
@@ -399,7 +398,6 @@ export default function NegocioLayout({
 
             <div className="overflow-y-auto px-4 pb-5" style={{ maxHeight: "calc(82vh - 110px)" }}>
               <div className="grid grid-cols-3 gap-2.5 mb-3">
-                {otrasCard("/negocio/cocina", "cocina", ChefHat, "Cocina")}
                 {tieneMenu && otrasCard("/negocio/menu", "menu", UtensilsCrossed, "Menú")}
                 {otrasCard("/negocio/clientes", "clientes", Users, "Clientes")}
                 {esAdmin && otrasCard("/negocio/empleados", "empleados", Contact, "Empleados")}

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChefHat, Clock3, PackageCheck, Truck } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -52,7 +53,7 @@ export default function CocinaPage() {
     queryKey: ["cocina-pedidos", colmadoId],
     queryFn: async () => {
       const res = await fetch(`/api/colmados/${colmadoId}/cocina/pedidos`);
-      if (!res.ok) throw new Error("No se pudo cargar la cocina");
+      if (!res.ok) throw new Error("No se pudieron cargar los pedidos");
       return res.json();
     },
     enabled: !!colmadoId,
@@ -88,26 +89,26 @@ export default function CocinaPage() {
         body: JSON.stringify({ deliveryId }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "No se pudo asignar el delivery");
+      if (!res.ok) throw new Error(data.error || "No se pudo asignar el repartidor");
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cocina-pedidos", colmadoId] });
       queryClient.invalidateQueries({ queryKey: ["pedidos", colmadoId] });
-      toast({ title: "Delivery asignado", description: "El repartidor ya puede recibir el pedido." });
+      toast({ title: "Repartidor asignado", description: "El repartidor ya puede recibir el pedido." });
     },
     onError: (error: Error) => toast({ title: "No se pudo asignar", description: error.message, variant: "destructive" }),
   });
 
   const grupos = [
-    { estado: "pendiente", titulo: "Nuevos", icon: Clock3, color: "border-orange-200 bg-orange-50", action: "en_preparacion", actionLabel: "Iniciar preparación" },
+    { estado: "pendiente", titulo: "Por preparar", icon: Clock3, color: "border-orange-200 bg-orange-50", action: "en_preparacion", actionLabel: "Iniciar preparación" },
     { estado: "en_preparacion", titulo: "En preparación", icon: ChefHat, color: "border-blue-200 bg-blue-50", action: "listo", actionLabel: "Marcar listo" },
     { estado: "listo", titulo: "Listos", icon: PackageCheck, color: "border-purple-200 bg-purple-50", action: null, actionLabel: "" },
   ] as const;
   const disponibles = deliveries.filter((delivery) => delivery.estado === "activo");
 
   return (
-    <NegocioLayout title="Cocina" subtitle="Comandas y preparación" activeNav="cocina">
+    <NegocioLayout title="Preparación de pedidos" subtitle="Lo que hay que preparar ahora" activeNav="pedidos" headerRight={<Link href="/negocio/pedidos"><Button variant="outline" size="sm" className="h-10 rounded-xl border-slate-300 text-slate-800 text-sm font-semibold">Volver a Pedidos</Button></Link>}>
       <main className="p-4 sm:p-6 overflow-auto">
         <div className="grid gap-4 lg:grid-cols-3">
           {grupos.map((grupo) => {
@@ -120,7 +121,7 @@ export default function CocinaPage() {
                   <Badge variant="secondary">{grupoPedidos.length}</Badge>
                 </div>
                 <div className="space-y-3">
-                  {isLoading && <p className="text-sm text-gray-500">Cargando comandas…</p>}
+                  {isLoading && <p className="text-sm text-gray-500">Cargando pedidos…</p>}
                   {!isLoading && grupoPedidos.length === 0 && <p className="text-sm text-gray-500 py-8 text-center">No hay pedidos</p>}
                   {grupoPedidos.map((pedido) => (
                     <article key={pedido.id} className="bg-white rounded-lg border shadow-sm p-3" data-testid={`cocina-pedido-${pedido.id}`}>
@@ -144,7 +145,7 @@ export default function CocinaPage() {
                       )}
                       {grupo.estado === "listo" && pedido.tipoEntrega === "delivery" && (
                         pedido.deliveryId ? (
-                          <p className="mt-3 text-sm text-green-700 flex items-center gap-1"><Truck size={15} /> Delivery asignado</p>
+                          <p className="mt-3 text-sm text-green-700 flex items-center gap-1"><Truck size={15} /> Repartidor asignado</p>
                         ) : (
                           <select
                             className="mt-3 w-full h-9 rounded-md border bg-white px-2 text-sm"
@@ -156,7 +157,7 @@ export default function CocinaPage() {
                             disabled={asignarMutation.isPending}
                             aria-label={`Asignar delivery al pedido ${pedido.id}`}
                           >
-                            <option value="">Asignar delivery…</option>
+                            <option value="">Asignar repartidor…</option>
                             {disponibles.map((delivery) => <option key={delivery.id} value={delivery.id}>{delivery.nombre}</option>)}
                           </select>
                         )

@@ -274,7 +274,9 @@ export default function PedidosPage() {
   const [tabActual, setTabActual] = useState<"activos" | "historial">("activos");
   const [masAbierto, setMasAbierto] = useState<number[]>([]);
   const [columnaMovil, setColumnaMovil] = useState<"confirmar" | "preparando" | "camino" | "cerrados">("confirmar");
-  const [filtroFecha, setFiltroFecha] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  // Historial: por defecto el mes en curso; el día es opcional.
+  const [filtroFecha, setFiltroFecha] = useState<string>("");
+  const [filtroMes, setFiltroMes] = useState<string>("");
   const [verDetalleOpen, setVerDetalleOpen] = useState(false);
   const [pedidoVerDetalle, setPedidoVerDetalle] = useState<PedidoNegocio | null>(null);
   const [pedidoVistaPrevia, setPedidoVistaPrevia] = useState<PedidoNegocio | null>(null);
@@ -638,8 +640,9 @@ export default function PedidosPage() {
     p.fechaCreacion && getBusinessDate(p.fechaCreacion, colmadoData?.codigoPais) === hoy && p.estado !== "fusionado"
   ) || [];
   const pedidosHistorial = pedidos?.filter((p: any) => {
-    if (!filtroFecha) return true;
-    return p.fechaCreacion && getBusinessDate(p.fechaCreacion, colmadoData?.codigoPais) === filtroFecha;
+    const dia = p.fechaCreacion ? getBusinessDate(p.fechaCreacion, colmadoData?.codigoPais) : "";
+    if (filtroFecha) return dia === filtroFecha;
+    return dia.startsWith(filtroMes || hoy.slice(0, 7));
   }) || [];
 
   const pedidosFiltrados = tabActual === "activos"
@@ -825,7 +828,7 @@ export default function PedidosPage() {
     onSuccess: (_, { pedidoId }) => {
       queryClient.invalidateQueries({ queryKey: ["pedidos"] });
       setVueltoEdits((prev) => { const n = { ...prev }; delete n[pedidoId]; return n; });
-      toast({ title: "Devuelta entregada al delivery", description: "Quedó registrado en el pedido" });
+      toast({ title: "Devuelta entregada al repartidor", description: "Quedó registrado en el pedido" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -886,7 +889,7 @@ export default function PedidosPage() {
       case "esperando_pago": return "Esperando Pago";
       case "esperando_comprobante": return "Esperando Comprobante";
       case "esperando_confirmacion_pago": return "Confirmar Pago";
-      case "pendiente": return "Pendiente";
+      case "pendiente": return "Por preparar";
       case "en_preparacion": return "En Preparación";
       case "listo": return "Listo";
       case "en_camino": return "En Camino";
@@ -939,10 +942,21 @@ export default function PedidosPage() {
       case "esperando_pago": return { texto: "Ya pagó · confirmar", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "pendiente" }) };
       case "en_camino":
       case "llegando": return { texto: "Marcar entregado", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" }) };
-      case "pendiente":
-      case "listo": return pedido.tipoEntrega === "pickup" ? { texto: "Entregado al cliente", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" }) } : null;
+      // Preparación (antes estaba en la pantalla "Cocina").
+      case "pendiente": return { texto: "Empezar a preparar", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "en_preparacion" }) };
+      case "en_preparacion": return { texto: "Marcar listo", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "listo" }) };
+      case "listo": return pedido.tipoEntrega === "pickup"
+        ? { texto: "Entregado al cliente", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" }) }
+        : { texto: "Asignar repartidor", accion: () => abrirAsignar(pedido) };
       default: return null;
     }
+  };
+  const abrirAsignar = (pedido: PedidoNegocio, paso: "select" | "vuelto" = "select") => {
+    setAsignarDialogPedido(pedido);
+    setAsignarDialogStep(paso);
+    setAsignarDialogVuelto("");
+    setAsignarDialogDelivery(paso === "vuelto" ? (deliveries as any[] | undefined)?.find((d) => d.id === pedido.deliveryId) ?? null : null);
+    setAsignarDialogOpen(true);
   };
   const hace = (fecha: string | number | Date) => {
     const min = Math.max(0, Math.round((Date.now() - new Date(fecha).getTime()) / 60000));
@@ -1013,6 +1027,34 @@ export default function PedidosPage() {
                   )}
                   {pedido.estado === "fusionado" && pedido.fusionadoEnPedidoId && (
                     <p className="text-xs text-violet-700" data-testid={`pedido-fusionado-en-${pedido.id}`}>Incluido en #{pedido.fusionadoEnPedidoId}</p>
+                  )}
+
+                  {/* ── Devuelta: el negocio le da el cambio al repartidor y él lo cuadra al volver ── */}
+                  {(() => {
+                    if (pedido.metodoPago !== "efectivo" || pedido.tipoEntrega === "pickup" || !["en_camino", "llegando"].includes(pedido.estado)) return null;
+                    const totalPedido = parseFloat(pedido.totalConfirmado || pedido.total || "0");
+                    const calculada = Math.max(0, (parseFloat(pedido.montoPago) || 0) - totalPedido);
+                    if (pedido.vueltoEntregadoAlDelivery) {
+                      return (
+                        <p className="rounded-xl bg-primary/10 text-primary text-[13px] font-medium px-3 py-2" data-testid={`devuelta-entregada-${pedido.id}`}>
+                          El repartidor lleva {moneda}{(parseFloat(pedido.vueltoEntregado || "0") || 0).toLocaleString("es-DO")} de devuelta. Lo cuadra al volver.
+                        </p>
+                      );
+                    }
+                    if (calculada <= 0) return null;
+                    return (
+                      <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 flex items-center justify-between gap-2" data-testid={`devuelta-pendiente-${pedido.id}`}>
+                        <p className="text-[13px] text-amber-900 leading-snug">Falta darle la devuelta al repartidor: <b>{moneda}{calculada.toLocaleString("es-DO")}</b></p>
+                        <Button size="sm" variant="outline" className="h-9 rounded-lg border-amber-400 text-amber-900 bg-white shrink-0" onClick={() => abrirAsignar(pedido, "vuelto")} data-testid={`registrar-devuelta-${pedido.id}`}>
+                          Registrar
+                        </Button>
+                      </div>
+                    );
+                  })()}
+                  {pedido.tipoEntrega !== "pickup" && ["pendiente", "en_preparacion"].includes(pedido.estado) && (
+                    <button type="button" className="self-start text-xs font-semibold text-primary min-h-[28px]" onClick={() => abrirAsignar(pedido)} data-testid={`asignar-ya-${pedido.id}`}>
+                      Asignar repartidor ya
+                    </button>
                   )}
 
                   {/* ── El paso que toca, en un solo botón ── */}
@@ -1163,7 +1205,7 @@ export default function PedidosPage() {
                                 </DialogTrigger>
                                 <DialogContent>
                                   <DialogHeader>
-                                    <DialogTitle>{pedido.deliveryId ? "Reasignar Delivery" : "Asignar Delivery"}</DialogTitle>
+                                    <DialogTitle>{pedido.deliveryId ? "Cambiar de repartidor" : "Asignar repartidor"}</DialogTitle>
                                   </DialogHeader>
                                   <p className="text-sm text-gray-500 mt-1">El pedido está esperando confirmación de sustituciones. El delivery quedará pre-asignado.</p>
                                   <div className="space-y-3 mt-4">
@@ -1528,7 +1570,7 @@ export default function PedidosPage() {
   );
 
   return (
-    <NegocioLayout title="Pedidos" activeNav="pedidos" headerRight={<Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-slate-600 hover:text-slate-900 hover:bg-slate-100" onClick={refrescar} disabled={refrescando} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className={`sm:hidden ${refrescando ? "animate-spin" : ""}`} /><RefreshCw size={20} className={`hidden sm:block ${refrescando ? "animate-spin" : ""}`} /></Button>}>
+    <NegocioLayout title="Pedidos" activeNav="pedidos" headerRight={<><Link href="/negocio/cocina"><Button variant="outline" size="sm" className="h-10 rounded-xl border-slate-300 text-slate-800 text-sm font-semibold" data-testid="link-preparacion">Preparación</Button></Link><Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-slate-600 hover:text-slate-900 hover:bg-slate-100" onClick={refrescar} disabled={refrescando} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className={`sm:hidden ${refrescando ? "animate-spin" : ""}`} /><RefreshCw size={20} className={`hidden sm:block ${refrescando ? "animate-spin" : ""}`} /></Button></>}>
       {/* Sidebar */}
 
       {/* Main Content */}
@@ -1554,13 +1596,30 @@ export default function PedidosPage() {
             ))}
             {tabActual === "historial" && (
               <div className="ml-0 sm:ml-auto flex w-full sm:w-auto min-w-0 items-center gap-1.5 pr-0 sm:pr-2 py-1">
-                <span className="text-xs text-gray-500">Fecha:</span>
-                <input
-                  type="date"
-                  value={filtroFecha}
-                  onChange={(e) => setFiltroFecha(e.target.value)}
-                  className="text-xs border rounded px-2 py-1 h-7 min-w-0 flex-1 sm:flex-none"
-                />
+                <label className="text-xs text-slate-600 flex items-center gap-1.5 min-w-0 flex-1 sm:flex-none">
+                  Mes
+                  <input
+                    type="month"
+                    value={filtroMes || hoy.slice(0, 7)}
+                    max={hoy.slice(0, 7)}
+                    onChange={(e) => { setFiltroMes(e.target.value); setFiltroFecha(""); }}
+                    className="text-sm border border-slate-300 rounded-lg px-2 h-10 min-w-0 flex-1 sm:flex-none bg-white"
+                    data-testid="filtro-mes"
+                  />
+                </label>
+                <label className="text-xs text-slate-600 flex items-center gap-1.5 min-w-0 flex-1 sm:flex-none">
+                  Día
+                  <input
+                    type="date"
+                    value={filtroFecha}
+                    onChange={(e) => setFiltroFecha(e.target.value)}
+                    className="text-sm border border-slate-300 rounded-lg px-2 h-10 min-w-0 flex-1 sm:flex-none bg-white"
+                    data-testid="filtro-dia"
+                  />
+                </label>
+                {filtroFecha && (
+                  <button type="button" className="text-xs font-semibold text-primary h-10 px-1 shrink-0" onClick={() => setFiltroFecha("")}>Todo el mes</button>
+                )}
               </div>
             )}
           </div>
@@ -1573,7 +1632,7 @@ export default function PedidosPage() {
               { value: "esperando_pago", label: "Esp. Pago", color: "bg-purple-100 text-purple-600 border-purple-300" },
               { value: "esperando_confirmacion_pago", label: "Conf. Pago", color: "bg-cyan-100 text-cyan-600 border-cyan-300" },
               { value: "esperando_confirmacion_sustituciones", label: "Conf. Cambios", color: "bg-amber-100 text-amber-700 border-amber-300" },
-              { value: "pendiente", label: "Pendiente", color: "bg-orange-100 text-orange-600 border-orange-300" },
+              { value: "pendiente", label: "Por preparar", color: "bg-orange-100 text-orange-600 border-orange-300" },
                { value: "en_preparacion", label: "En Preparación", color: "bg-blue-100 text-blue-600 border-blue-300" },
                { value: "listo", label: "Listo", color: "bg-purple-100 text-purple-600 border-purple-300" },
               { value: "en_camino", label: "En Camino", color: "bg-blue-100 text-blue-600 border-blue-300" },
@@ -1610,7 +1669,7 @@ export default function PedidosPage() {
             <div className="text-center py-16">
               <Package size={60} className="mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-medium text-gray-600 mb-2">No hay pedidos</h3>
-              <p className="text-gray-500">{tabActual === "historial" ? "No hay pedidos para esa fecha" : "Los pedidos aparecerán aquí cuando los clientes ordenen por WhatsApp"}</p>
+              <p className="text-gray-500">{tabActual === "historial" ? (filtroFecha ? "No hay pedidos ese día" : "No hay pedidos en ese mes") : "Los pedidos aparecerán aquí cuando los clientes ordenen por WhatsApp"}</p>
             </div>
           ) : (
             tabActual === "activos" && filtroEstado === "todos" ? (
@@ -2371,7 +2430,7 @@ export default function PedidosPage() {
                     const tieneDelivery = !!p.deliveryId;
                     return (
                       <div className="border rounded-lg p-3 space-y-2">
-                        <p className="text-xs font-semibold text-gray-700 flex items-center gap-1"><Banknote size={13} className="text-orange-500" /> Devuelta al delivery</p>
+                        <p className="text-xs font-semibold text-gray-700 flex items-center gap-1"><Banknote size={13} className="text-orange-500" /> Devuelta para el repartidor</p>
                         {yaEntregado ? (
                           <div className="flex items-center gap-1.5 text-green-700 text-xs" data-testid={`badge-vuelto-entregado-${p.id}`}>
                             <CheckCircle2 size={13} className="shrink-0" />
@@ -2470,7 +2529,7 @@ export default function PedidosPage() {
           {asignarDialogStep === "select" && (
             <>
               <DialogHeader>
-                <DialogTitle>{asignarDialogPedido?.deliveryId ? "Reasignar Delivery" : "Asignar Delivery"}</DialogTitle>
+                <DialogTitle>{asignarDialogPedido?.deliveryId ? "Cambiar de repartidor" : "Asignar repartidor"}</DialogTitle>
               </DialogHeader>
               <div className="space-y-3 mt-4">
                 {deliveries?.map((delivery: any) => (
@@ -2564,7 +2623,7 @@ export default function PedidosPage() {
                   return (
                     <div className="border rounded-lg p-4 space-y-3">
                       <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
-                        <Banknote size={15} className="text-orange-500" /> Devuelta al delivery
+                        <Banknote size={15} className="text-orange-500" /> Devuelta para el repartidor
                       </p>
                       {devueltaCalc > 0 && (
                         <div className="flex items-center gap-2 text-sm text-gray-600">
