@@ -2,7 +2,7 @@
 // Pruebas con D1 local en memoria e IA simulada: no se llama a Cloudflare AI, OpenAI ni Meta.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { botNoEntendidos, botRegistro, chatWebSesiones, colmados, diccionarioJerga, pedidos, whatsappConversaciones, whatsappMensajes } from "@shared/schema";
+import { botNoEntendidos, botRegistro, chatWebMensajes, chatWebSesiones, clienteDirecciones, clientes, colmados, diccionarioJerga, pedidos, whatsappConversaciones, whatsappMensajes } from "@shared/schema";
 import { createTestApp } from "./helpers";
 import { http } from "../lib/whatsapp";
 import { tiempos } from "../routes/chat-colmado";
@@ -18,8 +18,8 @@ let llamadasIA = 0;
 let respuestaIA: unknown = null;
 const c = () => t.client();
 
-async function abrir(telefono: string, nombre = "Ana") {
-  const s = await c().request("POST", "/api/chat-colmado/colmado-el-sol/sesion", { nombre, telefono });
+async function abrir(telefono: string, nombre = "Ana", aparato?: string) {
+  const s = await c().request("POST", "/api/chat-colmado/colmado-el-sol/sesion", { nombre, telefono, aparato });
   expect(s.status).toBe(200);
   return s.json.sessionId as string;
 }
@@ -127,14 +127,13 @@ describe("bot por pasos del chat de la página (sin IA)", () => {
     expect(r3[0].contenido).not.toContain("devuelta");
   });
 
-  it("el cliente que vuelve: «¿a la misma dirección?» sin mostrarla", async () => {
+  it("al cliente que vuelve se le pide la ubicación de nuevo, sin mostrar la anterior", async () => {
     const id = await abrir("8095551111", "Luis");
     await decir(id, "una funda de hielo");
     const r = await decir(id, "eso es todo");
-    expect(r[0].contenido).toBe("¿Te lo llevamos a la misma dirección de tu último pedido?");
+    expect(r[0].contenido).toContain("¿A dónde te lo llevamos?");
     expect(r[0].contenido).not.toContain("Duarte");
-    const r2 = await decir(id, "Sí, a la misma");
-    expect(r2[0].contenido).toBe("¿Cómo vas a pagar?");
+    expect(r[0].opciones.map((o: any) => o.texto)).toEqual(["📍 Enviar mi ubicación"]);
   });
 
   it("contesta preguntas frecuentes sin IA y sigue en el mismo paso", async () => {
@@ -203,5 +202,135 @@ describe("seguridad del chat", () => {
     expect((await c().request("GET", "/api/chat-colmado/colmado-el-sol/info")).status).toBe(404);
     expect((await c().request("POST", `/api/chat-colmado/sesion/${id}/mensaje`, { texto: "hola" })).status).toBe(404);
     await t.db.update(colmados).set({ estado: "activo" }).where(eq(colmados.id, colmado.id));
+  });
+});
+
+describe("casa guardada, inactividad y memoria del último pedido", () => {
+  const A = "a".repeat(32), B = "b".repeat(32);
+  const tel = "8095553333";
+  let id = "";
+  async function ubicar(sessionId: string, latitude: number, longitude: number) {
+    const antes = (await c().request("GET", `/api/chat-colmado/sesion/${sessionId}/mensajes`)).json.mensajes.at(-1)?.id ?? 0;
+    expect((await c().request("POST", `/api/chat-colmado/sesion/${sessionId}/ubicacion`, { latitude, longitude })).status).toBe(200);
+    return (await c().request("GET", `/api/chat-colmado/sesion/${sessionId}/mensajes?despues=${antes}`)).json.mensajes.filter((m: any) => m.rol === "assistant");
+  }
+  const entregar = async (sessionId: string) => {
+    const [s] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, sessionId));
+    await t.db.update(pedidos).set({ estado: "entregado" }).where(eq(pedidos.id, s.pedidoId!));
+  };
+
+  it("después del primer pedido ofrece guardar la dirección como su casa", async () => {
+    id = await abrir(tel, "Marta", A);
+    await decir(id, "un pan");
+    await decir(id, "eso es todo");
+    const u = await ubicar(id, 18.48, -69.9);
+    expect(textos(u)).toContain("¿Cómo vas a pagar?");
+    const r = await decir(id, "tarjeta");
+    expect(r.at(-1).contenido).toContain("¿Guardo esta dirección como tu casa?");
+    const g = await decir(id, "Sí, es mi casa");
+    expect(g[0].contenido).toContain("¡Guardada!");
+    const casas = await t.db.select().from(clienteDirecciones);
+    expect(casas).toHaveLength(1);
+    expect(casas[0].etiqueta).toBe("Casa");
+    expect(Number(casas[0].latitud)).toBeCloseTo(18.48);
+  });
+
+  it("«llévamelo a mi casa» usa la dirección guardada y no la muestra al cliente", async () => {
+    await entregar(id);
+    const r = await decir(id, "una malta, llévamela a mi casa");
+    expect(r[0].contenido).toContain("Malta");
+    expect(r[0].contenido.toLowerCase()).not.toContain("casa");
+    const r2 = await decir(id, "eso es todo");
+    expect(r2.map((m: any) => m.contenido)).toEqual(["🏠 Te lo llevamos a tu casa.", "¿Cómo vas a pagar?"]);
+    const r3 = await decir(id, "tarjeta");
+    expect(r3[0].contenido).toContain("🏠 Tu casa (dirección guardada)");
+    expect(r3[0].contenido).not.toContain("18.48");
+    expect(r3).toHaveLength(1); // ya tiene casa: no se ofrece otra vez
+    const [s] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
+    const [p] = await t.db.select().from(pedidos).where(eq(pedidos.id, s.pedidoId!));
+    expect(p.clienteUbicacion).toContain("🏠 Casa (guardada)");
+    expect(Number(p.clienteLatitud)).toBeCloseTo(18.48);
+  });
+
+  it("si manda una ubicación lejos de su casa, pregunta a cuál de las dos va", async () => {
+    await entregar(id);
+    await decir(id, "un pan");
+    const r = await decir(id, "eso es todo");
+    expect(r[0].opciones.map((o: any) => o.texto)).toEqual(["📍 Enviar mi ubicación", "🏠 A mi casa"]);
+    const lejos = await ubicar(id, 18.6, -69.9);
+    expect(lejos[0].contenido).toContain("estás en otro lugar");
+    const r2 = await decir(id, "🏠 A mi casa");
+    expect(r2.map((m: any) => m.contenido)).toEqual(["🏠 Perfecto, te lo llevamos a tu casa.", "¿Cómo vas a pagar?"]);
+    const r3 = await decir(id, "tarjeta");
+    expect(r3[0].contenido).toContain("🏠 Tu casa (dirección guardada)");
+  });
+
+  it("cerca de su casa no pregunta; y «aquí donde estoy» respeta la ubicación nueva", async () => {
+    await entregar(id);
+    await decir(id, "un pan");
+    await decir(id, "eso es todo");
+    expect(textos(await ubicar(id, 18.4801, -69.9001))).toContain("¿Cómo vas a pagar?");
+    await decir(id, "tarjeta");
+    await entregar(id);
+    await decir(id, "un pan");
+    await decir(id, "eso es todo");
+    await ubicar(id, 18.6, -69.9);
+    const r = await decir(id, "📍 Aquí donde estoy");
+    expect(r[0].contenido).toContain("ahí donde estás");
+    const fin = await decir(id, "tarjeta");
+    expect(fin[0].contenido).toContain("Tu ubicación compartida");
+    const [s] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
+    const [p] = await t.db.select().from(pedidos).where(eq(pedidos.id, s.pedidoId!));
+    expect(Number(p.clienteLatitud)).toBeCloseTo(18.6);
+  });
+
+  it("10 minutos sin actividad: se cierra y solo se reabre con el mismo teléfono y aparato", async () => {
+    const viejo = new Date(Date.now() - 11 * 60_000);
+    await t.db.update(chatWebSesiones).set({ fechaUltimaActividad: viejo }).where(eq(chatWebSesiones.sessionId, id));
+    await t.db.update(chatWebMensajes).set({ fechaCreacion: viejo }).where(eq(chatWebMensajes.sessionId, id));
+    const cerrado = await c().request("GET", `/api/chat-colmado/sesion/${id}/mensajes`);
+    expect(cerrado.status).toBe(423);
+    expect(cerrado.json.inactiva).toBe(true);
+    expect((await c().request("POST", `/api/chat-colmado/sesion/${id}/mensaje`, { texto: "hola" })).status).toBe(423);
+    // Otro aparato con el mismo número: conversación nueva, sin el historial.
+    const otro = await abrir(tel, "Marta", B);
+    expect(otro).not.toBe(id);
+    expect((await c().request("GET", `/api/chat-colmado/sesion/${otro}/mensajes`)).json.mensajes).toHaveLength(0);
+    // Mismo aparato: la misma conversación, con sus mensajes.
+    const s = await c().request("POST", "/api/chat-colmado/colmado-el-sol/sesion", { nombre: "Marta", telefono: tel, aparato: A });
+    expect(s.json.sessionId).toBe(id);
+    expect(s.json.reanudada).toBe(true);
+    expect((await c().request("GET", `/api/chat-colmado/sesion/${id}/mensajes`)).json.mensajes.length).toBeGreaterThan(5);
+  });
+
+  it("un mensaje reciente del colmado mantiene el chat abierto", async () => {
+    await t.db.update(chatWebSesiones).set({ fechaUltimaActividad: new Date(Date.now() - 11 * 60_000) }).where(eq(chatWebSesiones.sessionId, id));
+    await t.db.insert(chatWebMensajes).values({ sessionId: id, rol: "assistant", contenido: "Tu pedido va en camino" });
+    expect((await c().request("GET", `/api/chat-colmado/sesion/${id}/mensajes`)).status).toBe(200);
+  });
+
+  it("otro día: conversación nueva que recuerda el último pedido solo en el mismo aparato", async () => {
+    const antier = new Date(Date.now() - 2 * 24 * 3600_000);
+    await t.db.update(chatWebSesiones).set({ fechaCreacion: antier }).where(and(eq(chatWebSesiones.clienteWhatsapp, "18095553333")));
+    const nueva = await abrir(tel, "Marta", A);
+    expect(nueva).not.toBe(id);
+    expect((await c().request("GET", `/api/chat-colmado/sesion/${nueva}/mensajes`)).json.mensajes).toHaveLength(0);
+    const hola = await decir(nueva, "Hola");
+    expect(hola[0].contenido).toContain("Marta");
+    expect(hola[0].opciones.map((o: any) => o.texto)).toEqual(["🔁 Repetir mi último pedido"]);
+    const rep = await decir(nueva, "🔁 Repetir mi último pedido");
+    expect(rep[0].contenido).toContain("Tu último pedido 🔁");
+    expect(rep[0].contenido).toContain("Pan");
+    // Un aparato que nunca se usó con ese número no puede ver el pedido anterior.
+    const C = "c".repeat(32);
+    const ajeno = await abrir(tel, "Marta", C);
+    const hola2 = await decir(ajeno, "Hola");
+    expect(hola2[0].opciones ?? null).toBeNull();
+    const rep2 = await decir(ajeno, "repetir mi último pedido");
+    expect(rep2[0].contenido).toContain("Por seguridad");
+    expect(rep2[0].contenido).not.toContain("Pan");
+    // Los datos del cliente siguen en el sistema.
+    const [cl] = await t.db.select().from(clientes).where(eq(clientes.whatsappNumero, "18095553333"));
+    expect(cl.nombre).toBe("Marta");
   });
 });

@@ -65,6 +65,28 @@ export function esPreguntaUbicacionColmado(t: string): boolean {
   return contiene(t, ["donde estan", "donde queda", "donde queda el colmado", "su direccion", "la direccion del colmado", "donde se encuentran"]);
 }
 
+/** "a mi casa", "donde siempre": quiere la dirección guardada. */
+export function esCasa(t: string): boolean {
+  return contiene(t, ["a mi casa", "mi casa", "a la casa", "en la casa", "en mi casa", "para la casa", "para mi casa", "en casa", "a casa", "donde siempre",
+    "la misma direccion", "a la misma", "mi hogar", "la de siempre"]);
+}
+
+/** "aquí", "donde estoy": quiere la ubicación que acaba de enviar. */
+export function esAqui(t: string): boolean {
+  return contiene(t, ["aqui", "aca", "ahi", "donde estoy", "aqui donde estoy", "aqui mismo", "donde estoy ahora", "mi ubicacion", "ubicacion actual", "esta ubicacion"]);
+}
+
+const FRASE_CASA = /(?:[,.;]|\s)*(?:\by\s+)?(?:(?:me\s+lo\s+)?(?:ll[eé]v[ae]n?(?:me|nme)?(?:lo|la|los|las)?|m[aá]nd[ae]n?(?:me)?(?:lo|la|los|las)?|env[ií][ae]n?(?:me)?(?:lo|la|los|las)?|traen|trae|es|que\s+sea)\s+)?(?:a|para|en)\s+(?:mi|la)\s+casa\b/i;
+/** Saca del mensaje "llévamelo a mi casa" para que no se lea como producto. */
+export function quitarCasa(t: string): { texto: string; casa: boolean } {
+  if (!FRASE_CASA.test(t)) return { texto: t, casa: false };
+  return { texto: t.replace(FRASE_CASA, " ").replace(/\s+/g, " ").replace(/^[\s,.;]+|[\s,.;]+$/g, ""), casa: true };
+}
+
+export function esRepetir(t: string): boolean {
+  return contiene(t, ["repetir", "repite", "repiteme", "lo mismo", "lo de siempre", "mismo pedido", "ultimo pedido", "igual que la otra vez", "lo mismo de siempre"]);
+}
+
 export type Pago = "efectivo" | "tarjeta" | "transferencia";
 export function leerPago(t: string): Pago | null {
   const x = limpio(t);

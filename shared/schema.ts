@@ -621,6 +621,20 @@ export const clientes = sqliteTable("clientes", {
   unique("clientes_colmado_whatsapp_uniq").on(t.colmadoId, t.whatsappNumero),
 ]);
 
+/** DELYWA: direcciones guardadas del cliente con nombre ("Casa", "Trabajo"). */
+export const clienteDirecciones = sqliteTable("cliente_direcciones", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  clienteId: integer("cliente_id").notNull().references(() => clientes.id, { onDelete: "cascade" }),
+  etiqueta: text("etiqueta").notNull(),
+  direccionTexto: text("direccion_texto"),
+  latitud: text("latitud"),
+  longitud: text("longitud"),
+  fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+  ultimaActualizacion: integer("ultima_actualizacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (t) => [
+  unique("cliente_direcciones_cliente_etiqueta_uniq").on(t.clienteId, t.etiqueta),
+]);
+
 export const whatsappConversaciones = sqliteTable("whatsapp_conversaciones", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),
@@ -907,6 +921,10 @@ export const chatWebSesiones = sqliteTable("chat_web_sesiones", {
   montoPagoCliente: text("monto_pago_cliente"),
   devueltaCalculada: text("devuelta_calculada"),
   totalEstimado: text("total_estimado"),
+  /** DELYWA: identificador al azar del navegador del cliente; la conversación solo se reabre desde el mismo aparato. */
+  aparato: text("aparato"),
+  /** DELYWA: etiqueta de la dirección guardada elegida para este pedido ("Casa"). */
+  destinoGuardado: text("destino_guardado"),
   fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
   fechaUltimaActividad: integer("fecha_ultima_actividad", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (t) => [

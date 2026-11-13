@@ -1,5 +1,5 @@
-import { eq, sql } from "drizzle-orm";
-import { botNoEntendidos, botRegistro, chatWebSesiones, clientes, diccionarioJerga, pedidos, type ChatWebSesion, type Colmado } from "@shared/schema";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { botNoEntendidos, botRegistro, chatWebSesiones, clienteDirecciones, clientes, diccionarioJerga, pedidos, type ChatWebSesion, type Colmado } from "@shared/schema";
 import type { Env } from "../env";
 import type { Db } from "../db";
 import { isColmadoAbierto } from "../lib/horario";
@@ -32,10 +32,17 @@ type Contexto = {
   sesion: ChatWebSesion;
   /** Cuántas veces ha respondido ya el bot en esta sesión (la primera lleva el saludo). */
   respuestasPrevias: number;
+  /** El cliente ya usó este mismo teléfono (aparato) con este número: se le puede recordar su último pedido. */
+  aparatoConocido?: boolean;
 };
 
 const PAGOS: Opcion[] = [{ texto: "💵 Efectivo" }, { texto: "💳 Tarjeta" }, { texto: "🏦 Transferencia" }];
 const BOTON_UBICACION: Opcion = { texto: "📍 Enviar mi ubicación", accion: "ubicacion" };
+const BOTON_CASA: Opcion = { texto: "🏠 A mi casa" };
+const BOTON_REPETIR: Opcion = { texto: "🔁 Repetir mi último pedido" };
+const ELEGIR_DESTINO: Opcion[] = [{ texto: "📍 Aquí donde estoy" }, BOTON_CASA];
+/** Si la ubicación que manda está más lejos que esto de su casa guardada, se le pregunta a dónde lo quiere. */
+const METROS_LEJOS_DE_CASA = 300;
 const ESTADOS_LEGIBLES: Record<string, string> = {
   pendiente_confirmacion: "el colmado lo está verificando", esperando_pago: "esperando tu pago", esperando_confirmacion_pago: "revisando tu pago",
   pendiente: "recibido y en cola", en_preparacion: "lo están preparando", listo: "listo para salir", en_camino: "va en camino 🛵",
@@ -106,14 +113,67 @@ function infoColmado(colmado: Colmado) {
 
 // ---------- Pasos ----------
 
-async function pedirUbicacion(c: Contexto, cliente: Awaited<ReturnType<typeof getClienteByWhatsapp>>): Promise<Respuesta> {
-  // No se muestra la dirección guardada: el número no está verificado y sería un dato de otra persona.
-  if (cliente && (cliente.direccionTexto || cliente.latitud)) {
-    await guardarSesion(c, { estadoConversacion: "confirmando_direccion" });
-    return { texto: "¿Te lo llevamos a la misma dirección de tu último pedido?", opciones: [{ texto: "Sí, a la misma" }, BOTON_UBICACION] };
+type Casa = typeof clienteDirecciones.$inferSelect;
+
+/** La dirección guardada como "Casa" de este cliente, si tiene. */
+async function casaDe(c: Contexto): Promise<Casa | null> {
+  const cliente = c.sesion.clienteWhatsapp ? await getClienteByWhatsapp(c.db, c.colmado.id, c.sesion.clienteWhatsapp) : undefined;
+  if (!cliente) return null;
+  const [casa] = await c.db.select().from(clienteDirecciones).where(and(eq(clienteDirecciones.clienteId, cliente.id), eq(clienteDirecciones.etiqueta, "Casa")));
+  return casa ?? null;
+}
+
+function metros(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const rad = (g: number) => (g * Math.PI) / 180;
+  const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lon2 - lon1) / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(a));
+}
+
+/** Productos del último pedido del cliente (para "repetir mi último pedido"). */
+async function ultimoPedido(c: Contexto): Promise<Array<Pick<Item, "nombre" | "cantidad" | "unidad">>> {
+  if (!c.sesion.clienteWhatsapp) return [];
+  const [p] = await c.db.select({ productos: pedidos.productos }).from(pedidos)
+    .where(and(eq(pedidos.colmadoId, c.colmado.id), eq(pedidos.clienteWhatsapp, c.sesion.clienteWhatsapp), ne(pedidos.estado, "cancelado")))
+    .orderBy(desc(pedidos.id)).limit(1);
+  if (!p) return [];
+  let lista: unknown = p.productos;
+  if (typeof lista === "string") { try { lista = JSON.parse(lista); } catch { lista = []; } }
+  if (!Array.isArray(lista)) return [];
+  return lista.filter((x) => x && typeof x.nombre === "string").slice(0, 60).map((x) => {
+    const m = String(x.nombre).match(/^(.*) \(([^()]+)\)$/);
+    return { nombre: m ? m[1] : String(x.nombre), cantidad: Number(x.cantidad) > 0 ? Number(x.cantidad) : 1, unidad: m ? m[2] : null };
+  });
+}
+
+/** Siempre se pregunta a dónde va el pedido: el cliente puede estar hoy en otro lugar. */
+async function pedirUbicacion(c: Contexto): Promise<Respuesta[]> {
+  const casa = await casaDe(c);
+  // Ya dijo "llévamelo a mi casa" mientras pedía.
+  if (casa && c.sesion.destinoGuardado === "Casa") {
+    await guardarSesion(c, { estadoConversacion: "esperando_pago" });
+    return [{ texto: "🏠 Te lo llevamos a tu casa." }, pedirPago()];
   }
-  await guardarSesion(c, { estadoConversacion: "esperando_ubicacion" });
-  return { texto: "¿A dónde te lo llevamos? 📍 Toca «Enviar mi ubicación» o escríbeme la dirección con alguna referencia.", opciones: [BOTON_UBICACION] };
+  await guardarSesion(c, { estadoConversacion: "esperando_ubicacion", destinoGuardado: null });
+  // No se muestra la dirección guardada: el número no está verificado y sería un dato de otra persona.
+  if (casa) return [{ texto: "¿A dónde te lo llevamos? 📍 Envíame tu ubicación actual o toca «A mi casa».", opciones: [BOTON_UBICACION, BOTON_CASA] }];
+  return [{ texto: "¿A dónde te lo llevamos? 📍 Toca «Enviar mi ubicación» o escríbeme la dirección con alguna referencia.", opciones: [BOTON_UBICACION] }];
+}
+
+/** Recibe la ubicación del cliente; si está lejos de su casa guardada, pregunta a cuál de las dos va. */
+async function recibirUbicacion(c: Contexto, latitud: number, longitud: number): Promise<Respuesta[]> {
+  const casa = await casaDe(c);
+  const lejos = casa?.latitud && casa.longitud && metros(latitud, longitud, Number(casa.latitud), Number(casa.longitud)) > METROS_LEJOS_DE_CASA;
+  if (lejos) {
+    await guardarSesion(c, { clienteLatitud: String(latitud), clienteLongitud: String(longitud), clienteDireccion: null, destinoGuardado: null, estadoConversacion: "eligiendo_destino" });
+    return [{ texto: "📍 Veo que ahora estás en otro lugar. ¿Te lo llevamos ahí donde estás o a tu casa?", opciones: ELEGIR_DESTINO }];
+  }
+  await guardarSesion(c, { clienteLatitud: String(latitud), clienteLongitud: String(longitud), clienteDireccion: null, destinoGuardado: null, estadoConversacion: "esperando_pago" });
+  return [{ texto: "📍 ¡Recibí tu ubicación!" }, pedirPago()];
+}
+
+async function irACasa(c: Contexto): Promise<Respuesta[]> {
+  await guardarSesion(c, { destinoGuardado: "Casa", estadoConversacion: "esperando_pago" });
+  return [{ texto: "🏠 Perfecto, te lo llevamos a tu casa." }, pedirPago()];
 }
 
 function pedirPago(): Respuesta {
@@ -122,15 +182,20 @@ function pedirPago(): Respuesta {
 
 async function crearElPedido(c: Contexto, metodo: I.Pago, montoPago: number | null): Promise<Respuesta[]> {
   const productos = productosDe(c.sesion);
-  const direccion = c.sesion.clienteDireccion?.trim()
-    || (c.sesion.clienteLatitud ? `Ubicación compartida: https://maps.google.com/?q=${c.sesion.clienteLatitud},${c.sesion.clienteLongitud}` : "Sin dirección");
+  const casa = c.sesion.destinoGuardado === "Casa" ? await casaDe(c) : null;
+  const latitud = casa ? casa.latitud : c.sesion.clienteLatitud ?? null;
+  const longitud = casa ? casa.longitud : c.sesion.clienteLongitud ?? null;
+  const texto = (casa ? casa.direccionTexto : c.sesion.clienteDireccion)?.trim();
+  const base = texto || (latitud ? `Ubicación compartida: https://maps.google.com/?q=${latitud},${longitud}` : "Sin dirección");
+  // El colmado ve la dirección completa; al cliente solo se le dice "tu casa".
+  const direccion = casa ? `🏠 Casa (guardada): ${base}` : base;
   const pedido = await createPedido(c.db, {
     colmadoId: c.colmado.id,
     clienteNombre: c.sesion.clienteNombre || "Cliente",
     clienteWhatsapp: c.sesion.clienteWhatsapp || "",
     clienteUbicacion: direccion,
-    clienteLatitud: c.sesion.clienteLatitud ?? null,
-    clienteLongitud: c.sesion.clienteLongitud ?? null,
+    clienteLatitud: latitud,
+    clienteLongitud: longitud,
     productos: JSON.stringify(productos.map((p) => ({ nombre: p.unidad ? `${p.nombre} (${p.unidad})` : p.nombre, cantidad: p.cantidad, monto: null }))),
     total: "0",
     metodoPago: metodo,
@@ -140,16 +205,20 @@ async function crearElPedido(c: Contexto, metodo: I.Pago, montoPago: number | nu
     notas: "Pedido hecho en el chat de la página",
   } as any);
   await guardarSesion(c, { pedidoId: pedido.id, estado: "pedido_creado", estadoConversacion: "pedido_creado", metodoPagoSeleccionado: metodo, montoPagoCliente: montoPago ? String(montoPago) : null });
-  // La dirección queda guardada para el próximo pedido.
+  // La última dirección usada queda en la ficha del cliente (el colmado la ve en su panel).
+  let ofrecerCasa = false;
   if (c.sesion.clienteWhatsapp) {
     const cliente = await getClienteByWhatsapp(c.db, c.colmado.id, c.sesion.clienteWhatsapp);
     if (cliente) {
       await c.db.update(clientes).set({
-        direccionTexto: c.sesion.clienteDireccion || cliente.direccionTexto, latitud: c.sesion.clienteLatitud || cliente.latitud,
-        longitud: c.sesion.clienteLongitud || cliente.longitud, ultimaActualizacion: new Date(),
+        direccionTexto: texto || cliente.direccionTexto, latitud: latitud || cliente.latitud,
+        longitud: longitud || cliente.longitud, ultimaActualizacion: new Date(),
       }).where(eq(clientes.id, cliente.id));
+      // Primera vez con dirección: se le ofrece guardarla como su casa.
+      ofrecerCasa = !casa && Boolean(texto || latitud) && !(await casaDe(c));
     }
   }
+  if (ofrecerCasa) await guardarSesion(c, { estadoConversacion: "ofreciendo_casa" });
   if (c.sesion.conversacionId) await updateConversacionPedidoEstado(c.db, c.sesion.conversacionId, "pendiente_confirmacion");
   await avisarNegocio(c.env, c.colmado.id, ["pedidos", "conversaciones"]);
 
@@ -158,8 +227,8 @@ async function crearElPedido(c: Contexto, metodo: I.Pago, montoPago: number | nu
     : metodo === "tarjeta" ? "💳 Tarjeta" : "🏦 Transferencia — cuando el colmado te confirme el total, envía la foto del comprobante con el botón 📷";
   const nombre = primerNombre(c.sesion);
   return [{
-    texto: `✅ ¡Listo${nombre ? `, ${nombre}` : ""}! Este es tu pedido #${pedido.id}:\n${lista(productos)}\n\n📍 ${direccion.startsWith("Ubicación compartida") ? "Tu ubicación compartida" : direccion}\n${pago}\n\n⏳ *${c.colmado.nombre}* está verificando tu pedido y te confirma el total por aquí.`,
-  }];
+    texto: `✅ ¡Listo${nombre ? `, ${nombre}` : ""}! Este es tu pedido #${pedido.id}:\n${lista(productos)}\n\n${casa ? "🏠 Tu casa (dirección guardada)" : `📍 ${direccion.startsWith("Ubicación compartida") ? "Tu ubicación compartida" : direccion}`}\n${pago}\n\n⏳ *${c.colmado.nombre}* está verificando tu pedido y te confirma el total por aquí.`,
+  }, ...(ofrecerCasa ? [{ texto: "¿Guardo esta dirección como tu casa? 🏠 Así la próxima vez solo me dices «a mi casa».", opciones: [{ texto: "Sí, es mi casa" }, { texto: "No, gracias" }] }] : [])];
 }
 
 /** Anota productos y responde "¿Algo más?". */
@@ -219,7 +288,8 @@ function recordatorio(c: Contexto): Respuesta | null {
   switch (c.sesion.estadoConversacion) {
     case "confirmando": return { texto: "¿Eso es todo?", opciones: [{ texto: "Sí, eso es todo" }, { texto: "Agregar más" }] };
     case "esperando_ubicacion": return { texto: "¿A dónde te lo llevamos?", opciones: [BOTON_UBICACION] };
-    case "confirmando_direccion": return { texto: "¿Te lo llevamos a la misma dirección de tu último pedido?", opciones: [{ texto: "Sí, a la misma" }, BOTON_UBICACION] };
+    case "eligiendo_destino": return { texto: "¿Te lo llevamos ahí donde estás o a tu casa?", opciones: ELEGIR_DESTINO };
+    case "ofreciendo_casa": return null;
     case "esperando_pago": return pedirPago();
     case "esperando_monto": return { texto: "¿Con cuánto vas a pagar?", opciones: [{ texto: "Exacto" }, { texto: "500" }, { texto: "1000" }, { texto: "2000" }] };
     case "pedido_creado": return null;
@@ -240,12 +310,30 @@ export async function atenderChat(c: Contexto, entrada: Entrada): Promise<Respue
   return respuestas;
 }
 
-async function responder(c: Contexto, entrada: Entrada, texto: string): Promise<Respuesta[]> {
+async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: string): Promise<Respuesta[]> {
+  let entrada = entradaOriginal;
+  let texto = textoOriginal;
   const timezone = await getColmadoTimezone(c.db, c.colmado);
   const nombre = primerNombre(c.sesion);
   const saludo = `${I.saludoPorHora(timezone)}${nombre ? `, ${nombre}` : ""} 👋`;
   const primera = c.respuestasPrevias === 0;
   const estado = c.sesion.estadoConversacion || "inicial";
+
+  // Después del pedido se le ofreció guardar la dirección como su casa.
+  if (estado === "ofreciendo_casa") {
+    await guardarSesion(c, { estadoConversacion: "pedido_creado" });
+    if (entrada.tipo === "texto" && I.esNegativo(texto)) return [{ texto: "Dale 👍 Te aviso por aquí cuando el colmado confirme tu pedido." }];
+    if (entrada.tipo === "texto" && (I.esAfirmativo(texto) || /\bcasa\b/.test(normalizar(texto)))) {
+      const cliente = c.sesion.clienteWhatsapp ? await getClienteByWhatsapp(c.db, c.colmado.id, c.sesion.clienteWhatsapp) : undefined;
+      if (cliente && (c.sesion.clienteDireccion || c.sesion.clienteLatitud)) {
+        const datos = { direccionTexto: c.sesion.clienteDireccion ?? null, latitud: c.sesion.clienteLatitud ?? null, longitud: c.sesion.clienteLongitud ?? null, ultimaActualizacion: new Date() };
+        await c.db.insert(clienteDirecciones).values({ clienteId: cliente.id, etiqueta: "Casa", ...datos })
+          .onConflictDoUpdate({ target: [clienteDirecciones.clienteId, clienteDirecciones.etiqueta], set: datos });
+        return [{ texto: "🏠 ¡Guardada! La próxima vez dime «a mi casa» y te lo llevamos ahí." }];
+      }
+    }
+    return responder(c, entrada, texto);
+  }
 
   // Colmado cerrado: se avisa (no se toma el pedido).
   if (estado !== "pedido_creado") {
@@ -259,7 +347,8 @@ async function responder(c: Contexto, entrada: Entrada, texto: string): Promise<
     const cerrado = !pedido || ESTADOS_TERMINALES.includes(pedido.estado);
     if (cerrado && entrada.tipo === "texto" && !I.esGracias(texto) && !I.esEstado(texto)) {
       // Pedido terminado: empieza uno nuevo.
-      await guardarSesion(c, { productosCapturados: [] as any, estadoConversacion: "tomando_pedido", pedidoId: null, estado: "activa", metodoPagoSeleccionado: null, montoPagoCliente: null });
+      await guardarSesion(c, { productosCapturados: [] as any, estadoConversacion: "tomando_pedido", pedidoId: null, estado: "activa", metodoPagoSeleccionado: null, montoPagoCliente: null,
+        clienteDireccion: null, clienteLatitud: null, clienteLongitud: null, destinoGuardado: null });
       return responder(c, entrada, texto);
     }
     if (I.esEstado(texto) && pedido) return [{ texto: `Tu pedido #${pedido.id}: ${ESTADOS_LEGIBLES[pedido.estado] ?? pedido.estado}.` }];
@@ -272,8 +361,24 @@ async function responder(c: Contexto, entrada: Entrada, texto: string): Promise<
 
   // Cancelar antes de terminar: se borra lo anotado.
   if (I.esCancelar(texto)) {
-    await guardarSesion(c, { productosCapturados: [] as any, estadoConversacion: "tomando_pedido", clienteDireccion: null, clienteLatitud: null, clienteLongitud: null });
+    await guardarSesion(c, { productosCapturados: [] as any, estadoConversacion: "tomando_pedido", clienteDireccion: null, clienteLatitud: null, clienteLongitud: null, destinoGuardado: null });
     return [{ texto: "Listo, borré lo que llevábamos. Cuando quieras, escríbeme lo que necesitas. 👍" }];
+  }
+
+  // "Llévamelo a mi casa" mientras pide: se recuerda y esa frase no se lee como producto.
+  if (entrada.tipo === "texto" && ["inicial", "tomando_pedido", "confirmando"].includes(estado)) {
+    const q = I.quitarCasa(texto);
+    if (q.casa) {
+      const casa = await casaDe(c);
+      if (casa) await guardarSesion(c, { destinoGuardado: "Casa" });
+      if (!q.texto) {
+        const sigue = recordatorio(c);
+        const aviso = casa ? "🏠 Perfecto, te lo llevamos a tu casa." : "Todavía no tengo guardada tu casa 🙏 Cuando termines de pedir me envías la ubicación.";
+        return [{ texto: primera ? `${saludo}\n\n${aviso}` : aviso }, ...(sigue ? [sigue] : [])];
+      }
+      texto = q.texto;
+      entrada = { tipo: "texto", texto };
+    }
   }
 
   // Preguntas frecuentes en cualquier paso (sin IA).
@@ -297,11 +402,21 @@ async function responder(c: Contexto, entrada: Entrada, texto: string): Promise<
       const hayAnotado = productosDe(c.sesion).length > 0;
       if (I.esSaludo(texto)) {
         await guardarSesion(c, { estadoConversacion: "tomando_pedido" });
-        return [{ texto: primera ? `${saludo}\n¿En qué te puedo ayudar?` : hayAnotado ? "¿Algo más para tu pedido?" : "¿Qué te gustaría pedir?" }];
+        const repetir = primera && !hayAnotado && c.aparatoConocido && (await ultimoPedido(c)).length > 0;
+        return [{ texto: primera ? `${saludo}\n¿En qué te puedo ayudar?` : hayAnotado ? "¿Algo más para tu pedido?" : "¿Qué te gustaría pedir?", opciones: repetir ? [BOTON_REPETIR] : undefined }];
+      }
+      if (I.esRepetir(texto)) {
+        const antes = primera ? `${saludo}\n\n` : "";
+        // Solo desde el mismo aparato: el número no está verificado y el pedido anterior es de esa persona.
+        if (!c.aparatoConocido) return [{ texto: `${antes}Por seguridad solo puedo repetir tu pedido anterior desde el mismo teléfono donde lo hiciste 🙏 Dime qué necesitas y te lo anoto.` }];
+        const anteriores = await ultimoPedido(c);
+        if (!anteriores.length) return [{ texto: `${antes}No encuentro un pedido anterior tuyo 🙏 Dime qué necesitas y te lo anoto.` }];
+        const r = await anotar(c, anteriores, antes);
+        return [{ ...r, texto: r.texto.replace("Anotado ✍️", "Tu último pedido 🔁") }];
       }
       if (hayAnotado && I.esFinDelPedido(texto) && /todo|solo eso/.test(normalizar(texto))) {
         await guardarSesion(c, { estadoConversacion: "confirmando" });
-        return [await pedirUbicacion(c, await getClienteByWhatsapp(c.db, c.colmado.id, c.sesion.clienteWhatsapp || ""))];
+        return pedirUbicacion(c);
       }
       if (hayAnotado && (I.esNegativo(texto) || I.esFinDelPedido(texto))) {
         await guardarSesion(c, { estadoConversacion: "confirmando" });
@@ -334,13 +449,8 @@ async function responder(c: Contexto, entrada: Entrada, texto: string): Promise<
     }
 
     case "confirmando": {
-      if (entrada.tipo === "ubicacion") {
-        await guardarSesion(c, { clienteLatitud: String(entrada.latitud), clienteLongitud: String(entrada.longitud), clienteDireccion: null, estadoConversacion: "esperando_pago" });
-        return [{ texto: "📍 ¡Recibí tu ubicación!" }, pedirPago()];
-      }
-      if (I.esAfirmativo(texto) || I.esFinDelPedido(texto) || /^si/.test(normalizar(texto))) {
-        return [await pedirUbicacion(c, await getClienteByWhatsapp(c.db, c.colmado.id, c.sesion.clienteWhatsapp || ""))];
-      }
+      if (entrada.tipo === "ubicacion") return recibirUbicacion(c, entrada.latitud, entrada.longitud);
+      if (I.esAfirmativo(texto) || I.esFinDelPedido(texto) || /^si/.test(normalizar(texto))) return pedirUbicacion(c);
       if (I.esNegativo(texto) || I.esAgregarMas(texto)) {
         await guardarSesion(c, { estadoConversacion: "tomando_pedido" });
         return [{ texto: "Dale, ¿qué más te anoto?" }];
@@ -354,37 +464,32 @@ async function responder(c: Contexto, entrada: Entrada, texto: string): Promise<
       return [{ texto: "¿Eso es todo?", opciones: [{ texto: "Sí, eso es todo" }, { texto: "Agregar más" }] }];
     }
 
-    case "confirmando_direccion": {
-      if (entrada.tipo === "ubicacion") {
-        await guardarSesion(c, { clienteLatitud: String(entrada.latitud), clienteLongitud: String(entrada.longitud), clienteDireccion: null, estadoConversacion: "esperando_pago" });
-        return [{ texto: "📍 ¡Recibí tu ubicación!" }, pedirPago()];
-      }
-      if (I.esAfirmativo(texto) || /^si/.test(normalizar(texto)) || /misma/.test(normalizar(texto))) {
-        const cliente = await getClienteByWhatsapp(c.db, c.colmado.id, c.sesion.clienteWhatsapp || "");
-        await guardarSesion(c, {
-          clienteDireccion: cliente?.direccionTexto ?? null, clienteLatitud: cliente?.latitud ?? null, clienteLongitud: cliente?.longitud ?? null,
-          estadoConversacion: "esperando_pago",
-        });
-        return [pedirPago()];
+    case "confirmando_direccion": // pasos de versiones anteriores
+    case "esperando_ubicacion": {
+      if (entrada.tipo === "ubicacion") return recibirUbicacion(c, entrada.latitud, entrada.longitud);
+      if (I.esCasa(texto)) {
+        if (await casaDe(c)) return irACasa(c);
+        return [{ texto: "Todavía no tengo guardada tu casa 🙏 Toca «Enviar mi ubicación» o escríbeme la dirección con una referencia.", opciones: [BOTON_UBICACION] }];
       }
       if (texto.length >= 8 && !I.esNegativo(texto)) {
-        await guardarSesion(c, { clienteDireccion: texto.slice(0, 300), clienteLatitud: null, clienteLongitud: null, estadoConversacion: "esperando_pago" });
+        await guardarSesion(c, { clienteDireccion: texto.slice(0, 300), clienteLatitud: null, clienteLongitud: null, destinoGuardado: null, estadoConversacion: "esperando_pago" });
         return [{ texto: "📍 Anotada la dirección." }, pedirPago()];
       }
-      await guardarSesion(c, { estadoConversacion: "esperando_ubicacion" });
-      return [{ texto: "¿A dónde te lo llevamos? 📍 Toca «Enviar mi ubicación» o escríbeme la dirección con alguna referencia.", opciones: [BOTON_UBICACION] }];
+      if (estado !== "esperando_ubicacion") await guardarSesion(c, { estadoConversacion: "esperando_ubicacion" });
+      return [{ texto: "Necesito saber a dónde llevarlo 🙏 Toca «Enviar mi ubicación» o escríbeme la dirección con una referencia (calle, número, sector).", opciones: [BOTON_UBICACION] }];
     }
 
-    case "esperando_ubicacion": {
+    case "eligiendo_destino": {
       if (entrada.tipo === "ubicacion") {
-        await guardarSesion(c, { clienteLatitud: String(entrada.latitud), clienteLongitud: String(entrada.longitud), estadoConversacion: "esperando_pago" });
+        await guardarSesion(c, { clienteLatitud: String(entrada.latitud), clienteLongitud: String(entrada.longitud), clienteDireccion: null, destinoGuardado: null, estadoConversacion: "esperando_pago" });
         return [{ texto: "📍 ¡Recibí tu ubicación!" }, pedirPago()];
       }
-      if (texto.length >= 8) {
-        await guardarSesion(c, { clienteDireccion: texto.slice(0, 300), estadoConversacion: "esperando_pago" });
-        return [{ texto: "📍 Anotada la dirección." }, pedirPago()];
+      if (I.esCasa(texto) || /\bcasa\b/.test(normalizar(texto))) return irACasa(c);
+      if (I.esAqui(texto) || I.esAfirmativo(texto)) {
+        await guardarSesion(c, { destinoGuardado: null, estadoConversacion: "esperando_pago" });
+        return [{ texto: "📍 Listo, te lo llevamos ahí donde estás." }, pedirPago()];
       }
-      return [{ texto: "Necesito saber a dónde llevarlo 🙏 Toca «Enviar mi ubicación» o escríbeme la dirección con una referencia (calle, número, sector).", opciones: [BOTON_UBICACION] }];
+      return [{ texto: "¿Te lo llevamos ahí donde estás o a tu casa? Toca una opción:", opciones: ELEGIR_DESTINO }];
     }
 
     case "esperando_pago": {

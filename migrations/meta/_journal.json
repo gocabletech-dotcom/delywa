@@ -71,6 +71,13 @@
       "when": 1794517161861,
       "tag": "0009_bot_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794530706763,
+      "tag": "0010_direcciones_y_aparato",
+      "breakpoints": true
     }
   ]
 }

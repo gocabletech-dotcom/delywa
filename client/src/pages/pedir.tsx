@@ -28,6 +28,17 @@ function leerGuardado(codigo: string): Guardado | null {
 function guardar(codigo: string, g: Guardado | null) {
   try { g ? localStorage.setItem(claveLocal(codigo), JSON.stringify(g)) : localStorage.removeItem(claveLocal(codigo)); } catch { /* navegador sin almacenamiento */ }
 }
+/** Identificador al azar de este navegador: la conversación solo se reabre desde el mismo aparato. */
+function aparato(): string {
+  try {
+    let a = localStorage.getItem("delywa-aparato") || "";
+    if (!/^[0-9a-f]{32}$/.test(a)) {
+      a = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      localStorage.setItem("delywa-aparato", a);
+    }
+    return a;
+  } catch { return ""; }
+}
 const hora = (f: string | number) => new Date(f).toLocaleTimeString("es-DO", { hour: "numeric", minute: "2-digit" });
 
 /** Texto con *negritas* como en WhatsApp y saltos de línea. */
@@ -67,11 +78,19 @@ export default function PedirPage() {
       .catch(() => setNoExiste(true));
   }, [codigo]);
 
+  /** 10 minutos sin actividad: vuelve a la pantalla de nombre y teléfono. */
+  const cerrarPorInactividad = useCallback(() => {
+    guardar(codigo, null); setSesion(null); setMensajes([]); setPedido(null); setEsperando(false); ultimoId.current = 0;
+    setNombre(""); setTelefono("");
+    setError("Por tu seguridad cerramos el chat tras 10 minutos sin actividad. Escribe tus datos para continuar donde lo dejaste.");
+  }, [codigo]);
+
   const leer = useCallback(async () => {
     if (!sesion) return;
     const r = await fetch(`/api/chat-colmado/sesion/${sesion.sessionId}/mensajes?despues=${ultimoId.current}`).catch(() => null);
     if (!r) return;
     if (r.status === 404) { guardar(codigo, null); setSesion(null); setMensajes([]); ultimoId.current = 0; return; }
+    if (r.status === 423) { cerrarPorInactividad(); return; }
     if (!r.ok) return;
     const data = (await r.json()) as { mensajes: Mensaje[]; pedido: Pedido };
     setPedido(data.pedido);
@@ -80,7 +99,7 @@ export default function PedirPage() {
       setMensajes((m) => [...m, ...data.mensajes.filter((x) => !m.some((y) => y.id === x.id))]);
       if (data.mensajes.some((x) => x.rol !== "user" && x.id > desde.current)) setEsperando(false);
     }
-  }, [sesion, codigo]);
+  }, [sesion, codigo, cerrarPorInactividad]);
 
   // Lee los mensajes nuevos: cada 2 s mientras espera respuesta, cada 6 s el resto del tiempo.
   useEffect(() => {
@@ -105,7 +124,7 @@ export default function PedirPage() {
     setEntrando(true);
     try {
       const r = await fetch(`/api/chat-colmado/${encodeURIComponent(codigo)}/sesion`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre, telefono }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre, telefono, aparato: aparato() }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { setError(data.error || "No se pudo abrir el chat."); return; }
@@ -134,6 +153,7 @@ export default function PedirPage() {
       });
       const data = await r.json().catch(() => ({}));
       if (temporal) setMensajes((m) => m.filter((x) => x.id !== temporal.id));
+      if (r.status === 423) { cerrarPorInactividad(); return; }
       if (!r.ok) { setError(data.error || "No se pudo enviar."); setEsperando(false); return; }
       await leer();
     } catch {
