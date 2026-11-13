@@ -6,6 +6,7 @@ import {
   MessageCircle, Truck, Package, DollarSign, TrendingUp,
   Menu, X, LogOut, Settings, Users, BookOpen, UtensilsCrossed,
    Smartphone, ClipboardList, MoreHorizontal, ChevronRight, Building2,
+  Home, BarChart3, UserCog, ChefHat, Contact,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
@@ -120,68 +121,73 @@ export default function NegocioLayout({
   const unreadCount = unreadData?.count || 0;
   const tieneMenu = colmadoData?.tipoNegocio && !["colmado", "colmadon"].includes(colmadoData.tipoNegocio);
 
-  // ─── Desktop sidebar nav link ─────────────────────────────────────────────
+  const esDueno = roleData?.role === "colmado_owner";
+  const esAdmin = esDueno || roleData?.role === "admin_pedidos";
+  const inicial = colmadoData?.nombre?.charAt(0).toUpperCase() || "N";
+  const logo = (clases: string) => (
+    <div className={`${clases} bg-primary text-primary-foreground flex items-center justify-center font-bold overflow-hidden shrink-0`}>
+      {colmadoData?.logo ? <img src={colmadoData.logo} alt="" className="w-full h-full object-contain bg-white" /> : inicial}
+    </div>
+  );
+
+  // ─── Enlace del menú lateral ──────────────────────────────────────────────
   const navLink = (
     href: string,
     nav: ActiveNav,
-    Icon: React.ComponentType<{ size?: number }>,
+    Icon: React.ComponentType<{ size?: number; className?: string }>,
     label: string,
     badge?: number,
-    badgeColor?: string,
   ) => {
     const isActive = activeNav === nav;
     return (
       <Link
         href={href}
-        className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+        aria-current={isActive ? "page" : undefined}
+        className={`flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[15px] transition-colors ${
           isActive
-            ? "bg-primary/10 text-primary font-medium"
-            : "hover:bg-gray-100 text-gray-700"
+            ? "bg-primary/10 text-primary font-semibold"
+            : "text-slate-700 font-medium hover:bg-slate-100"
         }`}
         data-testid={`nav-${nav}`}
         onClick={() => setSidebarOpen(false)}
       >
-        <Icon size={20} />
-        {label}
+        <Icon size={19} className={isActive ? "" : "text-slate-500"} />
+        <span className="flex-1 truncate">{label}</span>
         {badge && badge > 0 ? (
-          <Badge className={`ml-auto ${badgeColor || "bg-red-500"}`}>{badge}</Badge>
+          <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${isActive ? "bg-primary text-primary-foreground" : "bg-slate-200 text-slate-800"}`}>{badge > 99 ? "99+" : badge}</span>
         ) : null}
       </Link>
     );
   };
+  const grupo = (nombre: string) => (
+    <p className="px-3 pt-4 pb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">{nombre}</p>
+  );
 
-  // ─── Mobile "Otras" sheet card ────────────────────────────────────────────
+  // ─── Tarjeta de la hoja "Más" (celular) ───────────────────────────────────
   const otrasCard = (
     href: string,
     nav: ActiveNav,
     Icon: React.ComponentType<{ size?: number }>,
     label: string,
-    colorClass: string,
     badge?: number,
-    badgeColor?: string,
   ) => {
     const isActive = activeNav === nav;
     return (
       <Link
         href={href}
         key={nav}
-        className={`relative flex flex-col items-center gap-2.5 p-4 rounded-2xl transition-all active:scale-95 ${
-          isActive
-            ? "bg-primary/10 ring-2 ring-primary/30"
-            : "bg-gray-50 active:bg-gray-100"
+        aria-current={isActive ? "page" : undefined}
+        className={`relative flex flex-col items-center gap-2 p-3 rounded-2xl border transition-colors ${
+          isActive ? "bg-primary/10 border-primary/40" : "bg-white border-slate-200 active:bg-slate-50"
         }`}
         onClick={() => setOtrasOpen(false)}
       >
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-          isActive ? "bg-primary text-white shadow-lg shadow-primary/30" : `${colorClass} text-white shadow-md`
-        }`}>
-          <Icon size={22} />
+        <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${isActive ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
+          <Icon size={21} />
         </div>
-        <span className={`text-xs font-semibold text-center leading-tight ${isActive ? "text-primary" : "text-gray-700"}`}>
-          {label}
-        </span>
+        <span className={`text-xs font-semibold text-center leading-tight ${isActive ? "text-primary" : "text-slate-700"}`}>{label}</span>
         {badge && badge > 0 ? (
-          <span className={`absolute top-2.5 right-2.5 ${badgeColor || "bg-red-500"} text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1`}>
+          <span className="absolute top-2 right-2 bg-primary text-primary-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
             {badge > 9 ? "9+" : badge}
           </span>
         ) : null}
@@ -189,180 +195,156 @@ export default function NegocioLayout({
     );
   };
 
+  // ─── Pestaña del menú de abajo (celular) ──────────────────────────────────
+  const pestana = (
+    href: string,
+    nav: ActiveNav,
+    Icon: React.ComponentType<{ size?: number }>,
+    label: string,
+    badge?: number,
+  ) => {
+    const isActive = activeNav === nav;
+    return (
+      <Link
+        href={href}
+        aria-current={isActive ? "page" : undefined}
+        className={`flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[52px] rounded-xl transition-colors ${
+          isActive ? "bg-primary/10 text-primary font-bold" : "text-slate-600 font-medium"
+        }`}
+        data-testid={`bottom-nav-${nav}`}
+      >
+        <div className="relative">
+          <Icon size={21} />
+          {badge && badge > 0 ? (
+            <span className="absolute -top-1.5 -right-2.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full min-w-[16px] h-4 px-0.5 flex items-center justify-center leading-none ring-2 ring-white">
+              {badge > 9 ? "9+" : badge}
+            </span>
+          ) : null}
+        </div>
+        <span className="text-[11px] leading-none">{label}</span>
+      </Link>
+    );
+  };
+
   const currentDateTime = formatDominicanDateTime();
 
-  // Which tab group is "otras" active (for highlighting the Otras tab)
-  const OTRAS_NAVS: ActiveNav[] = ["cocina", "clientes", "deliveries", "cuadres", "ventas", "reportes", "menu", "whatsapp-config", "settings", "manual", "sucursales", "usuarios"];
+  const OTRAS_NAVS: ActiveNav[] = ["cocina", "clientes", "cuadres", "ventas", "reportes", "menu", "whatsapp-config", "settings", "manual", "sucursales", "usuarios", "empleados"];
   const isOtrasActive = OTRAS_NAVS.includes(activeNav);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex" style={businessTheme(colmadoData?.colorPrimario)}>
+    <div className="min-h-screen bg-slate-50 flex text-slate-900" style={businessTheme(colmadoData?.colorPrimario)}>
 
-      {/* ── Desktop sidebar overlay ── */}
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* ── Desktop Sidebar ── */}
+      {/* ── Menú lateral (computadora) ── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r flex flex-col transform transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static ${
+        className={`fixed inset-y-0 left-0 z-50 w-60 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-200 ease-in-out lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Sidebar Header */}
-        <div className="p-4 border-b flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-lg border-2 border-gray-300 bg-white flex items-center justify-center text-primary font-bold overflow-hidden shrink-0">
-              {colmadoData?.logo ? (
-                <img src={colmadoData.logo} alt="" className="w-full h-full object-contain" />
-              ) : (
-                colmadoData?.nombre?.charAt(0).toUpperCase() || "N"
-              )}
-            </div>
-            <div className="font-heading font-bold text-lg leading-tight max-w-[140px]" data-testid="text-header-negocio-name">
-              {(() => {
-                const nombre = colmadoData?.nombre || "Mi Negocio";
-                const palabras = nombre.split(" ");
-                if (palabras.length <= 2) return <span className="truncate block">{nombre}</span>;
-                return (
-                  <>
-                    <span className="truncate block">{palabras.slice(0, 2).join(" ")}</span>
-                    <span className="text-sm font-medium text-gray-600 truncate block">{palabras.slice(2).join(" ")}</span>
-                  </>
-                );
-              })()}
-            </div>
+        <div className="px-4 pt-5 pb-3 flex items-center gap-3 shrink-0">
+          {logo("w-10 h-10 rounded-xl")}
+          <div className="flex-1 min-w-0">
+            <p className="font-heading font-bold text-[15px] leading-tight truncate" data-testid="text-header-negocio-name">{colmadoData?.nombre || "Mi Negocio"}</p>
+            <p className="text-xs text-slate-500 truncate" data-testid="text-plan-name">{suscripcionData?.plan?.nombre || "Sin Plan"}</p>
           </div>
-          <button className="lg:hidden" onClick={() => setSidebarOpen(false)}>
+          <button className="lg:hidden w-10 h-10 flex items-center justify-center rounded-lg text-slate-600" onClick={() => setSidebarOpen(false)} aria-label="Cerrar menú">
             <X size={20} />
           </button>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {navLink("/negocio/dashboard", "dashboard", TrendingUp, "Dashboard")}
-          {navLink("/negocio/conversaciones", "conversaciones", MessageCircle, "Conversaciones", unreadCount, "bg-red-500")}
-          {navLink("/negocio/clientes", "clientes", Users, "Clientes")}
-          {navLink("/negocio/pedidos", "pedidos", Package, "Pedidos", pedidosPendientes.length || 0, "bg-orange-500")}
-          {navLink("/negocio/cocina", "cocina", UtensilsCrossed, "Cocina")}
-          {navLink("/negocio/deliveries", "deliveries", Truck, "Deliveries")}
-          {(roleData?.role === "colmado_owner" || roleData?.role === "admin_pedidos") && navLink("/negocio/empleados", "empleados", Users, "Empleados")}
-          {navLink("/negocio/cuadres", "cuadres", ClipboardList, "Cuadres")}
-          {navLink("/negocio/ventas", "ventas", DollarSign, "Ventas")}
-           {(roleData?.role === "colmado_owner" || roleData?.role === "admin_pedidos") && navLink("/negocio/reportes", "reportes", TrendingUp, "Reportes")}
-          {tieneMenu && navLink("/negocio/menu", "menu", UtensilsCrossed, "Menú")}
-          {navLink("/negocio/whatsapp-config", "whatsapp-config", Smartphone, "WhatsApp")}
-          {navLink("/negocio/settings", "settings", Settings, "Configuración")}
-           {roleData?.role === "colmado_owner" && navLink("/negocio/sucursales", "sucursales", Building2, "Sucursales")}
-           {roleData?.role === "colmado_owner" && navLink("/negocio/usuarios", "usuarios", Users, "Usuarios y permisos")}
-          {navLink("/negocio/manual", "manual", BookOpen, "Manual de Usuario")}
+        <nav className="flex-1 px-3 pb-3 space-y-0.5 overflow-y-auto" aria-label="Menú del negocio">
+          {navLink("/negocio/dashboard", "dashboard", Home, "Inicio")}
+          {navLink("/negocio/pedidos", "pedidos", Package, "Pedidos", pedidosPendientes.length || 0)}
+          {navLink("/negocio/conversaciones", "conversaciones", MessageCircle, "Chats", unreadCount)}
+          {navLink("/negocio/cocina", "cocina", ChefHat, "Cocina")}
 
-          <div className="pt-4 mt-4 border-t">
-            <button
-              onClick={() => logout()}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 w-full"
-              data-testid="button-logout"
-            >
-              <LogOut size={20} />
-              Cerrar Sesión
-            </button>
-          </div>
+          {grupo("Mi negocio")}
+          {tieneMenu && navLink("/negocio/menu", "menu", UtensilsCrossed, "Menú y productos")}
+          {navLink("/negocio/deliveries", "deliveries", Truck, "Repartidores")}
+          {navLink("/negocio/clientes", "clientes", Users, "Clientes")}
+          {esAdmin && navLink("/negocio/empleados", "empleados", Contact, "Empleados")}
+
+          {grupo("Dinero")}
+          {navLink("/negocio/ventas", "ventas", DollarSign, "Ventas")}
+          {navLink("/negocio/cuadres", "cuadres", ClipboardList, "Cuadres")}
+          {esAdmin && navLink("/negocio/reportes", "reportes", BarChart3, "Reportes")}
+
+          {grupo("Ajustes")}
+          {navLink("/negocio/settings", "settings", Settings, "Configuración")}
+          {navLink("/negocio/whatsapp-config", "whatsapp-config", Smartphone, "WhatsApp")}
+          {esDueno && navLink("/negocio/sucursales", "sucursales", Building2, "Sucursales")}
+          {esDueno && navLink("/negocio/usuarios", "usuarios", UserCog, "Usuarios y permisos")}
+          {navLink("/negocio/manual", "manual", BookOpen, "Manual de uso")}
         </nav>
 
-        {/* Sidebar Footer */}
-        <div className="p-4 border-t shrink-0">
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-14 h-14 rounded-lg border-2 border-gray-300 bg-white flex items-center justify-center text-primary font-bold overflow-hidden shrink-0">
-              {colmadoData?.logo ? (
-                <img src={colmadoData.logo} alt="" className="w-full h-full object-contain" />
-              ) : (
-                colmadoData?.nombre?.charAt(0).toUpperCase() || "N"
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-sm truncate" data-testid="text-negocio-name">
-                {colmadoData?.nombre || "Mi Negocio"}
-              </p>
-              <p className="text-xs text-gray-500 truncate" data-testid="text-plan-name">
-                {suscripcionData?.plan?.nombre || "Sin Plan"}
-              </p>
-            </div>
-          </div>
+        <div className="p-3 border-t border-slate-200 shrink-0">
+          <p className="sr-only" data-testid="text-negocio-name">{colmadoData?.nombre || "Mi Negocio"}</p>
+          <button
+            onClick={() => logout()}
+            className="flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[15px] font-medium text-red-700 hover:bg-red-50 w-full"
+            data-testid="button-logout"
+          >
+            <LogOut size={19} />
+            Cerrar sesión
+          </button>
         </div>
       </aside>
 
-      {/* ── Main ── */}
+      {/* ── Contenido ── */}
       <div className="flex-1 flex flex-col min-h-screen min-w-0">
-        {/* Green Sticky Header */}
-        <header className="bg-primary text-white sticky top-0 z-30 px-3 sm:px-4 lg:px-6 h-14 sm:h-16 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* Hamburger only on desktop (mobile uses bottom nav) */}
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-30 px-3 sm:px-5 lg:px-7 h-16 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             <button
-              className="hidden lg:hidden text-white/80 hover:text-white shrink-0"
+              className="hidden text-slate-600 shrink-0"
               onClick={() => setSidebarOpen(true)}
               data-testid="button-open-sidebar"
+              aria-label="Abrir menú"
             >
               <Menu size={24} />
             </button>
-            {/* Business identity: logo + name */}
-            <div className="hidden sm:flex items-center gap-2 shrink-0">
-              <div className="w-11 h-11 rounded-full bg-white/20 border border-white/30 flex items-center justify-center overflow-hidden text-white font-bold text-sm shrink-0">
-                {colmadoData?.logo ? (
-                  <img src={colmadoData.logo} alt="" className="w-full h-full object-contain" />
-                ) : (
-                  colmadoData?.nombre?.charAt(0).toUpperCase() || "N"
-                )}
-              </div>
-              <span
-                className="font-medium text-white/90 text-sm truncate max-w-[110px]"
-                data-testid="text-header-business-name"
-              >
-                {colmadoData?.nombre || "Mi Negocio"}
-              </span>
-              <span className="text-white/40 text-lg font-light">|</span>
-            </div>
-            {/* Page title */}
+            <div className="lg:hidden">{logo("w-9 h-9 rounded-lg text-sm")}</div>
+            <span className="sr-only" data-testid="text-header-business-name">{colmadoData?.nombre || "Mi Negocio"}</span>
             <div className="min-w-0">
-              <h1 className="text-base sm:text-xl font-bold font-heading truncate">{title}</h1>
+              <h1 className="text-lg sm:text-[22px] leading-tight font-bold font-heading text-slate-900 truncate">{title}</h1>
               {subtitle !== undefined ? (
-                <p className="text-xs sm:text-sm text-white/70 hidden sm:block">{subtitle}</p>
+                <p className="text-xs sm:text-[13px] text-slate-500 truncate">{subtitle}</p>
               ) : (
-                <p className="text-xs sm:text-sm text-white/70 hidden sm:block" data-testid="text-datetime">{currentDateTime}</p>
+                <p className="text-xs sm:text-[13px] text-slate-500 truncate hidden sm:block" data-testid="text-datetime">{currentDateTime}</p>
               )}
             </div>
-             {sucursalesData && sucursalesData.sucursales.length > 1 && (
+            {sucursalesData && sucursalesData.sucursales.length > 1 && (
               <select
                 value={sucursalesData.sucursalActivaId}
                 onChange={(event) => cambiarSucursalMutation.mutate(Number(event.target.value))}
-                className="max-w-[150px] sm:max-w-[210px] h-8 rounded-md bg-white/15 border border-white/30 text-white text-xs px-2 outline-none"
+                className="max-w-[140px] sm:max-w-[210px] h-10 rounded-lg bg-white border border-slate-300 text-slate-800 text-sm px-2 outline-none focus:ring-2 focus:ring-primary/40"
                 aria-label="Sucursal activa"
                 data-testid="select-sucursal-activa"
               >
                 {sucursalesData.sucursales.map((sucursal) => (
-                  <option key={sucursal.id} value={sucursal.id} className="text-gray-900">{sucursal.nombre}</option>
+                  <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
                 ))}
               </select>
             )}
           </div>
           {headerRight && (
-            <div className="flex items-center gap-2 sm:gap-4 shrink-0 ml-2">
+            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
               {headerRight}
             </div>
           )}
         </header>
 
-        {/* Page Content — extra bottom padding on mobile for bottom nav */}
+        {/* En el celular se deja espacio abajo para el menú */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden pb-20 lg:pb-0">
           {colmadoData?.estado === "pendiente_revision" && (
-            <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="banner-en-revision">
+            <div className="mx-4 mt-3 shrink-0 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="banner-en-revision">
               <b>Tu negocio está en revisión.</b> Estamos verificando tus datos. Mientras tanto puedes preparar tu menú y tu configuración; cuando lo activemos empezarás a recibir pedidos y mensajes.
             </div>
           )}
           {colmadoData?.estado === "rechazado" && (
-            <div className="mx-4 mt-3 shrink-0 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900" data-testid="banner-rechazado">
+            <div className="mx-4 mt-3 shrink-0 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" data-testid="banner-rechazado">
               <b>No pudimos aprobar tu negocio.</b> Escríbenos a soporte@delywa.com para revisar tu solicitud.
             </div>
           )}
@@ -370,168 +352,72 @@ export default function NegocioLayout({
         </div>
       </div>
 
-      {/* ════════════════════════════════════════════════════════════
-          MOBILE BOTTOM NAV BAR (hidden on lg+)
-      ════════════════════════════════════════════════════════════ */}
+      {/* ── Menú de abajo (celular) ── */}
       <nav
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 flex items-stretch"
-        style={{ boxShadow: "0 -2px 12px rgba(0,0,0,0.08)" }}
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 flex items-stretch gap-1 px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
         data-testid="bottom-nav"
+        aria-label="Secciones"
       >
-        {/* Dashboard */}
-        <Link
-          href="/negocio/dashboard"
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 gap-0.5 transition-colors ${
-            activeNav === "dashboard" ? "text-primary" : "text-gray-500"
-          }`}
-          data-testid="bottom-nav-dashboard"
-        >
-          <TrendingUp size={20} />
-          <span className="text-[10px] font-medium leading-none">Dashboard</span>
-        </Link>
-
-        {/* Conversaciones */}
-        <Link
-          href="/negocio/conversaciones"
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 gap-0.5 relative transition-colors ${
-            activeNav === "conversaciones" ? "text-primary" : "text-gray-500"
-          }`}
-          data-testid="bottom-nav-conversaciones"
-        >
-          <div className="relative">
-            <MessageCircle size={20} />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1.5 -right-2 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] font-medium leading-none">Chats</span>
-        </Link>
-
-        {/* Pedidos */}
-        <Link
-          href="/negocio/pedidos"
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 gap-0.5 relative transition-colors ${
-            activeNav === "pedidos" ? "text-primary" : "text-gray-500"
-          }`}
-          data-testid="bottom-nav-pedidos"
-        >
-          <div className="relative">
-            <Package size={20} />
-            {pedidosPendientes.length > 0 && (
-              <span className="absolute -top-1.5 -right-2 bg-orange-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
-                {pedidosPendientes.length > 9 ? "9+" : pedidosPendientes.length}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] font-medium leading-none">Pedidos</span>
-        </Link>
-
-        {/* Deliveries */}
-        <Link
-          href="/negocio/deliveries"
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 gap-0.5 transition-colors ${
-            activeNav === "deliveries" ? "text-primary" : "text-gray-500"
-          }`}
-          data-testid="bottom-nav-deliveries"
-        >
-          <Truck size={20} />
-          <span className="text-[10px] font-medium leading-none">Delivery</span>
-        </Link>
-
-        {/* Cuadres */}
-        <Link
-          href="/negocio/cuadres"
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 gap-0.5 transition-colors ${
-            activeNav === "cuadres" ? "text-primary" : "text-gray-500"
-          }`}
-          data-testid="bottom-nav-cuadres"
-        >
-          <ClipboardList size={20} />
-          <span className="text-[10px] font-medium leading-none">Cuadres</span>
-        </Link>
-
-        {/* Otras */}
+        {pestana("/negocio/dashboard", "dashboard", Home, "Inicio")}
+        {pestana("/negocio/pedidos", "pedidos", Package, "Pedidos", pedidosPendientes.length)}
+        {pestana("/negocio/conversaciones", "conversaciones", MessageCircle, "Chats", unreadCount)}
+        {pestana("/negocio/deliveries", "deliveries", Truck, "Reparto")}
         <button
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 gap-0.5 transition-colors ${
-            isOtrasActive || otrasOpen ? "text-primary" : "text-gray-500"
+          className={`flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[52px] rounded-xl transition-colors ${
+            isOtrasActive || otrasOpen ? "bg-primary/10 text-primary font-bold" : "text-slate-600 font-medium"
           }`}
           onClick={() => setOtrasOpen(true)}
           data-testid="bottom-nav-otras"
         >
-          <MoreHorizontal size={20} />
-          <span className="text-[10px] font-medium leading-none">Otras</span>
+          <MoreHorizontal size={21} />
+          <span className="text-[11px] leading-none">Más</span>
         </button>
       </nav>
 
-      {/* ════════════════════════════════════════════════════════════
-          "OTRAS" BOTTOM SHEET — modern card grid
-      ════════════════════════════════════════════════════════════ */}
+      {/* ── Hoja "Más" (celular) ── */}
       {otrasOpen && (
         <>
-          {/* Backdrop */}
-          <div
-            className="lg:hidden fixed inset-0 bg-black/50 z-50 backdrop-blur-sm"
-            onClick={() => setOtrasOpen(false)}
-          />
-          {/* Sheet */}
-          <div
-            className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl overflow-hidden"
-            style={{ maxHeight: "82vh", boxShadow: "0 -8px 40px rgba(0,0,0,0.18)" }}
-          >
-            {/* Drag handle */}
+          <div className="lg:hidden fixed inset-0 bg-black/50 z-50" onClick={() => setOtrasOpen(false)} />
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-50 rounded-t-3xl overflow-hidden shadow-2xl" style={{ maxHeight: "82vh" }}>
             <div className="flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 rounded-full bg-gray-200" />
+              <div className="w-10 h-1 rounded-full bg-slate-300" />
             </div>
-
-            {/* Business header */}
             <div className="flex items-center gap-3 px-5 pt-2 pb-4">
-              <div className="w-12 h-12 rounded-2xl border-2 border-gray-100 bg-gray-50 flex items-center justify-center text-primary font-bold overflow-hidden shrink-0 shadow-sm">
-                {colmadoData?.logo ? (
-                  <img src={colmadoData.logo} alt="" className="w-full h-full object-contain" />
-                ) : (
-                  <span className="text-lg">{colmadoData?.nombre?.charAt(0).toUpperCase() || "N"}</span>
-                )}
-              </div>
+              {logo("w-11 h-11 rounded-xl")}
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-gray-900 truncate leading-tight">{colmadoData?.nombre || "Mi Negocio"}</p>
-                <p className="text-xs text-gray-400 truncate">{suscripcionData?.plan?.nombre || "Sin Plan"}</p>
+                <p className="font-bold text-slate-900 truncate leading-tight">{colmadoData?.nombre || "Mi Negocio"}</p>
+                <p className="text-xs text-slate-500 truncate">{suscripcionData?.plan?.nombre || "Sin Plan"}</p>
               </div>
               <button
                 onClick={() => setOtrasOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 active:bg-gray-200 transition-colors shrink-0"
+                className="w-11 h-11 flex items-center justify-center rounded-full bg-white border border-slate-200 text-slate-600 shrink-0"
+                aria-label="Cerrar"
               >
-                <X size={16} />
+                <X size={18} />
               </button>
             </div>
 
-            {/* Divider */}
-            <div className="mx-5 h-px bg-gray-100 mb-4" />
-
-            {/* Card grid */}
-            <div className="overflow-y-auto px-4 pb-4" style={{ maxHeight: "calc(82vh - 140px)" }}>
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                {otrasCard("/negocio/cocina", "cocina", UtensilsCrossed, "Cocina", "bg-red-500")}
-                {otrasCard("/negocio/clientes", "clientes", Users, "Clientes", "bg-blue-500")}
-                {otrasCard("/negocio/ventas", "ventas", DollarSign, "Ventas", "bg-emerald-500")}
-                {otrasCard("/negocio/whatsapp-config", "whatsapp-config", Smartphone, "WhatsApp", "bg-green-600")}
-                {tieneMenu && otrasCard("/negocio/menu", "menu", UtensilsCrossed, "Menú", "bg-orange-500")}
-                 {(roleData?.role === "colmado_owner" || roleData?.role === "admin_pedidos") && otrasCard("/negocio/empleados", "empleados", Users, "Empleados", "bg-cyan-500")}
-                {otrasCard("/negocio/settings", "settings", Settings, "Config.", "bg-slate-500")}
-                 {roleData?.role === "colmado_owner" && otrasCard("/negocio/sucursales", "sucursales", Building2, "Sucursales", "bg-indigo-500")}
-                 {roleData?.role === "colmado_owner" && otrasCard("/negocio/usuarios", "usuarios", Users, "Usuarios y permisos", "bg-purple-500")}
-                 {(roleData?.role === "colmado_owner" || roleData?.role === "admin_pedidos") && otrasCard("/negocio/reportes", "reportes", TrendingUp, "Reportes", "bg-emerald-500")}
-                {otrasCard("/negocio/manual", "manual", BookOpen, "Manual", "bg-violet-500")}
+            <div className="overflow-y-auto px-4 pb-5" style={{ maxHeight: "calc(82vh - 110px)" }}>
+              <div className="grid grid-cols-3 gap-2.5 mb-3">
+                {otrasCard("/negocio/cocina", "cocina", ChefHat, "Cocina")}
+                {tieneMenu && otrasCard("/negocio/menu", "menu", UtensilsCrossed, "Menú")}
+                {otrasCard("/negocio/clientes", "clientes", Users, "Clientes")}
+                {esAdmin && otrasCard("/negocio/empleados", "empleados", Contact, "Empleados")}
+                {otrasCard("/negocio/ventas", "ventas", DollarSign, "Ventas")}
+                {otrasCard("/negocio/cuadres", "cuadres", ClipboardList, "Cuadres")}
+                {esAdmin && otrasCard("/negocio/reportes", "reportes", BarChart3, "Reportes")}
+                {otrasCard("/negocio/settings", "settings", Settings, "Configuración")}
+                {otrasCard("/negocio/whatsapp-config", "whatsapp-config", Smartphone, "WhatsApp")}
+                {esDueno && otrasCard("/negocio/sucursales", "sucursales", Building2, "Sucursales")}
+                {esDueno && otrasCard("/negocio/usuarios", "usuarios", UserCog, "Usuarios")}
+                {otrasCard("/negocio/manual", "manual", BookOpen, "Manual")}
               </div>
-
-              {/* Logout — full width danger button */}
               <button
                 onClick={() => { setOtrasOpen(false); logout(); }}
-                className="mt-1 w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl bg-red-50 text-red-600 font-semibold text-sm active:bg-red-100 transition-colors"
+                className="w-full flex items-center justify-center gap-2.5 min-h-[48px] rounded-2xl bg-white border border-red-200 text-red-700 font-semibold text-sm"
               >
                 <LogOut size={18} />
-                Cerrar Sesión
+                Cerrar sesión
               </button>
             </div>
           </div>

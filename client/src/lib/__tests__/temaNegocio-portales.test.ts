@@ -29,9 +29,15 @@ describe("tema de negocio", () => {
     "usa verde de fallback para un color inválido (%s)",
     (color) => {
       expect(normalizeBusinessColor(color)).toBe(COLOR_PRIMARIO_FALLBACK);
-      expect(businessTheme(color)["--primary"]).toBe("142 70% 49%");
+      expect(businessTheme(color)["--primary"]).toBe("152 70% 30%");
     },
   );
+
+  it("el verde brillante con el que se creaban los negocios cuenta como sin color propio", () => {
+    expect(normalizeBusinessColor("#25D366")).toBe(COLOR_PRIMARIO_FALLBACK);
+    expect(normalizeBusinessColor("#25d366")).toBe(COLOR_PRIMARIO_FALLBACK);
+    expect(normalizeBusinessColor("#7c3aed")).toBe("#7c3aed");
+  });
 
   it("elige texto oscuro para colores claros", () => {
     expect(businessTheme("#fef08a")["--primary-foreground"]).toBe("0 0% 7%");
@@ -44,7 +50,7 @@ describe("contrato visual de los cuatro portales", () => {
     const settings = sourceOf("pages/negocio/settings.tsx");
 
     expect(layout).toContain("style={businessTheme(colmadoData?.colorPrimario)}");
-    expect(layout).toContain('className="bg-primary');
+    expect(layout).toContain("bg-primary text-primary-foreground");
     expect(layout).toContain("bg-primary/10");
     expect(settings).toContain("<NegocioLayout");
   });

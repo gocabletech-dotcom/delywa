@@ -42,7 +42,7 @@ export default function RecuperarPage() {
           {listo ? (
             <div className="space-y-4 text-center" data-testid="recuperar-listo">
               <p>Listo. Ya puedes entrar con tu contraseña nueva. Por seguridad cerramos todas tus sesiones abiertas.</p>
-              <Button className="w-full bg-[#25D366] hover:bg-[#25D366]/90" onClick={() => { window.location.href = "/login"; }}>Iniciar sesión</Button>
+              <Button className="w-full bg-[#17804F] hover:bg-[#17804F]/90" onClick={() => { window.location.href = "/login"; }}>Iniciar sesión</Button>
             </div>
           ) : !token ? (
             <p className="text-center text-gray-600">Este enlace no es válido. Pide uno nuevo desde «¿Olvidaste tu contraseña?» en la página de inicio de sesión.</p>
@@ -58,7 +58,7 @@ export default function RecuperarPage() {
               </div>
               <p className="text-xs text-gray-500">Lo más fácil: una frase corta que solo tú conozcas, por ejemplo «mi gato come mango».</p>
               {error && <p className="text-sm text-red-600">{error}</p>}
-              <Button type="submit" className="w-full bg-[#25D366] hover:bg-[#25D366]/90" disabled={enviando}>
+              <Button type="submit" className="w-full bg-[#17804F] hover:bg-[#17804F]/90" disabled={enviando}>
                 {enviando && <Loader2 className="w-4 h-4 animate-spin mr-2" />}Guardar contraseña nueva
               </Button>
             </form>

@@ -384,7 +384,7 @@ export default function MenuPage() {
         <div className="flex items-center gap-1">
           <Button
             size="sm"
-            className="h-8 sm:h-10 px-2 sm:px-4 bg-white/20 hover:bg-white/30 text-white border-white/30"
+            className="h-8 sm:h-10 px-2 sm:px-4 bg-white hover:bg-slate-50 text-slate-800 border-slate-300"
             variant="outline"
             onClick={() => {
               resetForm();
@@ -399,7 +399,7 @@ export default function MenuPage() {
           <Button
             size="sm"
             variant="outline"
-            className="h-8 sm:h-10 px-2 sm:px-4 bg-white/20 hover:bg-white/30 text-white border-white/30"
+            className="h-8 sm:h-10 px-2 sm:px-4 bg-white hover:bg-slate-50 text-slate-800 border-slate-300"
             onClick={() => setCopyMenuOpen(true)}
             title={sucursalesDestino.length > 0 ? "Copiar menú a otra sucursal" : "Necesitas otra sucursal para copiar el menú"}
             data-testid="button-copy-menu"
@@ -410,7 +410,7 @@ export default function MenuPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10"
+            className="h-8 w-8 sm:h-10 sm:w-10 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             onClick={() => queryClient.invalidateQueries()}
             title="Refrescar"
             data-testid="button-refresh"

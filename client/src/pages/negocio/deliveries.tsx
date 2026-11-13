@@ -285,7 +285,7 @@ export default function DeliveriesPage() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 sm:h-10 px-2 sm:px-3 text-white/80 hover:text-white hover:bg-white/10 text-xs sm:text-sm"
+            className="h-8 sm:h-10 px-2 sm:px-3 text-slate-600 hover:text-slate-900 hover:bg-slate-100 text-xs sm:text-sm"
             onClick={() => setDialogOpen(true)}
             data-testid="button-agregar-delivery"
           >
@@ -294,7 +294,7 @@ export default function DeliveriesPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10"
+            className="h-8 w-8 sm:h-10 sm:w-10 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             onClick={() => queryClient.invalidateQueries()}
             title="Refrescar"
             data-testid="button-refresh"

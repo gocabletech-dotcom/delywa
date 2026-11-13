@@ -1,3 +1,4 @@
+import { normalizeBusinessColor } from "@/lib/temaNegocio";
 import { prepararLogo } from "@/lib/imagen";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -158,7 +159,7 @@ export default function SettingsPage() {
     pedidoMinimo: "0",
     impuesto: "0",
     logo: "",
-    colorPrimario: "#25D366",
+    colorPrimario: "#17804F",
     horaApertura: "08:00",
     horaCierre: "22:00",
     diasServicio: ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"] as string[],
@@ -324,7 +325,7 @@ export default function SettingsPage() {
         pedidoMinimo: colmado.pedidoMinimo || "0",
         impuesto: colmado.impuesto || "0",
         logo: colmado.logo || "",
-        colorPrimario: colmado.colorPrimario || "#25D366",
+        colorPrimario: normalizeBusinessColor(colmado.colorPrimario),
         horaApertura: colmado.horaApertura || "08:00",
         horaCierre: colmado.horaCierre || "22:00",
         diasServicio: colmado.diasServicio || ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"],
@@ -409,7 +410,7 @@ export default function SettingsPage() {
   
 
   return (
-    <NegocioLayout title="Configuración" activeNav="settings" headerRight={<Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10" onClick={() => queryClient.invalidateQueries()} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className="sm:hidden" /><RefreshCw size={20} className="hidden sm:block" /></Button>}>
+    <NegocioLayout title="Configuración" activeNav="settings" headerRight={<Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-slate-600 hover:text-slate-900 hover:bg-slate-100" onClick={() => queryClient.invalidateQueries()} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className="sm:hidden" /><RefreshCw size={20} className="hidden sm:block" /></Button>}>
 
 
       <main className="flex-1 lg:ml-0">
@@ -746,7 +747,7 @@ export default function SettingsPage() {
                      <Label htmlFor="colorPrimario">Color principal del negocio</Label>
                      <div className="flex items-center gap-3">
                        <Input id="colorPrimario" type="color" value={formData.colorPrimario} onChange={(e) => handleInputChange("colorPrimario", e.target.value)} className="h-10 w-16 cursor-pointer p-1" data-testid="input-color-primario" />
-                       <Input value={formData.colorPrimario} onChange={(e) => handleInputChange("colorPrimario", e.target.value)} placeholder="#25D366" maxLength={7} className="max-w-36 uppercase" data-testid="input-color-primario-hex" />
+                       <Input value={formData.colorPrimario} onChange={(e) => handleInputChange("colorPrimario", e.target.value)} placeholder="#17804F" maxLength={7} className="max-w-36 uppercase" data-testid="input-color-primario-hex" />
                      </div>
                      <p className="text-xs text-gray-500">Se aplicará al panel, menú, seguimiento y portal de delivery.</p>
                    </div>

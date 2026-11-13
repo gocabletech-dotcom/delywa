@@ -68,7 +68,7 @@ const SucursalPage = lazyConReintento(() => import("@/pages/sucursal"));
 function Cargando() {
   return (
     <div className="min-h-screen flex items-center justify-center" role="status" aria-label="Cargando">
-      <div className="h-8 w-8 rounded-full border-2 border-gray-200 border-t-[#25D366] animate-spin" />
+      <div className="h-8 w-8 rounded-full border-2 border-gray-200 border-t-[#17804F] animate-spin" />
     </div>
   );
 }

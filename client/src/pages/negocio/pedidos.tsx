@@ -41,6 +41,7 @@ import {
   Copy,
   Eye,
   Navigation,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -271,6 +272,8 @@ function DistanciaPedido({ pedido, compact = false, metricasRuta, proveedorRutas
 export default function PedidosPage() {
   const [filtroEstado, setFiltroEstado] = useState<string>("todos");
   const [tabActual, setTabActual] = useState<"activos" | "historial">("activos");
+  const [masAbierto, setMasAbierto] = useState<number[]>([]);
+  const [columnaMovil, setColumnaMovil] = useState<"confirmar" | "preparando" | "camino" | "cerrados">("confirmar");
   const [filtroFecha, setFiltroFecha] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [verDetalleOpen, setVerDetalleOpen] = useState(false);
   const [pedidoVerDetalle, setPedidoVerDetalle] = useState<PedidoNegocio | null>(null);
@@ -915,172 +918,129 @@ export default function PedidosPage() {
     );
   }
 
-  return (
-    <NegocioLayout title="Pedidos" activeNav="pedidos" headerRight={<Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10" onClick={refrescar} disabled={refrescando} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className={`sm:hidden ${refrescando ? "animate-spin" : ""}`} /><RefreshCw size={20} className={`hidden sm:block ${refrescando ? "animate-spin" : ""}`} /></Button>}>
-      {/* Sidebar */}
+  // ── Tablero: los pedidos de hoy agrupados por lo que toca hacer ──
+  const COLUMNAS = [
+    { clave: "confirmar", titulo: "Por confirmar", punto: "bg-amber-500", vacio: "Nada por confirmar", estados: ["pendiente_confirmacion", "esperando_comprobante", "esperando_pago", "esperando_confirmacion_pago", "esperando_confirmacion_sustituciones"] },
+    { clave: "preparando", titulo: "Preparando", punto: "bg-blue-600", vacio: "Nada en preparación", estados: ["pendiente", "en_preparacion", "listo"] },
+    { clave: "camino", titulo: "En camino", punto: "bg-primary", vacio: "Nadie en camino", estados: ["en_camino", "llegando"] },
+    { clave: "cerrados", titulo: "Cerrados hoy", punto: "bg-slate-400", vacio: "Todavía no hay entregas", estados: [] as string[] },
+  ] as const;
+  type ClaveColumna = typeof COLUMNAS[number]["clave"];
+  const columnaDe = (estado: string): ClaveColumna => (COLUMNAS.find((c) => (c.estados as readonly string[]).includes(estado))?.clave ?? "cerrados");
+  const porColumna = { confirmar: [], preparando: [], camino: [], cerrados: [] } as Record<ClaveColumna, PedidoNegocio[]>;
+  for (const p of pedidosActivos as PedidoNegocio[]) porColumna[columnaDe(p.estado)].push(p);
+  // Lo más viejo primero donde hay que actuar; lo más reciente primero en los cerrados.
+  for (const c of ["confirmar", "preparando", "camino"] as const) porColumna[c].sort((a, b) => new Date(a.fechaCreacion).getTime() - new Date(b.fechaCreacion).getTime());
+  const vendidoHoy = porColumna.cerrados.filter((p) => p.estado === "entregado").reduce((s, p) => s + (parseFloat(p.totalConfirmado || p.total || "0") || 0), 0);
+  /** El siguiente paso de cada pedido; lo demás queda en "Más". */
+  const accionPrincipal = (pedido: PedidoNegocio): { texto: string; accion: () => void } | null => {
+    switch (pedido.estado) {
+      case "pendiente_confirmacion": return { texto: "Confirmar pedido", accion: () => openConfirmModal(pedido) };
+      case "esperando_pago": return { texto: "Ya pagó · confirmar", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "pendiente" }) };
+      case "en_camino":
+      case "llegando": return { texto: "Marcar entregado", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" }) };
+      case "pendiente":
+      case "listo": return pedido.tipoEntrega === "pickup" ? { texto: "Entregado al cliente", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" }) } : null;
+      default: return null;
+    }
+  };
+  const hace = (fecha: string | number | Date) => {
+    const min = Math.max(0, Math.round((Date.now() - new Date(fecha).getTime()) / 60000));
+    if (min < 1) return "ahora";
+    if (min < 60) return `hace ${min} min`;
+    return new Date(fecha).toLocaleTimeString("es-DO", { hour: "numeric", minute: "2-digit" });
+  };
 
-      {/* Main Content */}
-
-        {/* ── Tabs ── */}
-        <div className="bg-white border-b shrink-0">
-          <div className="flex flex-wrap items-center gap-0 px-4 border-b">
-            {(["activos", "historial"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => { setTabActual(tab); setFiltroEstado("todos"); }}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                  tabActual === tab
-                    ? "border-primary text-primary"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {tab === "activos" ? "Activos" : "Historial"}
-                <span className="ml-1.5 text-xs opacity-60">
-                  ({tab === "activos" ? pedidosActivos.length : pedidosHistorial.length})
-                </span>
-              </button>
-            ))}
-            {tabActual === "historial" && (
-              <div className="ml-0 sm:ml-auto flex w-full sm:w-auto min-w-0 items-center gap-1.5 pr-0 sm:pr-2 py-1">
-                <span className="text-xs text-gray-500">Fecha:</span>
-                <input
-                  type="date"
-                  value={filtroFecha}
-                  onChange={(e) => setFiltroFecha(e.target.value)}
-                  className="text-xs border rounded px-2 py-1 h-7 min-w-0 flex-1 sm:flex-none"
-                />
-              </div>
-            )}
-          </div>
-          {/* State chips */}
-          <div className="flex flex-wrap gap-1.5 px-3 py-2">
-            {[
-              { value: "todos", label: "Todos", color: "bg-gray-100 text-gray-700 border-gray-300" },
-              { value: "pendiente_confirmacion", label: "Por Confirmar", color: "bg-yellow-100 text-yellow-700 border-yellow-300" },
-              { value: "esperando_comprobante", label: "Esp. Recibo", color: "bg-indigo-100 text-indigo-600 border-indigo-300" },
-              { value: "esperando_pago", label: "Esp. Pago", color: "bg-purple-100 text-purple-600 border-purple-300" },
-              { value: "esperando_confirmacion_pago", label: "Conf. Pago", color: "bg-cyan-100 text-cyan-600 border-cyan-300" },
-              { value: "esperando_confirmacion_sustituciones", label: "Conf. Cambios", color: "bg-amber-100 text-amber-700 border-amber-300" },
-              { value: "pendiente", label: "Pendiente", color: "bg-orange-100 text-orange-600 border-orange-300" },
-               { value: "en_preparacion", label: "En Preparación", color: "bg-blue-100 text-blue-600 border-blue-300" },
-               { value: "listo", label: "Listo", color: "bg-purple-100 text-purple-600 border-purple-300" },
-              { value: "en_camino", label: "En Camino", color: "bg-blue-100 text-blue-600 border-blue-300" },
-              { value: "entregado", label: "Entregado", color: "bg-green-100 text-green-600 border-green-300" },
-              { value: "cancelado", label: "Cancelado", color: "bg-red-100 text-red-600 border-red-300" },
-              { value: "retorno", label: "Retorno", color: "bg-gray-100 text-gray-600 border-gray-300" },
-              { value: "fusionado", label: "Fusionado", color: "bg-violet-100 text-violet-700 border-violet-300" },
-            ].map((s) => {
-              const source = tabActual === "activos" ? pedidosActivos : pedidosHistorial;
-              const cnt = s.value === "todos" ? source.length : source.filter((p: any) => p.estado === s.value).length;
-              return (
-                <button
-                  key={s.value}
-                  onClick={() => setFiltroEstado(s.value)}
-                  data-testid={`filter-chip-${s.value}`}
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-all ${s.color} ${
-                    filtroEstado === s.value ? "ring-2 ring-offset-1 ring-primary/40 border-2" : "opacity-70 hover:opacity-100"
-                  }`}
-                >
-                  {s.label} <span className="opacity-60">({cnt})</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Content */}
-        <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : pedidosFiltrados.length === 0 ? (
-            <div className="text-center py-16">
-              <Package size={60} className="mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-medium text-gray-600 mb-2">No hay pedidos</h3>
-              <p className="text-gray-500">{tabActual === "historial" ? "No hay pedidos para esa fecha" : "Los pedidos aparecerán aquí cuando los clientes ordenen por WhatsApp"}</p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg border divide-y shadow-sm">
-              {pedidosFiltrados.map((pedido: PedidoNegocio) => (
-                <div key={pedido.id} className="flex flex-col px-4 py-3 hover:bg-gray-50 transition-colors" data-testid={`pedido-card-${pedido.id}`}>
-                  {/* ── Row 1: summary info ── */}
-                  <div className="flex items-center gap-3 min-w-0">
-                  {/* Status dot */}
-                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${getEstadoColor(pedido.estado).split(" ")[0].replace("bg-", "bg-").replace("100", "400")}`} />
-
-                  {/* ID + cliente + estado */}
-                  <div className="w-28 shrink-0">
-                    <span className="font-mono text-xs text-gray-400">#{pedido.id}</span>
-                    <p className="font-semibold text-sm leading-tight truncate">{pedido.clienteNombre}</p>
+  const tarjetaPedido = (pedido: PedidoNegocio) => (
+                <div key={pedido.id} className="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm" data-testid={`pedido-card-${pedido.id}`}>
+                  {/* ── Encabezado: número, cliente y total ── */}
+                  <div className="flex items-start justify-between gap-2 min-w-0">
+                    <button type="button" className="min-w-0 text-left" onClick={() => { setPedidoVerDetalle(pedido); setVerDetalleOpen(true); }}>
+                      <p className="font-bold text-[15px] leading-tight line-clamp-2 break-words text-slate-900">#{pedido.id} · {pedido.clienteNombre}</p>
+                      <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                        <Clock size={11} />
+                        {tabActual === "activos" ? hace(pedido.fechaCreacion) : new Date(pedido.fechaCreacion).toLocaleString("es-DO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </button>
+                    <div className="text-right shrink-0">
+                      {parseFloat(pedido.totalConfirmado || pedido.total || "0") > 0 ? (
+                        <p className="font-bold text-[15px] text-slate-900">{moneda}{parseFloat(pedido.totalConfirmado || pedido.total || "0").toFixed(2)}</p>
+                      ) : (
+                        <p className="text-xs font-semibold text-amber-700">Sin precio</p>
+                      )}
+                      {pedido.necesitaDevuelta && parseFloat(pedido.montoPago) > 0 && (
+                        <p className="text-[11px] text-amber-700">Devuelta: {moneda}{(parseFloat(pedido.montoPago) - parseFloat(pedido.totalConfirmado || pedido.total || "0")).toFixed(2)}</p>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Status badge */}
-                  <div className="w-32 shrink-0 hidden sm:block">
-                    <Badge variant="outline" className={`text-[11px] h-5 px-1.5 ${getEstadoColor(pedido.estado)}`}>
+                  {/* ── Productos ── */}
+                  <p className="text-[13px] text-slate-700 leading-snug line-clamp-2">
+                    {(() => {
+                      try {
+                        const prods = JSON.parse(pedido.productos);
+                        if (!Array.isArray(prods)) return pedido.productos;
+                        return prods.map((p: any) => {
+                          const nombre = p.nombre || p.name || "Producto";
+                          const cant = parseInt(p.cantidad) || 1;
+                          const sust = pedido.sustituciones?.find((s: any) => s.original === nombre);
+                          const nomFinal = sust?.nuevo ? `${nombre}→${sust.nuevo}` : nombre;
+                          return cant > 1 ? `${cant} ${nomFinal}` : nomFinal;
+                        }).join(" · ");
+                      } catch { return pedido.productos; }
+                    })()}
+                  </p>
+
+                  {/* ── Etiquetas: estado, entrega y pago ── */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="outline" className={`text-[11px] h-6 px-2 rounded-full ${getEstadoColor(pedido.estado)}`}>
                       {getEstadoLabel(pedido.estado)}
                     </Badge>
-                    <Badge variant="outline" className={`ml-1 text-[10px] h-5 px-1.5 ${pedido.tipoEntrega === "pickup" ? "border-green-300 bg-green-50 text-green-700" : "border-blue-200 bg-blue-50 text-blue-700"}`} data-testid={`tipo-entrega-${pedido.id}`}>
-                      {pedido.tipoEntrega === "pickup" ? "🏪 Pickup" : "🛵 Delivery"}
-                    </Badge>
-                    {pedido.estado === "retorno" && pedido.motivoRetorno && (
-                      <p className="text-[10px] text-gray-400 italic truncate mt-0.5" data-testid={`motivo-retorno-${pedido.id}`}>{pedido.motivoRetorno}</p>
+                    <span className="text-[11px] h-6 px-2 rounded-full bg-slate-100 text-slate-700 inline-flex items-center">
+                      {pedido.tipoEntrega === "pickup" ? "Recoge en el negocio" : "Delivery"}
+                    </span>
+                    {pedido.metodoPago && (
+                      <span className="text-[11px] h-6 px-2 rounded-full bg-slate-100 text-slate-700 inline-flex items-center">
+                        {pedido.metodoPago === "efectivo" ? "Efectivo" : pedido.metodoPago === "transferencia" ? "Transferencia" : "Tarjeta"}
+                      </span>
                     )}
-                    {pedido.estado === "fusionado" && pedido.fusionadoEnPedidoId && (
-                      <p className="text-[10px] text-violet-600 truncate mt-0.5" data-testid={`pedido-fusionado-en-${pedido.id}`}>
-                        Incluido en #{pedido.fusionadoEnPedidoId}
-                      </p>
-                    )}
+                    <button type="button" className="ml-auto text-xs font-semibold text-primary min-h-[28px] px-1" onClick={() => { setPedidoVerDetalle(pedido); setVerDetalleOpen(true); }} data-testid={`ver-pedido-${pedido.id}`}>
+                      Ver detalle
+                    </button>
                   </div>
+                  {pedido.estado === "retorno" && pedido.motivoRetorno && (
+                    <p className="text-xs text-slate-500 italic" data-testid={`motivo-retorno-${pedido.id}`}>{pedido.motivoRetorno}</p>
+                  )}
+                  {pedido.estado === "fusionado" && pedido.fusionadoEnPedidoId && (
+                    <p className="text-xs text-violet-700" data-testid={`pedido-fusionado-en-${pedido.id}`}>Incluido en #{pedido.fusionadoEnPedidoId}</p>
+                  )}
 
-                  {/* Products summary */}
-                  <div className="flex-1 min-w-0 hidden md:block">
-                    <p className="text-xs text-gray-600 truncate">
-                      {(() => {
-                        try {
-                          const prods = JSON.parse(pedido.productos);
-                          if (!Array.isArray(prods)) return pedido.productos;
-                          return prods.map((p: any) => {
-                            const nombre = p.nombre || p.name || "Producto";
-                            const cant = parseInt(p.cantidad) || 1;
-                            const sust = pedido.sustituciones?.find((s: any) => s.original === nombre);
-                            const nomFinal = sust?.nuevo ? `${nombre}→${sust.nuevo}` : nombre;
-                            return cant > 1 ? `${cant}x ${nomFinal}` : nomFinal;
-                          }).join(", ");
-                        } catch { return pedido.productos; }
-                      })()}
-                    </p>
-                    <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
-                      <Clock size={10} />
-                      {new Date(pedido.fechaCreacion).toLocaleString("es-DO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                      {pedido.metodoPago && (
-                        <span className={`ml-1 ${pedido.metodoPago === "transferencia" ? "text-blue-500" : pedido.metodoPago === "tarjeta" ? "text-purple-500" : ""}`}>
-                          · {pedido.metodoPago === "efectivo" ? "Efectivo" : pedido.metodoPago === "transferencia" ? "Transferencia" : "Tarjeta"}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-
-                  {/* Total */}
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-sm text-primary">{moneda}{parseFloat(pedido.totalConfirmado || pedido.total || "0").toFixed(2)}</p>
-                    {pedido.necesitaDevuelta && parseFloat(pedido.montoPago) > 0 && (
-                      <p className="text-[10px] text-orange-600">Dev: {moneda}{(parseFloat(pedido.montoPago) - parseFloat(pedido.totalConfirmado || pedido.total || "0")).toFixed(2)}</p>
-                    )}
-                  </div>
-
-                  {/* Ver button */}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-xs shrink-0"
-                    onClick={() => { setPedidoVerDetalle(pedido); setVerDetalleOpen(true); }}
-                    data-testid={`ver-pedido-${pedido.id}`}
-                  >
-                    Ver
-                  </Button>
-                  </div>{/* end row 1 */}
-
+                  {/* ── El paso que toca, en un solo botón ── */}
+                  {(() => {
+                    const principal = accionPrincipal(pedido);
+                    // Sin un paso claro, las opciones salen abiertas (menos en los pedidos ya cerrados).
+                    const abiertoDeEntrada = !principal && tabActual === "activos" && columnaDe(pedido.estado) !== "cerrados";
+                    const abierto = abiertoDeEntrada !== masAbierto.includes(pedido.id);
+                    return (
+                      <>
+                        <div className="flex gap-2">
+                          {principal && (
+                            <Button className="flex-1 min-w-0 h-auto min-h-[44px] py-2 px-3 rounded-xl text-sm font-semibold whitespace-normal leading-tight" onClick={principal.accion} disabled={updateEstadoMutation.isPending} data-testid={`principal-${pedido.id}`}>
+                              {principal.texto}
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            className={`h-auto min-h-[44px] rounded-xl text-sm font-semibold border-slate-300 text-slate-800 shrink-0 ${principal ? "px-2.5" : "flex-1"}`}
+                            aria-expanded={abierto}
+                            onClick={() => setMasAbierto((ids) => (ids.includes(pedido.id) ? ids.filter((i) => i !== pedido.id) : [...ids, pedido.id]))}
+                            data-testid={`mas-opciones-${pedido.id}`}
+                          >
+                            {abierto ? "Ocultar" : principal ? "Más" : "Opciones"}
+                            <ChevronDown size={16} className={`ml-1 transition-transform ${abierto ? "rotate-180" : ""}`} />
+                          </Button>
+                        </div>
+                        <div className={abierto ? "flex flex-col gap-2 rounded-xl bg-slate-50 border border-slate-200 p-2.5" : "hidden"}>
                   <DistanciaPedido
                     pedido={pedido}
                     metricasRuta={metricasRutaPorPedido.get(pedido.id)}
@@ -1089,7 +1049,7 @@ export default function PedidosPage() {
                   />
 
                   {/* ── Row 2: action buttons (wrap freely, never overflow) ── */}
-                  <div className="flex gap-1.5 flex-wrap pt-2 pl-5">
+                                    <div className="flex gap-1.5 flex-wrap empty:hidden">
                           {!!pedido.deliveryId && (
                             <Button
                               size="sm"
@@ -1560,9 +1520,143 @@ export default function PedidosPage() {
                             <MessageCircle size={14} className="mr-1" /> WhatsApp
                           </Button>
                     </div>
-                  </div>
-                ))}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+  );
+
+  return (
+    <NegocioLayout title="Pedidos" activeNav="pedidos" headerRight={<Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-slate-600 hover:text-slate-900 hover:bg-slate-100" onClick={refrescar} disabled={refrescando} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className={`sm:hidden ${refrescando ? "animate-spin" : ""}`} /><RefreshCw size={20} className={`hidden sm:block ${refrescando ? "animate-spin" : ""}`} /></Button>}>
+      {/* Sidebar */}
+
+      {/* Main Content */}
+
+        {/* ── Tabs ── */}
+        <div className="bg-white border-b shrink-0">
+          <div className="flex flex-wrap items-center gap-0 px-4">
+            {(["activos", "historial"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => { setTabActual(tab); setFiltroEstado("todos"); }}
+                className={`px-4 min-h-[44px] text-sm border-b-2 transition-colors ${
+                  tabActual === tab
+                    ? "border-primary text-primary font-semibold"
+                    : "border-transparent text-slate-600 font-medium hover:text-slate-900"
+                }`}
+              >
+                {tab === "activos" ? "Hoy" : "Historial"}
+                <span className="ml-1.5 text-xs opacity-60">
+                  ({tab === "activos" ? pedidosActivos.length : pedidosHistorial.length})
+                </span>
+              </button>
+            ))}
+            {tabActual === "historial" && (
+              <div className="ml-0 sm:ml-auto flex w-full sm:w-auto min-w-0 items-center gap-1.5 pr-0 sm:pr-2 py-1">
+                <span className="text-xs text-gray-500">Fecha:</span>
+                <input
+                  type="date"
+                  value={filtroFecha}
+                  onChange={(e) => setFiltroFecha(e.target.value)}
+                  className="text-xs border rounded px-2 py-1 h-7 min-w-0 flex-1 sm:flex-none"
+                />
               </div>
+            )}
+          </div>
+          {/* Filtros por estado: solo en el historial; hoy se ve en columnas */}
+          <div className={`flex-wrap gap-1.5 px-3 py-2 ${tabActual === "historial" ? "flex" : "hidden"}`}>
+            {[
+              { value: "todos", label: "Todos", color: "bg-gray-100 text-gray-700 border-gray-300" },
+              { value: "pendiente_confirmacion", label: "Por Confirmar", color: "bg-yellow-100 text-yellow-700 border-yellow-300" },
+              { value: "esperando_comprobante", label: "Esp. Recibo", color: "bg-indigo-100 text-indigo-600 border-indigo-300" },
+              { value: "esperando_pago", label: "Esp. Pago", color: "bg-purple-100 text-purple-600 border-purple-300" },
+              { value: "esperando_confirmacion_pago", label: "Conf. Pago", color: "bg-cyan-100 text-cyan-600 border-cyan-300" },
+              { value: "esperando_confirmacion_sustituciones", label: "Conf. Cambios", color: "bg-amber-100 text-amber-700 border-amber-300" },
+              { value: "pendiente", label: "Pendiente", color: "bg-orange-100 text-orange-600 border-orange-300" },
+               { value: "en_preparacion", label: "En Preparación", color: "bg-blue-100 text-blue-600 border-blue-300" },
+               { value: "listo", label: "Listo", color: "bg-purple-100 text-purple-600 border-purple-300" },
+              { value: "en_camino", label: "En Camino", color: "bg-blue-100 text-blue-600 border-blue-300" },
+              { value: "entregado", label: "Entregado", color: "bg-green-100 text-green-600 border-green-300" },
+              { value: "cancelado", label: "Cancelado", color: "bg-red-100 text-red-600 border-red-300" },
+              { value: "retorno", label: "Retorno", color: "bg-gray-100 text-gray-600 border-gray-300" },
+              { value: "fusionado", label: "Fusionado", color: "bg-violet-100 text-violet-700 border-violet-300" },
+            ].map((s) => {
+              const source = tabActual === "activos" ? pedidosActivos : pedidosHistorial;
+              const cnt = s.value === "todos" ? source.length : source.filter((p: any) => p.estado === s.value).length;
+              return (
+                <button
+                  key={s.value}
+                  onClick={() => setFiltroEstado(s.value)}
+                  data-testid={`filter-chip-${s.value}`}
+                  className={`px-3 h-8 rounded-full text-xs font-medium border transition-all ${s.color} ${
+                    filtroEstado === s.value ? "ring-2 ring-offset-1 ring-primary/40 border-2" : "opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  {s.label} <span className="opacity-60">({cnt})</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Content */}
+        <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : pedidosFiltrados.length === 0 ? (
+            <div className="text-center py-16">
+              <Package size={60} className="mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-medium text-gray-600 mb-2">No hay pedidos</h3>
+              <p className="text-gray-500">{tabActual === "historial" ? "No hay pedidos para esa fecha" : "Los pedidos aparecerán aquí cuando los clientes ordenen por WhatsApp"}</p>
+            </div>
+          ) : (
+            tabActual === "activos" && filtroEstado === "todos" ? (
+              <div className="space-y-4">
+                {/* Resumen del día */}
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
+                  {COLUMNAS.map((col) => (
+                    <div key={col.clave} className="hidden md:block rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <p className="text-xs text-slate-500">{col.titulo}</p>
+                      <p className={`text-2xl font-bold ${col.clave === "confirmar" && porColumna[col.clave].length > 0 ? "text-amber-700" : "text-slate-900"}`} data-testid={`resumen-${col.clave}`}>{porColumna[col.clave].length}</p>
+                    </div>
+                  ))}
+                  <div className="rounded-2xl bg-primary text-primary-foreground px-4 py-3 col-span-2 md:col-span-4 lg:col-span-1">
+                    <p className="text-xs opacity-90">Vendido hoy (entregados)</p>
+                    <p className="text-2xl font-bold" data-testid="resumen-vendido">{moneda}{vendidoHoy.toLocaleString("es-DO", { maximumFractionDigits: 0 })}</p>
+                  </div>
+                </div>
+                {/* En el celular se ve una columna a la vez */}
+                <div className="flex gap-2 overflow-x-auto md:hidden -mx-1 px-1 pb-1" role="tablist" aria-label="Estado del pedido">
+                  {COLUMNAS.map((col) => (
+                    <button key={col.clave} type="button" role="tab" aria-selected={columnaMovil === col.clave} onClick={() => setColumnaMovil(col.clave)} data-testid={`columna-tab-${col.clave}`}
+                      className={`h-11 px-4 rounded-full text-sm whitespace-nowrap shrink-0 ${columnaMovil === col.clave ? "bg-primary text-primary-foreground font-semibold" : "bg-white border border-slate-300 text-slate-800 font-medium"}`}>
+                      {col.titulo} {porColumna[col.clave].length}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 items-start">
+                  {COLUMNAS.map((col) => (
+                    <section key={col.clave} className={`${columnaMovil === col.clave ? "flex" : "hidden"} md:flex flex-col gap-2.5 min-w-0`} aria-label={col.titulo} data-testid={`columna-${col.clave}`}>
+                      <h2 className="hidden md:flex items-center gap-2 text-sm font-bold text-slate-900 px-1">
+                        <span className={`w-2.5 h-2.5 rounded-full ${col.punto}`} />
+                        {col.titulo}
+                        <span className="font-medium text-slate-500">{porColumna[col.clave].length}</span>
+                      </h2>
+                      {porColumna[col.clave].length === 0 ? (
+                        <p className="rounded-2xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">{col.vacio}</p>
+                      ) : porColumna[col.clave].map((pedido: PedidoNegocio) => tarjetaPedido(pedido))}
+                    </section>
+                  ))}
+                </div>
+              </div>
+            ) : (
+            <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3 items-start">
+              {pedidosFiltrados.map((pedido: PedidoNegocio) => tarjetaPedido(pedido))}
+            </div>
+            )
           )}
         </main>
 

@@ -256,10 +256,10 @@ export default function Dashboard() {
     <>
       <Badge
         variant="outline"
-        className={`text-xs sm:text-sm border-white/50 ${
+        className={`text-xs sm:text-sm ${
           ventasHoy?.cuadrado
-            ? "bg-white/20 text-white"
-            : "bg-white/10 text-white/80"
+            ? "border-primary/30 bg-primary/10 text-primary"
+            : "border-amber-300 bg-amber-50 text-amber-800"
         }`}
       >
         {ventasHoy?.cuadrado ? "Cuadrada" : "Pendiente"}
@@ -267,7 +267,7 @@ export default function Dashboard() {
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10"
+        className="h-8 w-8 sm:h-10 sm:w-10 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
         onClick={() => queryClient.invalidateQueries()}
         title="Refrescar"
         data-testid="button-refresh"
@@ -279,7 +279,7 @@ export default function Dashboard() {
   );
 
   return (
-    <NegocioLayout title="Dashboard" activeNav="dashboard" headerRight={headerRight}>
+    <NegocioLayout title="Inicio" activeNav="dashboard" headerRight={headerRight}>
       {/* Subscription Banners */}
       {suscripcionData?.expirado && (
         <div className="bg-red-600 text-white px-3 sm:px-4 py-2 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2" data-testid="banner-plan-expirado">

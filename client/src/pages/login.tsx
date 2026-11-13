@@ -112,7 +112,7 @@ export default function LoginPage() {
               <p className="mb-2">Esta plataforma todavía no tiene administrador.</p>
               <Button
                 type="button"
-                className="w-full bg-[#25D366] hover:bg-[#25D366]/90"
+                className="w-full bg-[#17804F] hover:bg-[#17804F]/90"
                 onClick={() => setLocation("/primer-acceso")}
                 data-testid="button-primer-acceso"
               >
@@ -152,7 +152,7 @@ export default function LoginPage() {
             )}
             <Button 
               type="submit" 
-              className="w-full bg-[#25D366] hover:bg-[#25D366]/90"
+              className="w-full bg-[#17804F] hover:bg-[#17804F]/90"
               disabled={isLoading || Boolean(turnstileSiteKey && !turnstileToken)}
               data-testid="button-submit-login"
             >

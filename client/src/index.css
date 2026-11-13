@@ -58,42 +58,42 @@
 }
 
 :root {
-  /* White Background, Dark Text */
+  /* Fondo blanco, texto casi negro con un punto de verde */
   --background: 0 0% 100%;
-  --foreground: 166 68% 18%; /* Deep Green Text */
+  --foreground: 150 18% 11%;
 
   --card: 0 0% 100%;
-  --card-foreground: 166 68% 18%;
-  
-  --popover: 0 0% 100%;
-  --popover-foreground: 166 68% 18%;
-  
-  --primary: 142 69% 49%; /* WhatsApp Green */
-  --primary-foreground: 0 0% 100%;
-  
-  --secondary: 136 53% 96%; /* Very Light Green */
-  --secondary-foreground: 166 68% 18%;
-  
-  --muted: 140 20% 96%;
-  --muted-foreground: 166 20% 40%;
-  
-  --accent: 142 69% 49%;
-  --accent-foreground: 0 0% 100%;
-  
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
+  --card-foreground: 150 18% 11%;
 
-  --border: 140 20% 90%;
-  --input: 140 20% 90%;
-  --ring: 142 69% 49%;
-  
+  --popover: 0 0% 100%;
+  --popover-foreground: 150 18% 11%;
+
+  --primary: 152 70% 30%; /* #17804F: verde sobrio; el texto blanco encima se lee bien */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 147 30% 93%; /* #E7F2EC */
+  --secondary-foreground: 153 72% 21%; /* #0F5C39 */
+
+  --muted: 140 10% 96%;
+  --muted-foreground: 144 8% 39%;
+
+  --accent: 152 70% 30%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 4 70% 42%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 135 7% 89%;
+  --input: 135 7% 84%;
+  --ring: 152 70% 30%;
+
   --radius: 0.75rem;
-  
-  --chart-1: 142 69% 49%;
+
+  --chart-1: 152 70% 30%;
   --chart-2: 173 76% 31%;
-  --chart-3: 166 68% 18%;
-  --chart-4: 136 53% 86%;
-  --chart-5: 45 93% 47%;
+  --chart-3: 153 72% 21%;
+  --chart-4: 147 30% 80%;
+  --chart-5: 35 85% 45%;
 }
 
 .dark {
@@ -107,7 +107,7 @@
   --popover: 166 68% 8%;
   --popover-foreground: 136 53% 96%;
   
-  --primary: 142 69% 49%;
+  --primary: 152 60% 40%;
   --primary-foreground: 0 0% 100%;
   
   --secondary: 166 68% 12%;
@@ -145,7 +145,7 @@
 /* Custom Utilities for the WhatsApp Vibe */
 @layer utilities {
   .bg-whatsapp-gradient {
-    background: linear-gradient(135deg, hsl(142 69% 49%) 0%, hsl(173 76% 31%) 100%);
+    background: linear-gradient(135deg, hsl(152 70% 30%) 0%, hsl(153 72% 21%) 100%);
   }
   .text-shadow-sm {
     text-shadow: 0 1px 2px rgba(0,0,0,0.1);

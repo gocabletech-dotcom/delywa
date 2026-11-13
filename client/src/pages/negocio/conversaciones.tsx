@@ -526,7 +526,7 @@ export default function ConversacionesPage() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10"
+          className="h-8 w-8 sm:h-10 sm:w-10 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           onClick={() => setShowQrDialog(true)}
           title="Mi Link de Pedidos"
           data-testid="button-show-qr"
@@ -538,7 +538,7 @@ export default function ConversacionesPage() {
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 sm:h-10 sm:w-10 text-white/80 hover:text-white hover:bg-white/10"
+        className="h-8 w-8 sm:h-10 sm:w-10 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
         onClick={() => queryClient.invalidateQueries()}
         title="Refrescar"
         data-testid="button-refresh"
@@ -550,7 +550,7 @@ export default function ConversacionesPage() {
   );
 
   return (
-    <NegocioLayout title="Conversaciones" activeNav="conversaciones" headerRight={conversacionesHeaderRight}>
+    <NegocioLayout title="Chats" activeNav="conversaciones" headerRight={conversacionesHeaderRight}>
 
 
         <main className="flex-1 flex overflow-hidden min-h-0 bg-[#e9edef] md:bg-gradient-to-br md:from-[#dfe7e3] md:to-[#cfd8dc]">

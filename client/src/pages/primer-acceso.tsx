@@ -76,7 +76,7 @@ export default function PrimerAccesoPage() {
               <p className="text-sm text-gray-600" data-testid="text-setup-no-disponible">
                 El primer acceso ya no está disponible: la plataforma ya tiene administrador.
               </p>
-              <Button className="w-full bg-[#25D366] hover:bg-[#25D366]/90" onClick={() => setLocation("/login")}>
+              <Button className="w-full bg-[#17804F] hover:bg-[#17804F]/90" onClick={() => setLocation("/login")}>
                 Ir a iniciar sesión
               </Button>
             </div>
@@ -103,7 +103,7 @@ export default function PrimerAccesoPage() {
                 <Label htmlFor="codigo">Código de instalación</Label>
                 <Input id="codigo" autoComplete="off" value={form.codigo} onChange={set("codigo")} required data-testid="input-setup-codigo" />
               </div>
-              <Button type="submit" className="w-full bg-[#25D366] hover:bg-[#25D366]/90" disabled={isLoading} data-testid="button-submit-setup">
+              <Button type="submit" className="w-full bg-[#17804F] hover:bg-[#17804F]/90" disabled={isLoading} data-testid="button-submit-setup">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Crear administrador
               </Button>

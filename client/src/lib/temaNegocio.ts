@@ -1,7 +1,10 @@
-export const COLOR_PRIMARIO_FALLBACK = "#25D366";
+export const COLOR_PRIMARIO_FALLBACK = "#17804F";
+/** Verde brillante con el que se creaban los negocios antes: cuenta como "sin color propio". */
+const COLOR_ANTERIOR = "#25D366";
 
 export function normalizeBusinessColor(color?: string | null): string {
-  return /^#[0-9a-f]{6}$/i.test(color || "") ? color! : COLOR_PRIMARIO_FALLBACK;
+  if (!/^#[0-9a-f]{6}$/i.test(color || "") || color!.toUpperCase() === COLOR_ANTERIOR) return COLOR_PRIMARIO_FALLBACK;
+  return color!;
 }
 
 function hexToHsl(hex: string): string {
