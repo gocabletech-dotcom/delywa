@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
+import NegocioLayout from "@/components/negocio/NegocioLayout";
 
 export default function WhatsAppConfigPage() {
   const [, setLocation] = useLocation();
@@ -42,7 +43,7 @@ export default function WhatsAppConfigPage() {
   if (authLoading || colmadoLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="w-8 h-8 animate-spin text-[#25D366]" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -66,23 +67,8 @@ export default function WhatsAppConfigPage() {
   const isConfigured = colmado?.evolutionApiUrl && colmado?.evolutionApiKey && colmado?.evolutionInstanceName;
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="whatsapp-config-page">
-      <header className="bg-[#25D366] text-white shadow-lg">
-        <div className="max-w-4xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <MessageCircle className="w-6 h-6 sm:w-8 sm:h-8" fill="currentColor" />
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold font-['Poppins']">WhatsApp</h1>
-              <p className="text-xs sm:text-sm opacity-90 font-['Inter'] hidden sm:block">{colmado?.nombre}</p>
-            </div>
-          </div>
-          <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 text-xs sm:text-sm px-2 sm:px-4" onClick={() => setLocation("/negocio/dashboard")}>
-            <span className="hidden sm:inline">Volver al Panel</span>
-            <span className="sm:hidden">← Panel</span>
-          </Button>
-        </div>
-      </header>
-
+    <NegocioLayout title="WhatsApp" activeNav="whatsapp-config">
+      <div className="flex-1 overflow-auto" data-testid="whatsapp-config-page">
       <main className="max-w-4xl mx-auto p-3 sm:p-4 space-y-4 sm:space-y-6">
         {isConfigured ? (
           <Card className="border-green-200 bg-green-50">
@@ -113,7 +99,7 @@ export default function WhatsAppConfigPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Smartphone className="w-5 h-5 text-[#25D366]" />
+              <Smartphone className="w-5 h-5 text-primary" />
               <CardTitle>Datos de Conexion WhatsApp</CardTitle>
             </div>
             <CardDescription className="flex items-center gap-1">
@@ -168,6 +154,7 @@ export default function WhatsAppConfigPage() {
           </CardContent>
         </Card>
       </main>
-    </div>
+      </div>
+    </NegocioLayout>
   );
 }

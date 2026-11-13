@@ -218,14 +218,13 @@ export default function Dashboard() {
 
   const stats = [
     {
-      title: "Ventas Hoy",
+      title: "Ventas de hoy",
       value: `${moneda}${parseFloat(ventasHoy?.totalVentas || 0).toLocaleString()}`,
       icon: DollarSign,
       color: "bg-green-100 text-green-600",
-      change: "+12%",
     },
     {
-      title: "Pedidos Entregados",
+      title: "Pedidos entregados",
       value: ventasHoy?.pedidosEntregados || 0,
       icon: CheckCircle2,
       color: "bg-blue-100 text-blue-600",
@@ -238,7 +237,7 @@ export default function Dashboard() {
       color: "bg-orange-100 text-orange-600",
     },
     {
-      title: "Deliveries Activos",
+      title: "Repartidores activos",
       value: deliveries?.filter((d) => d.estado === "activo").length || 0,
       icon: Truck,
       color: "bg-purple-100 text-purple-600",
@@ -405,7 +404,7 @@ export default function Dashboard() {
           {/* Pedidos Recientes */}
           <Card className="border-none shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2 px-3 sm:px-6">
-              <CardTitle className="text-base sm:text-lg font-heading">Pedidos Recientes</CardTitle>
+              <CardTitle className="text-base sm:text-lg font-heading">Pedidos recientes</CardTitle>
               <Link href="/negocio/pedidos">
                 <Button variant="ghost" size="sm" className="text-primary text-xs sm:text-sm px-2 sm:px-3" data-testid="ver-todos-pedidos">
                   Ver todos <ChevronRight size={14} className="sm:hidden" /><ChevronRight size={16} className="hidden sm:inline" />
@@ -460,7 +459,7 @@ export default function Dashboard() {
           {/* Deliveries */}
           <Card className="border-none shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2 px-3 sm:px-6">
-              <CardTitle className="text-base sm:text-lg font-heading">Equipo de Delivery</CardTitle>
+              <CardTitle className="text-base sm:text-lg font-heading">Repartidores</CardTitle>
               <Link href="/negocio/deliveries">
                 <Button variant="ghost" size="sm" className="text-primary text-xs sm:text-sm px-2 sm:px-3" data-testid="ver-todos-deliveries">
                   Gestionar <ChevronRight size={14} className="sm:hidden" /><ChevronRight size={16} className="hidden sm:inline" />
@@ -542,7 +541,7 @@ export default function Dashboard() {
                   <div className="text-center py-6 sm:py-8 text-gray-500">
                     <Truck size={32} className="mx-auto mb-2 opacity-50 sm:hidden" />
                     <Truck size={40} className="mx-auto mb-2 opacity-50 hidden sm:block" />
-                    <p className="text-sm">No hay deliveries registrados</p>
+                    <p className="text-sm">Todavía no hay repartidores</p>
                     <Link href="/negocio/deliveries">
                       <Button size="sm" className="mt-2 bg-primary text-xs sm:text-sm" data-testid="agregar-primer-delivery">
                         <Plus size={14} className="mr-1 sm:hidden" /><Plus size={16} className="mr-1 hidden sm:inline" /> Agregar Delivery

@@ -257,13 +257,13 @@ export default function CuadresPage() {
   );
 
   return (
-    <NegocioLayout title="Cuadres de Delivery" activeNav="cuadres" headerRight={cuadresHeaderRight}>
+    <NegocioLayout title="Cuadres" activeNav="cuadres" headerRight={cuadresHeaderRight}>
       {/* Sidebar */}
 
       {/* Main Content */}
 
         {/* Filter Chips */}
-        <div className="bg-white border-b sticky top-14 sm:top-16 z-10">
+        <div className="bg-white border-b shrink-0">
           <div className="flex gap-1.5 sm:gap-2 overflow-x-auto items-center px-3 sm:px-4 lg:px-6 py-2 sm:py-3 scrollbar-none">
             {pedidosSinCuadre.length > 0 && (
               <div className="flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-300 rounded-full px-2.5 py-1 text-xs font-semibold shrink-0 whitespace-nowrap" data-testid="chip-sin-cuadre">

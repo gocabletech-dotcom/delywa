@@ -17,6 +17,28 @@
   --color-brand-dark: hsl(166 68% 18%); /* #075E54 */
   --color-brand-light: hsl(136 53% 86%); /* #DCF8C6 - chat bubble light */
   
+  /* Verde sobrio: las clases green-* y emerald-* de toda la app usan esta escala (antes eran muy brillantes) */
+  --color-green-50: #F1F8F4;
+  --color-green-100: #E7F2EC;
+  --color-green-200: #CBE3D5;
+  --color-green-300: #9FCDB3;
+  --color-green-400: #5FAE84;
+  --color-green-500: #2A9461;
+  --color-green-600: #17804F;
+  --color-green-700: #126B42;
+  --color-green-800: #0F5C39;
+  --color-green-900: #0B432A;
+  --color-emerald-50: #F1F8F4;
+  --color-emerald-100: #E7F2EC;
+  --color-emerald-200: #CBE3D5;
+  --color-emerald-300: #9FCDB3;
+  --color-emerald-400: #5FAE84;
+  --color-emerald-500: #2A9461;
+  --color-emerald-600: #17804F;
+  --color-emerald-700: #126B42;
+  --color-emerald-800: #0F5C39;
+  --color-emerald-900: #0B432A;
+
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   

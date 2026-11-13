@@ -813,11 +813,10 @@ export default function RepartidorPage() {
               return (
                 <div
                   key={pedido.id}
-                  className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100"
+                  className={`bg-white rounded-3xl overflow-hidden ${index === 0 ? "border-2 border-primary shadow-md" : "border border-slate-200 shadow-sm"}`}
                   data-testid={`pedido-card-${pedido.id}`}
                 >
                   {/* Gradient top accent */}
-                  <div className={`h-1.5 w-full bg-gradient-to-r ${accentColor}`} />
 
                   {/* ── Card Header ── */}
                   <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-3">
@@ -828,8 +827,8 @@ export default function RepartidorPage() {
                           {ESTADO_LABELS[pedido.estado] || pedido.estado}
                         </span>
                         {index === 0 && pedidosActivos.length > 1 && (
-                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">
-                            🔝 Primero
+                          <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full font-bold">
+                            Primero
                           </span>
                         )}
                       </div>
@@ -840,9 +839,9 @@ export default function RepartidorPage() {
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="font-extrabold text-green-600 text-2xl leading-none">{moneda}{total.toLocaleString()}</p>
-                      <p className="text-xs text-gray-400 capitalize mt-1 font-medium">
-                        {pedido.metodoPago === "transferencia" ? "🏦 Transferencia" : pedido.metodoPago === "tarjeta" ? "💳 Tarjeta" : "💵 Efectivo"}
+                      <p className="font-extrabold text-slate-900 text-2xl leading-none">{moneda}{total.toLocaleString()}</p>
+                      <p className="text-xs text-slate-600 capitalize mt-1 font-semibold">
+                        {pedido.metodoPago === "transferencia" ? "Transferencia" : pedido.metodoPago === "tarjeta" ? "Tarjeta" : "Efectivo"}
                       </p>
                     </div>
                   </div>

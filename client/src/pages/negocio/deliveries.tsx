@@ -278,7 +278,7 @@ export default function DeliveriesPage() {
 
   return (
     <NegocioLayout
-      title="Deliveries"
+      title="Repartidores"
       activeNav="deliveries"
       headerRight={
         <div className="flex items-center gap-1">
