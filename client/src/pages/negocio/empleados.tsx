@@ -147,17 +147,17 @@ export default function EmpleadosPage() {
         <div className="max-w-6xl mx-auto space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-sm text-slate-600">Personal, asistencia y nómina en un solo lugar.</p>
-            {tab === "empleados" && <Button onClick={openCreate}><Plus className="w-4 h-4 mr-2" />Nuevo empleado</Button>}
+            {tab === "empleados" && <Button onClick={openCreate} data-testid="button-nuevo-empleado"><Plus className="w-4 h-4 mr-2" />Nuevo empleado</Button>}
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2" data-testid="tabs-empleados">
             {tabs.map(({ value, Icon, label }) => (
-              <button key={value} onClick={() => setTab(value)} className={`flex items-center justify-center gap-2 rounded-lg border px-2 py-3 text-sm font-medium ${tab === value ? "border-primary bg-primary/10 text-primary" : "bg-white text-gray-600"}`}><Icon className="w-4 h-4" />{label}</button>
+              <button key={value} onClick={() => setTab(value)} data-testid={`tab-empleados-${value}`} className={`flex items-center justify-center gap-2 rounded-lg border px-2 py-3 text-sm font-medium ${tab === value ? "border-primary bg-primary/10 text-primary" : "bg-white text-gray-600"}`}><Icon className="w-4 h-4" />{label}</button>
             ))}
           </div>
 
           {tab === "empleados" && <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {employees.length === 0 ? <Card className="md:col-span-2 xl:col-span-3"><CardContent className="py-12 text-center text-gray-500">Todavía no hay empleados registrados.</CardContent></Card> : employees.map((employee) => (
-              <Card key={employee.id}><CardHeader className="pb-2"><div className="flex items-start justify-between gap-2"><CardTitle className="text-base">{employee.nombres} {employee.apellidos}</CardTitle><Badge variant={employee.estado === "activo" ? "default" : "secondary"}>{employee.estado === "activo" ? "Activo" : "Inactivo"}</Badge></div><p className="text-sm text-gray-500">{employee.puesto || "Sin puesto"}</p></CardHeader>
+              <Card key={employee.id} data-testid={`empleado-${employee.id}`}><CardHeader className="pb-2"><div className="flex items-start justify-between gap-2"><CardTitle className="text-base">{employee.nombres} {employee.apellidos}</CardTitle><Badge variant={employee.estado === "activo" ? "default" : "secondary"}>{employee.estado === "activo" ? "Activo" : "Inactivo"}</Badge></div><p className="text-sm text-gray-500">{employee.puesto || "Sin puesto"}</p></CardHeader>
                 <CardContent className="space-y-2 text-sm"><p>{employee.email || employee.telefono || "Sin contacto"}</p><p className="font-medium">{employee.tipoPago === "por_hora" ? `${employee.moneda} ${employee.tarifaHora || "0"} / hora` : `${employee.moneda} ${employee.salarioFijo || "0"} / ${employee.periodoPago}`}</p><p className="text-xs text-gray-500">{employee.sucursalIds.map((id) => branches.find((branch) => branch.id === id)?.nombre).filter(Boolean).join(", ") || "Sin sucursal"}</p>{employee.codigoAcceso && <p className="rounded bg-slate-50 px-2 py-1 text-xs text-slate-600">Código de acceso: <strong className="tracking-widest">{employee.codigoAcceso}</strong></p>}<Button variant="outline" size="sm" onClick={() => openEdit(employee)}><Pencil className="w-3 h-3 mr-1" />Editar</Button></CardContent>
               </Card>
             ))}

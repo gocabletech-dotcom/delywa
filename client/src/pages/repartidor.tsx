@@ -22,6 +22,7 @@ import {
   Clock,
   ExternalLink,
   Route as RouteIcon,
+  HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -801,6 +802,17 @@ export default function RepartidorPage() {
               <p className="text-xs opacity-80 truncate">{colmado?.nombre || "Repartidor"}</p>
             </div>
           </div>
+          <a
+            href="/manual?solo=repartidor#repartidor"
+            target="_blank"
+            rel="noopener"
+            className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/10 shrink-0 ml-auto"
+            aria-label="Cómo se usa el portal (manual)"
+            title="Manual del repartidor"
+            data-testid="link-manual-repartidor"
+          >
+            <HelpCircle size={20} />
+          </a>
           <button
             onClick={() => logoutMutation.mutate()}
             className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/10 shrink-0"

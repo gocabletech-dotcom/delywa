@@ -678,8 +678,8 @@ export default function CuadresPage() {
                       <p className="text-xs text-gray-500">
                         Entregado a <span className="font-medium">{item.deliveryNombre}</span>
                         {item.entregadoPor && ` · por ${item.entregadoPor}`}
-                        {" · "}
-                        {new Date(item.entregadoAt).toLocaleString("es-DO", { dateStyle: "short", timeStyle: "short" })}
+                        {/* Sin fecha guardada no se muestra (antes salía 31/12/69). */}
+                        {item.entregadoAt ? ` · ${new Date(item.entregadoAt).toLocaleString("es-DO", { dateStyle: "short", timeStyle: "short" })}` : ""}
                       </p>
                     </div>
                     <span className="text-sm font-bold text-amber-700 shrink-0">{moneda}{parseFloat(item.monto).toLocaleString()}</span>

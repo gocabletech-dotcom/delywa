@@ -248,7 +248,7 @@ export default function SucursalesPage() {
           </div>}
 
           {!soloUsuarios && <div className="grid lg:grid-cols-[1fr_1.3fr] gap-6">
-            <Card>
+            <Card data-testid="form-sucursal">
               <CardHeader><CardTitle className="text-base">{editingId ? "Editar sucursal" : "Agregar sucursal"}</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {[
@@ -346,7 +346,7 @@ export default function SucursalesPage() {
                 const activa = data?.sucursalActivaId === sucursal.id;
                 const habilitada = sucursal.estado === "activo";
                 return (
-                  <Card key={sucursal.id} className={activa ? "border-primary ring-1 ring-primary/20" : ""}>
+                  <Card key={sucursal.id} className={activa ? "border-primary ring-1 ring-primary/20" : ""} data-testid={`sucursal-${sucursal.id}`}>
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -433,7 +433,7 @@ export default function SucursalesPage() {
               </CardContent>
             </Card>
           )}
-          {soloUsuarios && <Card id="usuarios">
+          {soloUsuarios && <Card id="usuarios" data-testid="form-usuario">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2"><UserPlus size={18} /> Agregar un usuario</CardTitle>
               <p className="text-sm text-gray-500">Crea colmaderos o despachadores y elige las sucursales que pueden manejar.</p>

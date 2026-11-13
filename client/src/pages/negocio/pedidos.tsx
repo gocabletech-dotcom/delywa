@@ -42,6 +42,7 @@ import {
   Eye,
   Navigation,
   ChevronDown,
+  MoreHorizontal,
   RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -1197,11 +1198,16 @@ export default function PedidosPage() {
                             variant="outline"
                             className={`h-auto min-h-[44px] rounded-xl text-sm font-semibold border-slate-300 text-slate-800 shrink-0 ${principal ? "px-2.5" : "flex-1"}`}
                             aria-expanded={abierto}
+                            aria-label={principal ? (abierto ? "Ocultar opciones" : "Más opciones") : undefined}
+                            title={principal ? "Más opciones" : undefined}
                             onClick={() => setMasAbierto((ids) => (ids.includes(pedido.id) ? ids.filter((i) => i !== pedido.id) : [...ids, pedido.id]))}
                             data-testid={`mas-opciones-${pedido.id}`}
                           >
-                            {abierto ? "Ocultar" : principal ? "Más" : "Opciones"}
-                            <ChevronDown size={16} className={`ml-1 transition-transform ${abierto ? "rotate-180" : ""}`} />
+                            {/* En tarjetas angostas (columnas del tablero) solo el ícono, para que el botón principal no se corte. */}
+                            {principal
+                              ? <><span className="md:hidden 2xl:inline">{abierto ? "Ocultar" : "Más"}</span><MoreHorizontal size={18} className="hidden md:block 2xl:hidden" /></>
+                              : abierto ? "Ocultar" : "Opciones"}
+                            <ChevronDown size={16} className={`transition-transform ${principal ? "ml-1 md:hidden 2xl:block" : "ml-1"} ${abierto ? "rotate-180" : ""}`} />
                           </Button>
                         </div>
                         <div className={abierto ? "flex flex-col gap-2 rounded-xl bg-slate-50 border border-slate-200 p-2.5" : "hidden"}>
