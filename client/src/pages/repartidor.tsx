@@ -139,6 +139,21 @@ export default function RepartidorPage() {
   const [loginPaisId, setLoginPaisId] = useState<number | null>(null);
   const [loginForm, setLoginForm] = useState({ codigoAcceso: "" });
   const [loginError, setLoginError] = useState("");
+  // Este teléfono recuerda quién entró la última vez (nombre y número, nunca el código).
+  const claveRecordado = `delywa-repartidor-${slug}`;
+  const [recordado, setRecordado] = useState<{ nombre: string; numero: string } | null>(() => {
+    try {
+      const r = JSON.parse(localStorage.getItem(`delywa-repartidor-${slug}`) || "null");
+      return r && typeof r.nombre === "string" && typeof r.numero === "string" ? r : null;
+    } catch { return null; }
+  });
+  const ultimoNumero = useRef<string | null>(null);
+  const olvidarRepartidor = () => {
+    try { localStorage.removeItem(claveRecordado); } catch { /* sin almacenamiento */ }
+    setRecordado(null);
+    setLoginForm({ codigoAcceso: "" });
+    setLoginError("");
+  };
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
   const urlParamsRef = useRef<{ tel: string | null; c: string | null }>({ tel: null, c: null });
   const prefixFromUrl = useRef(false);
@@ -152,7 +167,7 @@ export default function RepartidorPage() {
   const [retornoMotivoPersonalizado, setRetornoMotivoPersonalizado] = useState("");
   const [retornoMostrarOtro, setRetornoMostrarOtro] = useState(false);
   const [scheduleEndedBanner, setScheduleEndedBanner] = useState(false);
-  const [activeTab, setActiveTab] = useState<"pedidos" | "rutas">("pedidos");
+  const [activeTab, setActiveTab] = useState<"pedidos" | "rutas" | "cuadre" | "historial">("pedidos");
 
   const { data: session, isLoading: sessionLoading } = useQuery({
     queryKey: ["portal-repartidor-me"],
@@ -239,6 +254,17 @@ export default function RepartidorPage() {
     }
   }, [session, sessionLoading]);
 
+  useEffect(() => {
+    const d = session?.delivery;
+    const numero = ultimoNumero.current ?? recordado?.numero;
+    if (!d?.nombre || !numero) return;
+    const dato = { nombre: String(d.nombre), numero };
+    try { localStorage.setItem(claveRecordado, JSON.stringify(dato)); } catch { /* sin almacenamiento */ }
+    setRecordado(dato);
+    // El enlace personal trae el número y el código: se quitan de la barra de direcciones al entrar.
+    if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
+  }, [session?.delivery?.id]);
+
   // GPS tracking: send position to server every time it changes (while active)
   useEffect(() => {
     const deliveryId = session?.delivery?.id;
@@ -284,6 +310,7 @@ export default function RepartidorPage() {
       const loginPrefix = selectedLoginPais ? getDisplayPrefix(selectedLoginPais) : "+1";
       const fullNumber = overrides?.overrideNumero ?? normalizePhone(loginPrefix, loginLocalDigits);
       const codigo = overrides?.overrideCodigo ?? loginForm.codigoAcceso;
+      ultimoNumero.current = fullNumber;
       const res = await fetch("/api/portal-repartidor/login", {
         method: "POST",
         credentials: "include",
@@ -305,6 +332,7 @@ export default function RepartidorPage() {
       queryClient.invalidateQueries({ queryKey: ["portal-repartidor-pedidos"] });
       setIsLoggedIn(true);
       setLoginError("");
+      setLoginForm({ codigoAcceso: "" });
     },
     onError: (error: Error) => {
       setLoginError(error.message);
@@ -476,8 +504,13 @@ export default function RepartidorPage() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
+    if (recordado) {
+      if (loginForm.codigoAcceso.trim().length < 6) { setLoginError("Escribe los 6 caracteres de tu código"); return; }
+      loginMutation.mutate({ overrideNumero: recordado.numero });
+      return;
+    }
     if (!loginLocalDigits.trim() || !loginForm.codigoAcceso.trim()) {
-      setLoginError("Completa todos los campos");
+      setLoginError("Escribe tu número y tu código");
       return;
     }
     loginMutation.mutate(undefined);
@@ -532,35 +565,50 @@ export default function RepartidorPage() {
   // ─── Login Screen ─────────────────────────────────────────────────────────
 
   if (!isLoggedIn) {
+    const entrando = loginMutation.isPending;
+    const escribirCodigo = (valor: string) => {
+      const codigo = valor.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+      setLoginForm({ ...loginForm, codigoAcceso: codigo });
+      setLoginError("");
+      // Entra solo al escribir el último carácter.
+      if (codigo.length === 6 && !entrando) {
+        if (recordado) loginMutation.mutate({ overrideNumero: recordado.numero, overrideCodigo: codigo });
+        else if (loginLocalDigits.length >= 7) loginMutation.mutate({ overrideCodigo: codigo });
+      }
+    };
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4" style={businessTheme(colmadoPublico?.colorPrimario)}>
-        <div className="w-full max-w-sm">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mx-auto mb-4">
-              <Truck size={32} className="text-white" />
+      <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col items-center px-5 pt-14 pb-8" style={businessTheme(colmadoPublico?.colorPrimario)}>
+        <div className="w-full max-w-sm flex flex-col gap-6">
+          <div className="text-center flex flex-col items-center gap-3">
+            {colmadoPublico?.logo ? (
+              <img src={colmadoPublico.logo} alt="" className="w-[72px] h-[72px] rounded-3xl object-contain bg-white border border-slate-200" />
+            ) : (
+              <div className="w-[72px] h-[72px] rounded-3xl bg-primary text-primary-foreground flex items-center justify-center">
+                <Truck size={34} />
+              </div>
+            )}
+            <div>
+              <h1 className="text-[26px] font-bold leading-tight capitalize" data-testid="titulo-login-repartidor">{recordado ? `Hola, ${recordado.nombre.split(" ")[0]}` : "Portal del repartidor"}</h1>
+              <p className="text-slate-600 text-[15px] mt-1">{colmadoPublico?.nombre ? `Repartidor de ${colmadoPublico.nombre}` : "Entra para ver tus entregas"}</p>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">Portal Repartidor</h1>
-            <p className="text-gray-500 text-sm mt-1">Ingresa tus datos para continuar</p>
           </div>
 
           {scheduleEndedBanner && (
-            <div
-              className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-800 text-center"
-              data-testid="banner-schedule-ended"
-            >
-              Tu turno ha finalizado. El negocio ya cerró sus operaciones.
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-900 text-center" data-testid="banner-schedule-ended">
+              Tu turno terminó. El negocio ya cerró por hoy.
             </div>
           )}
 
-          <div className="bg-white rounded-2xl shadow-sm p-6">
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="whatsapp">Número de WhatsApp</Label>
+          <form onSubmit={handleLogin} className="bg-white rounded-3xl border border-slate-200 p-5 flex flex-col gap-4">
+            {!recordado && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="whatsapp" className="text-[15px] font-semibold">Tu número de WhatsApp</Label>
                 <div className="flex">
                   <select
                     value={loginPaisId ?? ""}
                     onChange={(e) => setLoginPaisId(Number(e.target.value))}
-                    className="border border-r-0 rounded-l-md px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0"
+                    className="h-12 border border-slate-300 border-r-0 rounded-l-xl px-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ring"
+                    aria-label="País"
                     data-testid="select-prefix-login"
                   >
                     {(paises || []).map((p) => (
@@ -572,55 +620,57 @@ export default function RepartidorPage() {
                   <Input
                     id="whatsapp"
                     type="tel"
-                    placeholder={getPhoneExample(
-                      paises?.find((p) => p.id === loginPaisId)?.codigo ?? "DO"
-                    )}
+                    placeholder={getPhoneExample(paises?.find((p) => p.id === loginPaisId)?.codigo ?? "DO")}
                     value={loginLocalDigits}
                     onChange={(e) => setLoginLocalDigits(e.target.value.replace(/\D/g, ""))}
-                    className="rounded-l-none"
+                    className="h-12 rounded-l-none rounded-r-xl text-base"
                     inputMode="numeric"
+                    autoComplete="tel-national"
                     data-testid="input-whatsapp-login"
                   />
                 </div>
-                <p className="text-xs text-gray-400">Selecciona tu país + dígitos sin prefijo</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="codigo">Código de acceso</Label>
-                <Input
-                  id="codigo"
-                  type="text"
-                  placeholder="Ej: AB3X7K"
-                  value={loginForm.codigoAcceso}
-                  onChange={(e) => setLoginForm({ ...loginForm, codigoAcceso: e.target.value.toUpperCase() })}
-                  className="font-mono tracking-widest uppercase"
-                  maxLength={6}
-                  data-testid="input-codigo-login"
-                />
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="codigo" className="text-[15px] font-semibold">Tu código de 6 letras o números</Label>
+              <Input
+                id="codigo"
+                type="text"
+                placeholder="• • • • • •"
+                value={loginForm.codigoAcceso}
+                onChange={(e) => escribirCodigo(e.target.value)}
+                className="h-16 rounded-2xl border-2 border-slate-300 focus-visible:border-primary text-center font-mono text-3xl font-bold tracking-[0.35em] uppercase placeholder:tracking-[0.2em] placeholder:text-slate-300"
+                maxLength={6}
+                autoCapitalize="characters"
+                autoComplete="one-time-code"
+                autoCorrect="off"
+                spellCheck={false}
+                autoFocus={!!recordado}
+                data-testid="input-codigo-login"
+              />
+              <p className="text-[13px] text-slate-500">Es el código que te dio el colmado. Entra solo al escribir el último.</p>
+            </div>
+
+            {loginError && (
+              <div className="flex items-center gap-2 text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 text-sm" role="alert" data-testid="login-error">
+                <AlertCircle size={16} className="shrink-0" />
+                {loginError}
               </div>
+            )}
 
-              {loginError && (
-                <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-lg p-3 text-sm" data-testid="login-error">
-                  <AlertCircle size={16} />
-                  {loginError}
-                </div>
-              )}
+            <Button type="submit" className="w-full h-14 rounded-2xl text-[17px] font-bold" disabled={entrando} data-testid="button-login-repartidor">
+              {entrando ? <><Loader2 size={18} className="mr-2 animate-spin" /> Entrando…</> : "Entrar"}
+            </Button>
+          </form>
 
-              <Button
-                type="submit"
-                className="w-full bg-primary"
-                disabled={loginMutation.isPending}
-                data-testid="button-login-repartidor"
-              >
-                {loginMutation.isPending ? (
-                  <><Loader2 size={16} className="mr-2 animate-spin" /> Ingresando...</>
-                ) : (
-                  <>Ingresar <ChevronRight size={16} className="ml-1" /></>
-                )}
-              </Button>
-            </form>
-            <p className="text-center text-xs text-gray-400 mt-4">
-              Tu código de acceso lo proporciona el dueño del negocio.
-            </p>
+          <div className="flex flex-col items-center gap-2 text-center">
+            {recordado && (
+              <button type="button" className="min-h-[44px] text-[15px] font-semibold text-primary" onClick={olvidarRepartidor} data-testid="button-otro-numero">
+                No soy <span className="capitalize">{recordado.nombre.split(" ")[0]}</span> · entrar con otro número
+              </button>
+            )}
+            <p className="text-[13px] text-slate-500 leading-relaxed">¿Olvidaste el código? Pídele al colmado que te mande tu enlace por WhatsApp: al abrirlo entras sin escribir nada.</p>
           </div>
         </div>
       </div>
@@ -635,7 +685,7 @@ export default function RepartidorPage() {
     : null;
 
   return (
-    <div className="min-h-screen bg-gray-50" style={businessTheme(session?.colmado?.colorPrimario)}>
+    <div className="min-h-screen bg-slate-50 text-slate-900" style={businessTheme(session?.colmado?.colorPrimario)}>
       {/* Out-of-hours grace-window banner */}
       {fueraDeHorario && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2 text-sm text-amber-800" data-testid="banner-fuera-de-horario">
@@ -647,95 +697,68 @@ export default function RepartidorPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          {colmado?.logo ? (
-            <img src={colmado.logo} alt="" className="w-9 h-9 rounded-lg object-contain border border-gray-200" />
-          ) : (
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-              {colmado?.nombre?.charAt(0).toUpperCase() || "N"}
+      {/* Encabezado: quién soy, si estoy disponible y lo que llevo */}
+      <header className="bg-primary text-primary-foreground px-4 pt-4 pb-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {colmado?.logo ? (
+              <img src={colmado.logo} alt="" className="w-10 h-10 rounded-xl object-contain bg-white shrink-0" />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center font-bold shrink-0">
+                {colmado?.nombre?.charAt(0).toUpperCase() || "N"}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="font-bold text-lg capitalize leading-tight truncate">{delivery?.nombre}</p>
+              <p className="text-xs opacity-80 truncate">{colmado?.nombre || "Repartidor"}</p>
             </div>
-          )}
-          <div>
-            <p className="text-xs text-gray-500">Repartidor</p>
-            <p className="font-semibold text-sm capitalize leading-tight">{delivery?.nombre}</p>
           </div>
+          <button
+            onClick={() => logoutMutation.mutate()}
+            className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/10 shrink-0"
+            aria-label="Salir"
+            data-testid="button-logout-repartidor"
+          >
+            <LogOut size={19} />
+          </button>
         </div>
         <button
-          onClick={() => logoutMutation.mutate()}
-          className="text-gray-400 hover:text-red-500 p-2"
-          data-testid="button-logout-repartidor"
+          type="button"
+          aria-pressed={isActivo}
+          onClick={() => (isActivo ? desactivarMutation.mutate() : activarMutation.mutate())}
+          disabled={activarMutation.isPending || desactivarMutation.isPending}
+          className={`mt-3 w-full min-h-[52px] rounded-2xl px-4 flex items-center justify-between gap-3 text-left ${isActivo ? "bg-white text-slate-900" : "bg-white/15 text-white border border-white/40"}`}
+          data-testid="button-toggle-disponibilidad"
         >
-          <LogOut size={20} />
-        </button>
-      </div>
-
-      {/* Availability Toggle */}
-      <div className="p-4">
-        <div className={`rounded-2xl p-5 text-center transition-colors ${isActivo ? 'bg-green-500' : 'bg-gray-200'}`}>
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <div className={`w-3 h-3 rounded-full ${isActivo ? 'bg-white animate-pulse' : 'bg-gray-400'}`} />
-            <span className={`text-lg font-bold ${isActivo ? 'text-white' : 'text-gray-500'}`}>
-              {isActivo ? "DISPONIBLE" : "NO DISPONIBLE"}
+          <span className="flex items-center gap-2.5 min-w-0">
+            {activarMutation.isPending || desactivarMutation.isPending
+              ? <Loader2 size={16} className="animate-spin shrink-0" />
+              : <span className={`w-3 h-3 rounded-full shrink-0 ${isActivo ? "bg-primary" : "bg-white/60"}`} />}
+            <span className="min-w-0">
+              <span className="block font-bold text-[15px] leading-tight">{isActivo ? "Disponible" : "No disponible"}</span>
+              <span className="block text-xs opacity-75 truncate">
+                {isActivo
+                  ? (delivery?.ultimaActivacion ? `Desde las ${new Date(delivery.ultimaActivacion).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })}` : "Recibes pedidos")
+                  : "No te asignan pedidos"}
+              </span>
             </span>
+          </span>
+          <span className={`text-sm font-semibold shrink-0 ${isActivo ? "text-primary" : ""}`}>{isActivo ? "Tomar descanso" : "Estoy disponible"}</span>
+        </button>
+        <div className="mt-3 grid grid-cols-2 gap-2.5">
+          <div className="rounded-2xl bg-white/10 px-3.5 py-2.5">
+            <p className="text-xs opacity-80">Por entregar</p>
+            <p className="text-xl font-bold leading-tight" data-testid="resumen-por-entregar">{pedidosActivos.length}</p>
           </div>
-          {isActivo && delivery?.ultimaActivacion && (
-            <p className="text-green-100 text-xs mb-3">
-              Activado: {new Date(delivery.ultimaActivacion).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })}
-            </p>
-          )}
-          <Button
-            className={`w-full font-bold text-base py-5 rounded-xl ${
-              isActivo
-                ? 'bg-white text-green-600 hover:bg-green-50'
-                : 'bg-primary text-white hover:bg-primary/90'
-            }`}
-            onClick={() => isActivo ? desactivarMutation.mutate() : activarMutation.mutate()}
-            disabled={activarMutation.isPending || desactivarMutation.isPending}
-            data-testid="button-toggle-disponibilidad"
-          >
-            {activarMutation.isPending || desactivarMutation.isPending ? (
-              <Loader2 size={20} className="animate-spin mr-2" />
-            ) : isActivo ? (
-              <XCircle size={20} className="mr-2" />
-            ) : (
-              <CheckCircle2 size={20} className="mr-2" />
-            )}
-            {isActivo ? "Tomar descanso" : "Estoy disponible"}
-          </Button>
+          <div className="rounded-2xl bg-white/10 px-3.5 py-2.5">
+            <p className="text-xs opacity-80">Por cuadrar</p>
+            <p className="text-xl font-bold leading-tight" data-testid="resumen-por-cuadrar">{moneda}{Math.round(cuadreTotales.neto).toLocaleString("es-DO")}</p>
+          </div>
         </div>
-      </div>
+      </header>
 
       {/* ── Tabs: Pedidos Asignados / Ruta Optimizada ── */}
-      <div className="px-4 pb-2">
-        {/* Tab bar */}
-        <div className="flex rounded-xl bg-gray-100 p-1 mb-4">
-          <button
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-semibold rounded-lg transition-all ${activeTab === "pedidos" ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
-            onClick={() => setActiveTab("pedidos")}
-            data-testid="tab-pedidos"
-          >
-            <Package size={14} />
-            Pedidos
-            {pedidosActivos.length > 0 && (
-              <span className="bg-orange-500 text-white text-xs rounded-full px-1.5 py-0.5 font-bold leading-none">
-                {pedidosActivos.length}
-              </span>
-            )}
-          </button>
-          {session?.delivery && (
-            <button
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-semibold rounded-lg transition-all ${activeTab === "rutas" ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
-              onClick={() => setActiveTab("rutas")}
-              data-testid="tab-rutas"
-            >
-              <RouteIcon size={14} />
-              Ruta optimizada
-            </button>
-          )}
-        </div>
-
+      <div className={`px-4 pt-4 pb-2 ${activeTab === "pedidos" || activeTab === "rutas" ? "" : "hidden"}`}>
         {/* Live update indicator */}
         {secondsSinceUpdate !== null && (
           <div className="flex justify-end mb-3">
@@ -1025,9 +1048,12 @@ export default function RepartidorPage() {
       </div>
 
       {/* Order History */}
-      {pedidosHistorial.length > 0 && (
-        <div className="px-4 mt-2">
-          <h2 className="font-semibold text-gray-500 text-sm mb-2">Historial reciente</h2>
+      {activeTab === "historial" && pedidosHistorial.length === 0 && (
+        <p className="mx-4 mt-4 rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">Todavía no tienes entregas terminadas.</p>
+      )}
+      {activeTab === "historial" && pedidosHistorial.length > 0 && (
+        <div className="px-4 mt-4">
+          <h2 className="font-bold text-slate-900 mb-2">Entregas terminadas</h2>
           <div className="space-y-2">
             {pedidosHistorial.map((pedido) => (
               <div
@@ -1054,7 +1080,7 @@ export default function RepartidorPage() {
       )}
 
       {/* Cuadres History */}
-      <div className={`px-4 mt-4 ${pedidosSinCuadre.length > 0 ? "pb-28" : "pb-8"}`}>
+      <div className={`px-4 mt-4 ${activeTab === "cuadre" ? "" : "hidden"}`}>
         <div className="flex items-center gap-2 mb-3">
           <ClipboardList size={16} className="text-gray-500" />
           <h2 className="font-semibold text-gray-700">Mis cuadres</h2>
@@ -1121,9 +1147,9 @@ export default function RepartidorPage() {
 
       {/* Cuadrar sticky banner */}
       {pedidosSinCuadre.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg px-4 py-3 z-20" data-testid="cuadre-banner">
+        <div className={`fixed bottom-[4.4rem] left-0 right-0 px-4 py-2 z-20 ${activeTab === "pedidos" || activeTab === "cuadre" ? "" : "hidden"}`} data-testid="cuadre-banner">
           <Button
-            className="w-full bg-primary font-bold py-5 text-base"
+            className="w-full bg-primary font-bold min-h-[52px] text-base rounded-2xl shadow-lg"
             onClick={() => { setShowCuadreModal(true); setSelectedPedidoIds(new Set(pedidosSinCuadre.map(p => p.id))); }}
             data-testid="button-cuadrar"
           >
@@ -1132,6 +1158,34 @@ export default function RepartidorPage() {
           </Button>
         </div>
       )}
+
+      {/* Espacio para el menú de abajo y el botón de cuadrar */}
+      <div className={pedidosSinCuadre.length > 0 ? "h-40" : "h-24"} />
+
+      {/* ── Menú de abajo ── */}
+      <nav className="fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-slate-200 flex items-stretch gap-1 px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]" aria-label="Secciones">
+        {([
+          ["pedidos", "Entregas", Package, pedidosActivos.length],
+          ["rutas", "Ruta", RouteIcon, 0],
+          ["cuadre", "Cuadre", ClipboardList, pedidosSinCuadre.length],
+          ["historial", "Historial", Clock, 0],
+        ] as const).map(([clave, texto, Icono, cuenta]) => (
+          <button
+            key={clave}
+            type="button"
+            aria-current={activeTab === clave ? "page" : undefined}
+            onClick={() => { setActiveTab(clave); window.scrollTo({ top: 0 }); }}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[52px] rounded-xl ${activeTab === clave ? "bg-primary/10 text-primary font-bold" : "text-slate-600 font-medium"}`}
+            data-testid={`tab-${clave}`}
+          >
+            <span className="relative">
+              <Icono size={21} />
+              {cuenta > 0 && <span className="absolute -top-1.5 -right-2.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full min-w-[16px] h-4 px-0.5 flex items-center justify-center leading-none ring-2 ring-white">{cuenta > 9 ? "9+" : cuenta}</span>}
+            </span>
+            <span className="text-[11px] leading-none">{texto}</span>
+          </button>
+        ))}
+      </nav>
 
       {/* Cuadre Modal */}
       {showCuadreModal && (

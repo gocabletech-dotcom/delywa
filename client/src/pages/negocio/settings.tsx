@@ -41,6 +41,7 @@ import {
   Smartphone,
   ClipboardList,
   Download,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -137,6 +138,8 @@ type MetodosPago = {
   fechaModificacion: string;
 };
 
+type Seccion = "datos" | "imagen" | "ubicacion" | "horario" | "delivery" | "pagos" | "chat" | "mensajes" | "bot" | "canales";
+
 export default function SettingsPage() {
   const { user, isLoading: authLoading, isAuthenticated, logout } = useAuth();
   const { toast } = useToast();
@@ -172,6 +175,9 @@ export default function SettingsPage() {
     botPromptCustom: "",
     paisId: "",
   });
+
+  const [seccion, setSeccion] = useState<Seccion>("datos");
+  const [buscarAjuste, setBuscarAjuste] = useState("");
 
   const { data: roleData } = useQuery({
     queryKey: ["user-role"],
@@ -409,12 +415,76 @@ export default function SettingsPage() {
   const esEstadosUnidos = paisSeleccionado?.codigo === "US";
   
 
+  // ── Secciones: se ve una a la vez; todas siguen montadas para no perder lo escrito ──
+  const tieneUbicacion = Boolean(formData.latitud && formData.longitud);
+  const GRUPOS: Array<{ nombre: string; items: Array<{ clave: Seccion; titulo: string; palabras: string; resumen?: string; falta?: boolean; oculto?: boolean }> }> = [
+    { nombre: "Mi negocio", items: [
+      { clave: "datos", titulo: "Datos del negocio", palabras: "nombre whatsapp telefono pais descripcion" },
+      { clave: "imagen", titulo: "Logo y facturación", palabras: "logo color rnc impuesto itbis factura imagen" },
+      { clave: "ubicacion", titulo: "Ubicación", palabras: "direccion mapa gps latitud", resumen: tieneUbicacion ? "Completa" : "Falta el mapa", falta: !tieneUbicacion },
+    ] },
+    { nombre: "Ventas y entregas", items: [
+      { clave: "horario", titulo: "Horario", palabras: "abierto cerrado hora dias apertura cierre", resumen: `${formData.horaApertura} a ${formData.horaCierre}` },
+      { clave: "delivery", titulo: "Delivery", palabras: "costo envio radio minimo tiempo", resumen: Number(formData.costoDelivery) > 0 ? `Costo ${Number(formData.costoDelivery)}` : "Gratis" },
+      { clave: "pagos", titulo: "Formas de pago", palabras: "efectivo tarjeta transferencia banco cuenta" },
+    ] },
+    { nombre: "Chat y bot", items: [
+      { clave: "chat", titulo: "Chat de mi página", palabras: "link qr enlace pedidos web" },
+      { clave: "mensajes", titulo: "Mensajes al cliente", palabras: "bienvenida confirmacion compartir texto" },
+      { clave: "bot", titulo: "Personalizar el bot", palabras: "prompt instrucciones respuestas" },
+      { clave: "canales", titulo: "Canales activos", palabras: "whatsapp meta evo tecnologias", oculto: !colmado?.tecnologiasHabilitadas },
+    ] },
+  ];
+  const SIN_GUARDAR: Seccion[] = ["chat", "canales"];
+  const ver = (clave: Seccion) => (seccion === clave ? "" : "hidden");
+
   return (
     <NegocioLayout title="Configuración" activeNav="settings" headerRight={<Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 text-slate-600 hover:text-slate-900 hover:bg-slate-100" onClick={() => queryClient.invalidateQueries()} title="Refrescar" data-testid="button-refresh"><RefreshCw size={18} className="sm:hidden" /><RefreshCw size={20} className="hidden sm:block" /></Button>}>
 
 
       <main className="flex-1 lg:ml-0">
-        <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto">
+        <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto lg:grid lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-6 lg:items-start">
+          {/* ── Índice de la configuración ── */}
+          <nav aria-label="Secciones de configuración" className="mb-4 lg:mb-0 lg:sticky lg:top-20">
+            <label className="lg:hidden block text-xs font-semibold text-slate-600 mb-1" htmlFor="seccion-config">Sección</label>
+            <select id="seccion-config" value={seccion} onChange={(e) => setSeccion(e.target.value as Seccion)} className="lg:hidden w-full h-11 rounded-xl border border-slate-300 bg-white px-3 text-[15px] font-medium" data-testid="select-seccion-config">
+              {GRUPOS.map((g) => (
+                <optgroup key={g.nombre} label={g.nombre}>
+                  {g.items.filter((i) => !i.oculto).map((i) => <option key={i.clave} value={i.clave}>{i.titulo}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            <div className="hidden lg:block">
+              <div className="relative mb-3">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input value={buscarAjuste} onChange={(e) => setBuscarAjuste(e.target.value)} placeholder="Buscar ajuste" aria-label="Buscar ajuste" className="pl-9 h-10 bg-white" data-testid="input-buscar-ajuste" />
+              </div>
+              {GRUPOS.map((g) => {
+                const q = buscarAjuste.trim().toLowerCase();
+                const items = g.items.filter((i) => !i.oculto && (!q || `${i.titulo} ${i.palabras}`.toLowerCase().includes(q)));
+                if (!items.length) return null;
+                return (
+                  <div key={g.nombre} className="mb-3">
+                    <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">{g.nombre}</p>
+                    {items.map((i) => (
+                      <button
+                        key={i.clave}
+                        type="button"
+                        aria-current={seccion === i.clave ? "page" : undefined}
+                        onClick={() => { setSeccion(i.clave); window.scrollTo({ top: 0 }); }}
+                        className={`w-full flex items-center justify-between gap-2 px-3 min-h-[44px] rounded-xl text-left text-[15px] border ${seccion === i.clave ? "bg-white border-primary text-primary font-semibold" : "border-transparent text-slate-800 font-medium hover:bg-white"}`}
+                        data-testid={`seccion-${i.clave}`}
+                      >
+                        <span className="truncate">{i.titulo}</span>
+                        {i.resumen && <span className={`text-xs shrink-0 ${i.falta ? "text-amber-700 font-semibold" : "text-slate-500 font-normal"}`}>{i.resumen}</span>}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </nav>
+          <div className="min-w-0 pb-24 lg:pb-16">
           {contextoSucursal && contextoSucursal.sucursales.length > 1 && (
             <Card className="mb-6 border-primary/20 bg-primary/5">
               <CardContent className="p-4 flex items-start gap-3">
@@ -429,6 +499,7 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           )}
+          <div className={ver("canales")}>
           {/* Tecnologías habilitadas - solo lectura */}
           {colmado?.tecnologiasHabilitadas && (
             <Card className="mb-6" data-testid="card-tecnologias">
@@ -494,8 +565,10 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           )}
+          </div>
 
           {/* Chat Web - Link para copiar */}
+          <div className={ver("chat")}>
           <Card className="mb-6 border-green-200 bg-gradient-to-r from-green-50 to-white">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -609,8 +682,10 @@ export default function SettingsPage() {
               </Link>
             </CardContent>
           </Card>
+          </div>
 
           <form onSubmit={handleSubmit}>
+            <div className={ver("datos")}>
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -675,7 +750,9 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+            </div>
 
+            <div className={ver("imagen")}>
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -826,7 +903,9 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+            </div>
 
+            <div className={ver("ubicacion")}>
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -923,7 +1002,9 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+            </div>
 
+            <div className={ver("horario")}>
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1055,7 +1136,9 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+            </div>
 
+            <div className={ver("delivery")}>
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1117,7 +1200,9 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+            </div>
 
+            <div className={ver("pagos")}>
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1276,7 +1361,9 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+            </div>
 
+            <div className={ver("mensajes")}>
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1352,7 +1439,9 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+            </div>
 
+            <div className={ver("bot")}>
             <Card className="mb-16">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1383,11 +1472,14 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+            </div>
           </form>
+          </div>
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t p-2 sm:p-3 z-40 shadow-lg">
-          <div className="max-w-4xl mx-auto flex justify-center sm:justify-end">
+        <div className={`fixed bottom-[3.6rem] lg:bottom-0 left-0 right-0 lg:left-60 bg-white border-t border-slate-200 p-2 sm:p-3 z-30 ${SIN_GUARDAR.includes(seccion) ? "hidden" : ""}`}>
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 px-1">
+            <span className="text-xs sm:text-sm text-slate-500 truncate">{GRUPOS.flatMap((g) => g.items).find((i) => i.clave === seccion)?.titulo}</span>
             <Button
               type="button"
               size="sm"
@@ -1398,14 +1490,14 @@ export default function SettingsPage() {
                 if (form) form.requestSubmit();
               }}
               data-testid="button-save-settings"
-              className="text-sm px-4 py-2"
+              className="h-11 px-5 rounded-xl text-sm font-semibold"
             >
               {updateMutation.isPending ? (
                 <Loader2 className="w-4 h-4 mr-1 animate-spin" />
               ) : (
                 <Save className="w-4 h-4 mr-1" />
               )}
-              Guardar
+              Guardar cambios
             </Button>
           </div>
         </div>
