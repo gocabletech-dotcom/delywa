@@ -1086,5 +1086,47 @@ export const zipAlertaEventos = sqliteTable("zip_alerta_eventos", {
 
 export type ZipAlertaEvento = typeof zipAlertaEventos.$inferSelect;
 
+// ============ FACTURACIÓN ELECTRÓNICA: CERTIFICACIÓN DEL NEGOCIO ANTE LA DGII ============
+
+/** Un paso de la guía de certificación: su estado, cuándo se marcó y una nota. */
+export type PasoCertificacion = { estado: "pendiente" | "en_curso" | "listo"; fecha?: string | null; nota?: string | null };
+export type SecuenciaENcf = { tipo: string; desde: string; hasta: string; vence?: string | null };
+
+/**
+ * Avance de cada negocio (el principal; las sucursales usan el mismo RNC) para quedar autorizado
+ * como emisor electrónico. Los datos los llena el negocio; el certificado digital se guarda cifrado.
+ */
+export const feCertificacion = sqliteTable("fe_certificacion", {
+  colmadoId: integer("colmado_id").primaryKey().references(() => colmados.id, { onDelete: "cascade" }),
+  // Datos fiscales
+  rnc: text("rnc"),
+  razonSocial: text("razon_social"),
+  nombreComercial: text("nombre_comercial"),
+  direccionFiscal: text("direccion_fiscal"),
+  tipoContribuyente: text("tipo_contribuyente"), // pequeno, micro, no_clasificado, mediano, grande_local, grande_nacional, no_se
+  correoFiscal: text("correo_fiscal"),
+  // Persona que firma (dueña del certificado digital)
+  repNombre: text("rep_nombre"),
+  repCedula: text("rep_cedula"),
+  repCargo: text("rep_cargo"),
+  repCorreo: text("rep_correo"),
+  // Certificado digital
+  certEntidad: text("cert_entidad"), // camara_sd, avansi, ogtic, otra
+  certEstado: text("cert_estado").notNull().default("no_tiene"), // no_tiene, en_tramite, listo
+  certTitular: text("cert_titular"),
+  certVence: text("cert_vence"), // AAAA-MM-DD
+  certArchivo: text("cert_archivo"), // .p12 cifrado (v1:iv:datos)
+  certClave: text("cert_clave"), // contraseña del .p12, cifrada
+  certSubidoAt: integer("cert_subido_at", { mode: "timestamp_ms" }),
+  // Pasos ante la DGII (clave del paso → estado)
+  pasos: text("pasos", { mode: "json" }).$type<Record<string, PasoCertificacion>>().notNull().default(sql`'{}'`),
+  secuencias: text("secuencias", { mode: "json" }).$type<SecuenciaENcf[]>().notNull().default(sql`'[]'`),
+  autorizadoAt: integer("autorizado_at", { mode: "timestamp_ms" }),
+  actualizadoPor: text("actualizado_por"),
+  creadoAt: integer("creado_at", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+  actualizadoAt: integer("actualizado_at", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+});
+export type FeCertificacion = typeof feCertificacion.$inferSelect;
+
 export * from "./models/chat";
 export * from "./models/auth";

@@ -7,8 +7,7 @@ import {
   MessageCircle, Truck, Package, DollarSign, TrendingUp,
   Menu, X, LogOut, Settings, Users, BookOpen, UtensilsCrossed,
    Smartphone, ClipboardList, MoreHorizontal, ChevronRight, Building2,
-  Home, BarChart3, UserCog, Contact,
-} from "lucide-react";
+  Home, BarChart3, UserCog, Contact, FileCheck2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import AvisoConfirmarCorreo from "./AvisoConfirmarCorreo";
@@ -18,7 +17,7 @@ import { useTiempoReal } from "@/hooks/use-tiempo-real";
 type ActiveNav =
    | "dashboard" | "conversaciones" | "clientes" | "pedidos" | "cocina"
   | "deliveries" | "cuadres" | "ventas" | "menu" | "whatsapp-config"
-   | "settings" | "manual" | "sucursales" | "usuarios" | "reportes" | "empleados";
+   | "settings" | "manual" | "sucursales" | "usuarios" | "reportes" | "empleados" | "facturacion";
 
 interface NegocioLayoutProps {
   title: string;
@@ -275,6 +274,7 @@ export default function NegocioLayout({
           {esAdmin && navLink("/negocio/ventas", "ventas", DollarSign, "Ventas")}
           {esAdmin && navLink("/negocio/cuadres", "cuadres", ClipboardList, "Cuadres")}
           {esAdmin && navLink("/negocio/reportes", "reportes", BarChart3, "Reportes")}
+          {esAdmin && navLink("/negocio/facturacion-electronica", "facturacion", FileCheck2, "Factura electrónica")}
 
           {grupo("Ajustes")}
           {esAdmin && navLink("/negocio/settings", "settings", Settings, "Configuración")}
