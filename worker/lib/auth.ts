@@ -9,6 +9,25 @@ import { canUserAccessColmado, getUserById } from "../storage/users";
 const ONE_HOUR_MS = 3_600_000;
 
 /**
+ * Un negocio que se registró desde la página nace "pendiente_revision". Hasta que la plataforma lo
+ * aprueba, nadie de ese negocio puede entrar (ni el dueño). Si se rechaza, tampoco.
+ * Devuelve el estado que bloquea, o null si puede entrar.
+ */
+export async function negocioBloqueado(db: ReturnType<typeof getDb>, user: { role: string | null; colmadoId: number | null } | undefined): Promise<"pendiente_revision" | "rechazado" | null> {
+  if (!user || user.role === "platform_admin" || !user.colmadoId) return null;
+  const colmado = await getColmado(db, user.colmadoId);
+  if (!colmado) return null;
+  const principal = colmado.negocioPrincipalId ? (await getColmado(db, colmado.negocioPrincipalId)) ?? colmado : colmado;
+  return principal.estado === "pendiente_revision" || principal.estado === "rechazado" ? principal.estado : null;
+}
+
+export function mensajeNegocioBloqueado(estado: "pendiente_revision" | "rechazado"): string {
+  return estado === "pendiente_revision"
+    ? "Tu negocio todavía está en revisión. Te avisaremos por correo cuando lo aprobemos y podrás entrar."
+    : "No pudimos aprobar tu negocio. Escríbenos a soporte@delywa.com para revisar tu solicitud.";
+}
+
+/**
  * Exige una sesión de usuario válida y deja el usuario en c.var.user.
  * Si la sesión lleva más de 1 hora inactiva y el negocio está cerrado, se
  * cierra y el frontend redirige a /login?reason=inactivity.
@@ -23,6 +42,13 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!user) {
     session.destroy();
     return c.json({ message: "Unauthorized" }, 401);
+  }
+
+  // Negocio en revisión o rechazado: se cierra la sesión (por si quedó abierta de antes).
+  const bloqueo = await negocioBloqueado(db, user);
+  if (bloqueo) {
+    session.destroy();
+    return c.json({ error: mensajeNegocioBloqueado(bloqueo), negocioEstado: bloqueo }, 403);
   }
 
   const sessionColmadoId = session.data.colmadoId;

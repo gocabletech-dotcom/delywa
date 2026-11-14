@@ -106,6 +106,14 @@ describe("código de registro por correo", () => {
     // El correo queda confirmado: el panel no le pide confirmarlo otra vez.
     const [lia] = await t.db.select().from(users).where(eq(users.email, "lia@delywa.test"));
     expect(lia.emailVerificadoAt).toBeTruthy();
+ 
+    // Al aprobarlo, le llega un correo para que entre.
+    const antes = correosEnviados.length;
+    const ok = await admin.request("POST", `/api/admin/solicitudes-negocio/${r2.json.colmadoId}/activar`);
+    expect(ok.json).toMatchObject({ estado: "activo", correoEnviado: true });
+    expect(correosEnviados.length).toBe(antes + 1);
+    expect(correosEnviados.at(-1)!.to).toEqual(["lia@delywa.test"]);
+    expect(correosEnviados.at(-1)!.subject).toContain("aprobado");
   });
 });
 

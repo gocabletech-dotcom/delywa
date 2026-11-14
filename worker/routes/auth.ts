@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { configuracionSistema } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
-import { requireAuth } from "../lib/auth";
+import { mensajeNegocioBloqueado, negocioBloqueado, requireAuth } from "../lib/auth";
 import { claveDebil } from "../lib/claves";
 import { correoListo, SOPORTE } from "../lib/correo";
 import { mandarCodigoCuenta, marcarCorreoConfirmado, revisarCodigoRegistro, cerrarSesionesDe, mandarEnlaceRecuperacion, revisarEquipo, usarEnlaceRecuperacion, usuarioDeId } from "../lib/cuenta";
@@ -63,6 +63,9 @@ authRoutes.post("/api/auth/login", async (c) => {
   }
 
   await borrarEventos(db, claveFallos);
+  // La contraseña es correcta, pero el negocio todavía no está aprobado (o se rechazó): no entra.
+  const bloqueo = await negocioBloqueado(db, user);
+  if (bloqueo) return c.json({ error: mensajeNegocioBloqueado(bloqueo), negocioEstado: bloqueo }, 403);
   const session = c.var.session;
   session.regenerate();
   session.data = {
@@ -165,7 +168,12 @@ authRoutes.get("/api/auth/turnstile", (c) => {
 authRoutes.get("/api/auth/session", async (c) => {
   const userId = c.var.session.data.userId;
   if (userId) {
-    const user = await getUserById(getDb(c.env.DB), userId);
+    const db = getDb(c.env.DB);
+    const user = await getUserById(db, userId);
+    if (user && (await negocioBloqueado(db, user))) {
+      c.var.session.destroy();
+      return c.json({ isAuthenticated: false });
+    }
     if (user) {
       return c.json({
         isAuthenticated: true,

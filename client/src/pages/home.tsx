@@ -62,26 +62,35 @@ export default function Home() {
 
       {/* ── Barra de arriba ── */}
       <header className="sticky top-0 z-50 bg-[#FFFDF8]/95 backdrop-blur border-b border-[#F0E6D6]">
-        <nav aria-label="Principal" className="max-w-[1200px] mx-auto px-4 md:px-6 py-2 flex items-center gap-6">
-          <a href="#inicio" className="shrink-0" aria-label="Delywa, inicio">
-            <img src="/delywa-logo.png" alt="Delywa" className="w-16 h-16 object-contain" />
+        <nav aria-label="Principal" className="max-w-[1200px] mx-auto px-4 md:px-6 h-[76px] md:h-[84px] flex items-center gap-3 md:gap-8">
+          <a href="#inicio" className="shrink-0 flex items-center" aria-label="Delywa, inicio">
+            <img src="/landing/logo.png" alt="Delywa" width={84} height={56} className="h-[52px] md:h-14 w-auto" />
           </a>
-          <div className="hidden lg:flex gap-6 flex-1 font-bold text-base">
-            {ENLACES.map((e) => <a key={e.href} href={e.href} className="text-[#3D4642] hover:text-[#17804F] py-2.5">{e.texto}</a>)}
+          <div className="hidden lg:flex items-center gap-1 flex-1 justify-center">
+            {ENLACES.map((e) => (
+              <a key={e.href} href={e.href} className="px-3.5 py-2 rounded-full font-bold text-[16px] text-[#3D4642] hover:bg-[#FFF0DC] hover:text-[#1F2420] transition-colors">{e.texto}</a>
+            ))}
           </div>
-          <div className="hidden md:flex gap-2.5 ml-auto">
-            <button type="button" onClick={() => setLocation("/login")} className="min-h-[46px] px-5 rounded-full border-2 border-[#E6DCCB] font-extrabold text-base hover:bg-white" data-testid="button-login">Entrar</button>
-            <a href="#crear-negocio" className="inline-flex items-center min-h-[46px] px-[22px] rounded-full bg-[#17804F] hover:bg-[#0F5C39] text-white font-extrabold text-base" data-testid="link-crear-negocio">Crear mi negocio</a>
+          <div className="ml-auto lg:ml-0 flex items-center gap-2">
+            <button type="button" onClick={() => setLocation("/login")} className="min-h-[44px] px-4 md:px-5 rounded-full font-extrabold text-[15px] md:text-base text-[#1F2420] hover:bg-[#FFF0DC] transition-colors" data-testid="button-login">Entrar</button>
+            <a href="#crear-negocio" className="hidden sm:inline-flex items-center min-h-[46px] px-5 md:px-6 rounded-full bg-[#17804F] hover:bg-[#0F5C39] text-white font-extrabold text-[15px] md:text-base shadow-[0_6px_16px_rgba(23,128,79,0.25)]" data-testid="link-crear-negocio">Crear mi negocio</a>
+            <button type="button" className="lg:hidden w-11 h-11 grid place-items-center rounded-full bg-white border-2 border-[#E6DCCB]" onClick={() => setMenuAbierto(!menuAbierto)} aria-label={menuAbierto ? "Cerrar menú" : "Abrir menú"} aria-expanded={menuAbierto} aria-controls="menu-movil" data-testid="button-menu">
+              {menuAbierto ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
-          <button type="button" className="md:hidden ml-auto w-11 h-11 grid place-items-center rounded-full border-2 border-[#E6DCCB]" onClick={() => setMenuAbierto(!menuAbierto)} aria-label={menuAbierto ? "Cerrar menú" : "Abrir menú"} aria-expanded={menuAbierto}>
-            {menuAbierto ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
         </nav>
         {menuAbierto && (
-          <div className="md:hidden border-t border-[#F0E6D6] bg-[#FFFDF8] px-4 py-3 flex flex-col gap-1 font-bold">
-            {ENLACES.map((e) => <a key={e.href} href={e.href} className="py-3 text-[#3D4642]" onClick={() => setMenuAbierto(false)}>{e.texto}</a>)}
-            <button type="button" onClick={() => { setMenuAbierto(false); setLocation("/login"); }} className="mt-2 min-h-[48px] rounded-full border-2 border-[#E6DCCB] font-extrabold">Entrar</button>
-            <a href="#crear-negocio" onClick={() => setMenuAbierto(false)} className="mt-2 min-h-[48px] rounded-full bg-[#17804F] text-white font-extrabold grid place-items-center">Crear mi negocio</a>
+          <div id="menu-movil" className="lg:hidden border-t border-[#F0E6D6] bg-[#FFFDF8] px-4 pt-2 pb-5 shadow-[0_18px_30px_rgba(60,40,10,0.08)]">
+            <ul className="list-none m-0 p-0 grid">
+              {ENLACES.map((e) => (
+                <li key={e.href}>
+                  <a href={e.href} onClick={() => setMenuAbierto(false)} className="flex items-center justify-between py-3.5 border-b border-[#F3ECE1] font-extrabold text-[17px] text-[#1F2420]">
+                    {e.texto}<ArrowRight className="w-4 h-4 text-[#C2610C]" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <a href="#crear-negocio" onClick={() => setMenuAbierto(false)} className="mt-4 min-h-[52px] rounded-full bg-[#17804F] text-white font-extrabold text-[17px] grid place-items-center">Crear mi negocio gratis</a>
           </div>
         )}
       </header>
@@ -271,7 +280,7 @@ export default function Home() {
       {/* ── Pie ── */}
       <footer className="border-t border-[#F0E6D6] bg-[#FFF9EF]">
         <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-7 flex flex-wrap gap-x-7 gap-y-3.5 justify-between items-center text-[15px] text-[#5B6460]">
-          <span className="flex items-center gap-2.5"><img src="/delywa-logo.png" alt="" className="w-10 h-10 object-contain" />Delywa · WRMA Developer · República Dominicana</span>
+          <span className="flex items-center gap-2.5"><img src="/landing/logo.png" alt="" width={60} height={40} className="h-10 w-auto" />Delywa · WRMA Developer · República Dominicana</span>
           <span className="flex flex-wrap gap-[18px]">
             <a href="/legal#terminos" className="text-[#17804F] hover:underline">Términos</a>
             <a href="/legal#privacidad" className="text-[#17804F] hover:underline">Privacidad</a>

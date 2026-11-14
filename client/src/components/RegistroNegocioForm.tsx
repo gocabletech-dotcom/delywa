@@ -84,8 +84,8 @@ export function RegistroNegocioForm() {
       <div className="text-center space-y-4 py-6" data-testid="registro-listo">
         <CheckCircle2 className="w-14 h-14 text-primary mx-auto" />
         <h3 className="text-2xl font-bold text-brand-dark">¡Recibimos tu solicitud!</h3>
-        <p className="text-gray-600">Vamos a revisar los datos de tu negocio. Mientras tanto ya puedes entrar a tu panel y preparar tu menú; los pedidos se activan cuando aprobemos tu negocio.</p>
-        <Button className="rounded-full px-8" onClick={() => { window.location.href = "/admin"; }}>Ir a mi panel</Button>
+        <p className="text-gray-600">Vamos a revisar los datos de tu negocio. Cuando lo aprobemos te avisamos por correo y ya podrás entrar a tu panel con tu correo y tu contraseña.</p>
+        <p className="text-sm text-gray-500">¿Tienes alguna pregunta? Escríbenos a <a href="mailto:soporte@delywa.com" className="text-primary underline">soporte@delywa.com</a>.</p>
       </div>
     );
   }

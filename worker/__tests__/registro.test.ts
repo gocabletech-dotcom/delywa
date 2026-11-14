@@ -66,8 +66,21 @@ describe("registro público de negocio", () => {
     expect(negocio.ownerUserId).toBe(dueno.id);
     const acept = await t.db.select().from(aceptacionesLegales).where(eq(aceptacionesLegales.colmadoId, colmadoId));
     expect(acept.map((a) => a.documento).sort()).toEqual(["dpa", "privacidad", "terminos"]);
-    // Quedó con sesión y ve su negocio con el estado en revisión.
-    expect((await c.request("GET", `/api/colmados/${colmadoId}`)).json.estado).toBe("pendiente_revision");
+    // No queda con la sesión iniciada: tiene que esperar la aprobación.
+    expect(r.json.enRevision).toBe(true);
+    expect((await c.request("GET", "/api/auth/session")).json.isAuthenticated).toBe(false);
+  });
+
+  it("mientras está en revisión el dueño no puede entrar, aunque la contraseña sea buena", async () => {
+    const c = t.client();
+    const r = await c.request("POST", "/api/auth/login", { username: "pedro@prueba.test", password: "clave-segura-123" });
+    expect(r.status).toBe(403);
+    expect(r.json).toMatchObject({ negocioEstado: "pendiente_revision" });
+    expect(r.json.error).toContain("en revisión");
+    expect((await c.request("GET", "/api/auth/session")).json.isAuthenticated).toBe(false);
+    expect((await c.request("GET", `/api/colmados/${colmadoId}/pedidos`)).status).toBe(401);
+    // Contraseña mala sigue diciendo lo mismo de siempre (no revela que la cuenta existe en revisión).
+    expect((await t.client().request("POST", "/api/auth/login", { username: "pedro@prueba.test", password: "otra-clave-123" })).status).toBe(401);
   });
 
   it("no deja repetir correo ni teléfono", async () => {
@@ -99,17 +112,23 @@ describe("revisión por la plataforma", () => {
     const admin = t.client();
     await admin.request("POST", "/api/auth/login", { username: "admin@delywa.test", password: "admin1234" });
     const dueno = t.client();
-    await dueno.request("POST", "/api/auth/login", { username: "pedro@prueba.test", password: "clave-segura-123" });
-    expect((await dueno.request("GET", "/api/admin/solicitudes-negocio")).status).toBe(403);
+    expect((await dueno.request("POST", "/api/auth/login", { username: "pedro@prueba.test", password: "clave-segura-123" })).status).toBe(403);
+    expect((await dueno.request("GET", "/api/admin/solicitudes-negocio")).status).toBe(401);
 
     const lista = await admin.request("GET", "/api/admin/solicitudes-negocio");
     const s = lista.json.find((x: any) => x.duenoCorreo === "pedro@prueba.test");
     expect(s).toMatchObject({ nombre: "Colmado La Esquina", estado: "pendiente_revision", paisNombre: expect.any(String) });
     expect(s.aceptaciones).toHaveLength(3);
 
-    expect((await dueno.request("POST", `/api/admin/solicitudes-negocio/${s.id}/activar`)).status).toBe(403);
+    expect((await dueno.request("POST", `/api/admin/solicitudes-negocio/${s.id}/activar`)).status).toBe(401);
     expect((await admin.request("POST", `/api/admin/solicitudes-negocio/${s.id}/rechazar`)).json.estado).toBe("rechazado");
+    const rechazado = await dueno.request("POST", "/api/auth/login", { username: "pedro@prueba.test", password: "clave-segura-123" });
+    expect(rechazado.status).toBe(403);
+    expect(rechazado.json.negocioEstado).toBe("rechazado");
     expect((await admin.request("POST", `/api/admin/solicitudes-negocio/${s.id}/activar`)).json.estado).toBe("activo");
+    // Ya aprobado: ahora sí entra.
+    expect((await dueno.request("POST", "/api/auth/login", { username: "pedro@prueba.test", password: "clave-segura-123" })).status).toBe(200);
+    expect((await dueno.request("GET", "/api/auth/session")).json.isAuthenticated).toBe(true);
     // Ya activo: sale de la lista y el chat web lo encuentra.
     expect((await admin.request("POST", `/api/admin/solicitudes-negocio/${s.id}/activar`)).status).toBe(404);
     const [n] = await t.db.select().from(colmados).where(eq(colmados.id, s.id));

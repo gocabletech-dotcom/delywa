@@ -1900,6 +1900,11 @@ export default function PlatformAdminPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        {negocio.estado === "pendiente_revision" || negocio.estado === "rechazado" ? (
+                          <Badge className={negocio.estado === "rechazado" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"} data-testid={`estado-negocio-${negocio.id}`}>
+                            {negocio.estado === "rechazado" ? "Rechazado" : "En revisión"}
+                          </Badge>
+                        ) : (
                         <Badge 
                           className={
                             negocio.estadoSuscripcion === "activa" 
@@ -1911,6 +1916,7 @@ export default function PlatformAdminPage() {
                         >
                           {negocio.estadoSuscripcion === "activa" ? "Activo" : negocio.estadoSuscripcion === "en_gracia" ? "En Gracia" : "Suspendido"}
                         </Badge>
+                        )}
                         {plan && (
                           <Badge variant="outline" className="hidden sm:flex">
                             <Crown className="w-3 h-3 mr-1" />

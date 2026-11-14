@@ -13,7 +13,7 @@ import { getAllPlanes } from "../storage/catalogos";
 import { createUser, getUserByEmail, normalizeEmail } from "../storage/users";
 import { VERSION_LEGAL } from "../data/legal";
 import { claveDebil } from "../lib/claves";
-import { correoListo } from "../lib/correo";
+import { boton, correoListo, enviarCorreo, escHtml, plantillaCorreo } from "../lib/correo";
 import { mandarCodigoRegistro, revisarCodigoRegistro } from "../lib/cuenta";
 import { anotar } from "../lib/seguridad";
 
@@ -157,13 +157,9 @@ registroRoutes.post("/api/registro-negocio", async (c) => {
         userId: user.id, colmadoId: colmado.id, documento, version: VERSION_LEGAL, ip: ip ?? null, userAgent,
       }))),
     ]);
-    // Queda con la sesión iniciada: ve su panel con el aviso de "en revisión" y puede ir completando el menú.
-    const session = c.var.session;
-    session.regenerate();
-    session.data = { userId: user.id, userRole: "colmado_owner", colmadoId: colmado.id, deliveryId: null, lastActivity: Date.now() };
-    session.touch();
+    // No queda con la sesión iniciada: no puede entrar hasta que la plataforma apruebe el negocio.
     await anotar(db, { userId: user.id, usuario: correo, rol: "colmado_owner", colmadoId: colmado.id, accion: "Registro de negocio desde la página", detalle: `${nombreNegocio} · aceptó términos v${VERSION_LEGAL}${correoListo(c.env) ? " · correo verificado" : ""}`, ip: ip ?? null });
-    return c.json({ success: true, colmadoId: colmado.id, estado: colmado.estado }, 201);
+    return c.json({ success: true, colmadoId: colmado.id, estado: colmado.estado, enRevision: true }, 201);
   } catch (err) {
     // Si algo falló a medias, no queda una cuenta sin negocio.
     if (userId) await db.delete(users).where(eq(users.id, userId)).catch(() => undefined);
@@ -205,9 +201,27 @@ registroRoutes.post("/api/admin/solicitudes-negocio/:id/:accion", requireAuth, r
   const accion = c.req.param("accion");
   if (!Number.isInteger(id) || !["activar", "rechazar"].includes(accion)) return c.json({ error: "Solicitud no válida" }, 400);
   const nuevo = accion === "activar" ? "activo" : ESTADO_RECHAZADO;
-  const [actualizado] = await getDb(c.env.DB).update(colmados).set({ estado: nuevo })
+  const db = getDb(c.env.DB);
+  const [actualizado] = await db.update(colmados).set({ estado: nuevo })
     .where(and(eq(colmados.id, id), inArray(colmados.estado, [ESTADO_EN_REVISION, ESTADO_RECHAZADO])))
-    .returning({ id: colmados.id, estado: colmados.estado });
+    .returning({ id: colmados.id, estado: colmados.estado, nombre: colmados.nombre, ownerUserId: colmados.ownerUserId });
   if (!actualizado) return c.json({ error: "Ese negocio no está pendiente de revisión" }, 404);
-  return c.json({ success: true, ...actualizado });
+  // Al aprobarlo, se le avisa al dueño por correo que ya puede entrar.
+  let correoEnviado = false;
+  if (accion === "activar" && correoListo(c.env) && actualizado.ownerUserId) {
+    const [dueno] = await db.select({ email: users.email, nombre: users.firstName }).from(users).where(eq(users.id, actualizado.ownerUserId));
+    if (dueno?.email) {
+      const base = (c.env.PUBLIC_URL || "https://delywa.com").replace(/\/$/, "");
+      try {
+        await enviarCorreo(c.env, {
+          para: dueno.email, asunto: `¡${actualizado.nombre} ya está aprobado en DelyWa!`,
+          html: plantillaCorreo("Tu negocio fue aprobado", `<p>Hola ${escHtml(dueno.nombre || "")}: revisamos los datos de <b>${escHtml(actualizado.nombre)}</b> y ya está activo. Entra con tu correo y tu contraseña para preparar tu menú y empezar a recibir pedidos.</p>${boton("Entrar a mi panel", `${base}/login`)}`, { resumen: "Ya puedes entrar a tu panel y recibir pedidos." }),
+        });
+        correoEnviado = true;
+      } catch (err) {
+        console.error("[solicitudes] No se pudo avisar al dueño:", err instanceof Error ? err.message : err);
+      }
+    }
+  }
+  return c.json({ success: true, id: actualizado.id, estado: actualizado.estado, correoEnviado });
 });

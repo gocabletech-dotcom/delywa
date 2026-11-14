@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [, setLocation] = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [avisoNegocio, setAvisoNegocio] = useState<{ estado: string; texto: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [primerAcceso, setPrimerAcceso] = useState(false);
@@ -63,6 +64,7 @@ export default function LoginPage() {
       return;
     }
     setIsLoading(true);
+    setAvisoNegocio(null);
 
     try {
       const res = await fetch("/api/auth/login", {
@@ -77,6 +79,9 @@ export default function LoginPage() {
       if (res.ok) {
         toast({ title: "Bienvenido", description: `Iniciaste sesión como ${data.role}` });
         window.location.href = "/admin";
+      } else if (data.negocioEstado) {
+        // Negocio en revisión o rechazado: el aviso se queda en pantalla (no es un error de contraseña).
+        setAvisoNegocio({ estado: data.negocioEstado, texto: data.error });
       } else {
         toast({ title: "Error", description: data.error || "Credenciales incorrectas", variant: "destructive" });
         if (data.turnstile && data.siteKey) setTurnstileSiteKey(data.siteKey);
@@ -98,6 +103,16 @@ export default function LoginPage() {
           <p className="text-gray-500 text-sm mt-2">La forma más fácil de vender por WhatsApp</p>
         </CardHeader>
         <CardContent>
+          {avisoNegocio && (
+            <div
+              className={`rounded-lg p-3 mb-4 text-sm border ${avisoNegocio.estado === "rechazado" ? "bg-red-50 border-red-200 text-red-900" : "bg-amber-50 border-amber-200 text-amber-900"}`}
+              role="alert" data-testid="aviso-negocio-revision"
+            >
+              <b className="block mb-1">{avisoNegocio.estado === "rechazado" ? "Negocio no aprobado" : "Tu negocio está en revisión"}</b>
+              {avisoNegocio.texto}
+            </div>
+          )}
+
           {reason === "inactivity" && (
             <div
               className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-sm text-amber-800"
