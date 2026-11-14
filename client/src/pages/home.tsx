@@ -157,16 +157,7 @@ export default function Home() {
                 </a>
               </div>
 
-              <div className="pt-6 flex items-center gap-4 text-sm text-muted-foreground">
-                <div className="flex -space-x-2">
-                  {[1, 2, 3, 4].map(i => (
-                    <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500">
-                      {String.fromCharCode(64 + i)}
-                    </div>
-                  ))}
-                </div>
-                <p>+500 negocios ya venden con DelyWa en RD</p>
-              </div>
+              <p className="pt-6 text-sm text-muted-foreground">Hecho para los colmados de República Dominicana · Sin descargar apps</p>
             </div>
 
             <div className="relative animate-in slide-in-from-right-10 duration-700 delay-200">
