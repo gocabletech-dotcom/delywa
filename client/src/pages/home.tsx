@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { ArrowRight, Check, Menu, X } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { RegistroNegocioForm } from "@/components/RegistroNegocioForm";
+import ComoPide from "@/components/landing/ComoPide";
 import { CasaCliente, ColmadoDentro, ColmadoFrente, DeliveryMotor, IconoMoto } from "@/components/landing/Ilustraciones";
 
 // Página principal de delywa.com. Diseño aprobado por el dueño (2026-11-14): fondo claro y cálido,
@@ -12,7 +13,7 @@ const WA_VENTAS = "https://wa.me/19193436706?text=Quiero%20registrar%20mi%20nego
 const TITULO = { fontFamily: "Fredoka, 'Poppins', sans-serif" } as const;
 
 const ENLACES = [
-  { href: "#recorrido", texto: "Cómo funciona" },
+  { href: "#como-pide", texto: "Cómo funciona" },
   { href: "#colmado", texto: "Para tu colmado" },
   { href: "#delivery", texto: "Para tu delivery" },
   { href: "#precio", texto: "Precio" },
@@ -101,7 +102,7 @@ export default function Home() {
             <a href="#crear-negocio" className="inline-flex items-center gap-2.5 min-h-[56px] px-7 rounded-full bg-[#17804F] hover:bg-[#0F5C39] text-white font-extrabold text-lg">
               Empezar gratis <ArrowRight className="w-[18px] h-[18px]" strokeWidth={2.6} />
             </a>
-            <a href="#recorrido" className="inline-flex items-center min-h-[56px] px-6 rounded-full bg-white border-2 border-[#E6DCCB] font-extrabold text-lg">Ver cómo funciona</a>
+            <a href="#como-pide" className="inline-flex items-center min-h-[56px] px-6 rounded-full bg-white border-2 border-[#E6DCCB] font-extrabold text-lg">Ver cómo funciona</a>
           </div>
           <p className="mt-5 text-[15px] text-[#6B736F]">Sin descargar apps · Funciona en cualquier celular · Sin tarjeta para empezar</p>
         </div>
@@ -124,6 +125,9 @@ export default function Home() {
           </div>
         </figure>
       </section>
+
+      {/* ── Así pide tu cliente (fotos en secuencia) ── */}
+      <ComoPide />
 
       {/* ── El recorrido: colmado → moto → casa ── */}
       <section id="recorrido" className="bg-[#FFF4E4] border-y border-[#F0E2CC] scroll-mt-20">
