@@ -1,618 +1,280 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import {
-  MessageCircle,
-  Truck,
-  TrendingUp,
-  ShieldCheck,
-  Smartphone,
-  Menu,
-  X,
-  ArrowRight,
-  CheckCircle2,
-  Link2,
-  Zap,
-  Gift,
-  Play,
-  Eye,
-  Copy,
-  Check,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { ArrowRight, Check, Menu, X } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { RegistroNegocioForm } from "@/components/RegistroNegocioForm";
+import { CasaCliente, ColmadoDentro, ColmadoFrente, DeliveryMotor, IconoMoto } from "@/components/landing/Ilustraciones";
 
-// Assets
-import heroImage from "@assets/generated_images/delivery_driver_on_motorcycle_in_dominican_republic_street.png";
-import phoneImage from "@assets/generated_images/smartphone_showing_whatsapp_style_chat_bot_interface.png";
+// Página principal de delywa.com. Diseño aprobado por el dueño (2026-11-14): fondo claro y cálido,
+// letra redonda como el logo (Fredoka en títulos, Nunito en el texto), verde Delywa y naranja del delivery.
 
-const WA_SALES = "https://wa.me/19193436706?text=Quiero%20registrar%20mi%20negocio%20en%20DelyWa%20gratis";
+const WA_VENTAS = "https://wa.me/19193436706?text=Quiero%20registrar%20mi%20negocio%20en%20DelyWa";
+const TITULO = { fontFamily: "Fredoka, 'Poppins', sans-serif" } as const;
+
+const ENLACES = [
+  { href: "#recorrido", texto: "Cómo funciona" },
+  { href: "#colmado", texto: "Para tu colmado" },
+  { href: "#delivery", texto: "Para tu delivery" },
+  { href: "#precio", texto: "Precio" },
+];
+
+function Punto({ children, naranja = false }: { children: React.ReactNode; naranja?: boolean }) {
+  return (
+    <li className="flex gap-3.5 items-start">
+      <span aria-hidden="true" className={`flex-none mt-0.5 w-[26px] h-[26px] rounded-full grid place-items-center ${naranja ? "bg-[#FFE8CC] text-[#A3520A]" : "bg-[#E3F3EA] text-[#17804F]"}`}>
+        <Check className="w-3.5 h-3.5" strokeWidth={3.2} />
+      </span>
+      <span>{children}</span>
+    </li>
+  );
+}
+
+function Paso({ n, titulo, texto, naranja = false }: { n: number; titulo: string; texto: string; naranja?: boolean }) {
+  return (
+    <li className="bg-white rounded-3xl p-6 flex gap-4 items-start">
+      <span style={TITULO} className={`flex-none w-[46px] h-[46px] rounded-full grid place-items-center font-bold text-[22px] ${naranja ? "bg-[#FFE8CC] text-[#A3520A]" : "bg-[#E3F3EA] text-[#17804F]"}`}>{n}</span>
+      <span>
+        <b style={TITULO} className="block font-semibold text-[22px] leading-snug">{titulo}</b>
+        <span className="text-[#4A524E]">{texto}</span>
+      </span>
+    </li>
+  );
+}
 
 export default function Home() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [copiedField, setCopiedField] = useState<"email" | "password" | null>(null);
+  const [menuAbierto, setMenuAbierto] = useState(false);
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading } = useAuth();
 
-  const copyToClipboard = (text: string, field: "email" | "password") => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    setTimeout(() => setCopiedField(null), 2000);
-  };
-
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      setLocation("/admin");
-    }
+    if (!isLoading && isAuthenticated) setLocation("/admin");
   }, [isLoading, isAuthenticated, setLocation]);
 
   return (
-    <div className="min-h-screen bg-white font-sans text-foreground overflow-x-hidden">
+    <div className="min-h-screen bg-[#FFFDF8] text-[#1F2420] overflow-x-hidden text-[17px] md:text-lg leading-relaxed" style={{ fontFamily: "Nunito, 'Inter', sans-serif" }}>
+      <style>{`
+        @keyframes dw-ruta{0%{left:4%}100%{left:calc(96% - 150px)}}
+        @keyframes dw-rueda{to{transform:rotate(360deg)}}
+        @keyframes dw-flota{50%{transform:translateY(-6px)}}
+        @media (prefers-reduced-motion: reduce){.dw-anima,.dw-anima *{animation:none !important}}
+      `}</style>
 
-      {/* ── Navigation ─────────────────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-gray-100">
-        <div className="container mx-auto px-4 md:px-6 h-24 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-1.5 bg-white rounded-xl shadow-md border border-gray-100">
-              <img src="/delywa-logo.png" alt="DelyWa" className="h-16 w-auto rounded-lg" />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-heading font-bold text-2xl tracking-tight text-brand-dark">DelyWa</span>
-              <span className="text-xs text-gray-500">La forma más fácil de vender por WhatsApp</span>
-            </div>
+      {/* ── Barra de arriba ── */}
+      <header className="sticky top-0 z-50 bg-[#FFFDF8]/95 backdrop-blur border-b border-[#F0E6D6]">
+        <nav aria-label="Principal" className="max-w-[1200px] mx-auto px-4 md:px-6 py-2 flex items-center gap-6">
+          <a href="#inicio" className="shrink-0" aria-label="Delywa, inicio">
+            <img src="/delywa-logo.png" alt="Delywa" className="w-16 h-16 object-contain" />
+          </a>
+          <div className="hidden lg:flex gap-6 flex-1 font-bold text-base">
+            {ENLACES.map((e) => <a key={e.href} href={e.href} className="text-[#3D4642] hover:text-[#17804F] py-2.5">{e.texto}</a>)}
           </div>
-
-          {/* Desktop Nav */}
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#como-funciona" className="text-sm font-medium hover:text-primary transition-colors">¿Cómo funciona?</a>
-            <a href="#delivery" className="text-sm font-medium hover:text-primary transition-colors">Soy Delivery</a>
-            <a
-              href="#ver-demo"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-            >
-              <Play className="w-3.5 h-3.5 fill-primary text-primary" />
-              Ver Demo
-            </a>
-            <Button
-              variant="outline"
-              className="rounded-full px-6 border-primary text-primary hover:bg-primary/10"
-              onClick={() => setLocation("/login")}
-              data-testid="button-login"
-            >
-              Iniciar Sesión
-            </Button>
-            <a
-              href="#crear-negocio"
-              className="inline-flex items-center justify-center bg-primary hover:bg-primary/90 text-white rounded-full px-6 h-10 text-sm font-medium"
-              data-testid="link-crear-negocio"
-            >
-              Crear mi negocio
-            </a>
+          <div className="hidden md:flex gap-2.5 ml-auto">
+            <button type="button" onClick={() => setLocation("/login")} className="min-h-[46px] px-5 rounded-full border-2 border-[#E6DCCB] font-extrabold text-base hover:bg-white" data-testid="button-login">Entrar</button>
+            <a href="#crear-negocio" className="inline-flex items-center min-h-[46px] px-[22px] rounded-full bg-[#17804F] hover:bg-[#0F5C39] text-white font-extrabold text-base" data-testid="link-crear-negocio">Crear mi negocio</a>
           </div>
-
-          {/* Mobile toggle */}
-          <button className="md:hidden p-2 text-foreground" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-            {isMenuOpen ? <X /> : <Menu />}
+          <button type="button" className="md:hidden ml-auto w-11 h-11 grid place-items-center rounded-full border-2 border-[#E6DCCB]" onClick={() => setMenuAbierto(!menuAbierto)} aria-label={menuAbierto ? "Cerrar menú" : "Abrir menú"} aria-expanded={menuAbierto}>
+            {menuAbierto ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
-        </div>
-
-        {/* Mobile Nav */}
-        {isMenuOpen && (
-          <div className="md:hidden absolute top-24 left-0 w-full bg-white border-b border-gray-100 p-4 flex flex-col gap-4 animate-in slide-in-from-top-5">
-            <a href="#como-funciona" className="text-base font-medium py-2" onClick={() => setIsMenuOpen(false)}>¿Cómo funciona?</a>
-            <a href="#delivery" className="text-base font-medium py-2" onClick={() => setIsMenuOpen(false)}>Soy Delivery</a>
-            <a href="#ver-demo" className="flex items-center gap-2 text-base font-medium text-primary py-2" onClick={() => setIsMenuOpen(false)}>
-              <Play className="w-4 h-4 fill-primary text-primary" />
-              Ver Demo
-            </a>
-            <Button
-              variant="outline"
-              className="w-full rounded-full border-primary text-primary"
-              onClick={() => { setIsMenuOpen(false); setLocation("/login"); }}
-            >
-              Iniciar Sesión
-            </Button>
-            <a
-              href="#crear-negocio"
-              className="inline-flex items-center justify-center bg-primary text-white w-full rounded-full h-10 text-sm font-medium"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Crear mi negocio
-            </a>
+        </nav>
+        {menuAbierto && (
+          <div className="md:hidden border-t border-[#F0E6D6] bg-[#FFFDF8] px-4 py-3 flex flex-col gap-1 font-bold">
+            {ENLACES.map((e) => <a key={e.href} href={e.href} className="py-3 text-[#3D4642]" onClick={() => setMenuAbierto(false)}>{e.texto}</a>)}
+            <button type="button" onClick={() => { setMenuAbierto(false); setLocation("/login"); }} className="mt-2 min-h-[48px] rounded-full border-2 border-[#E6DCCB] font-extrabold">Entrar</button>
+            <a href="#crear-negocio" onClick={() => setMenuAbierto(false)} className="mt-2 min-h-[48px] rounded-full bg-[#17804F] text-white font-extrabold grid place-items-center">Crear mi negocio</a>
           </div>
         )}
-      </nav>
+      </header>
 
-      {/* ── Hero ───────────────────────────────────────────────────────────── */}
-      <section className="relative pt-12 pb-20 md:pt-24 md:pb-32 overflow-hidden">
-        <div className="container mx-auto px-4 md:px-6 relative z-10">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
-            <div className="space-y-6 md:pr-8 animate-in slide-in-from-left-10 duration-700">
-              <Badge variant="secondary" className="px-4 py-2 text-primary bg-green-50 rounded-full font-medium border-green-100 mb-2">
-                🎁 3 meses gratis · Pagas solo si vendes
-              </Badge>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-heading font-extrabold leading-tight text-brand-dark">
-                La forma más fácil<br />de vender por<br />
-                <span className="text-primary">WhatsApp</span>
-              </h1>
-              <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-xl">
-                Tus clientes piden desde su celular, la IA los atiende, y tú ves cada pedido llegar a tu panel — mientras sigues con tu día.
-              </p>
-
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <a
-                  href="#crear-negocio"
-                  className="inline-flex items-center justify-center bg-primary hover:bg-primary/90 text-white h-14 px-8 rounded-full text-lg shadow-lg shadow-green-200 transition-all hover:-translate-y-1 font-semibold"
-                >
-                  <Smartphone className="mr-2 h-5 w-5" />
-                  Empieza gratis — sin tarjeta
-                </a>
-                <a
-                  href="#como-funciona"
-                  className="inline-flex items-center justify-center h-14 px-8 rounded-full text-lg border-2 border-gray-200 hover:bg-gray-50 text-foreground font-medium transition-colors"
-                >
-                  Ver cómo funciona
-                </a>
-              </div>
-
-              <p className="pt-6 text-sm text-muted-foreground">Hecho para los colmados de República Dominicana · Sin descargar apps</p>
-            </div>
-
-            <div className="relative animate-in slide-in-from-right-10 duration-700 delay-200">
-              <div className="absolute inset-0 bg-gradient-to-tr from-green-100 to-blue-50 rounded-full opacity-60 blur-3xl transform scale-90 translate-y-10"></div>
-              <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white transform rotate-2 hover:rotate-0 transition-transform duration-500">
-                <img
-                  src={heroImage}
-                  alt="Delivery en motor RD"
-                  className="w-full h-auto object-cover md:h-[600px]"
-                />
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-8">
-                  <div className="bg-white/95 backdrop-blur p-4 rounded-xl shadow-lg max-w-xs mx-auto transform translate-y-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold text-gray-800">Pedido en camino 🛵</span>
-                      <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">3 min</span>
-                    </div>
-                    <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-                      <div className="bg-primary w-3/4 h-full rounded-full"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Cómo funciona ──────────────────────────────────────────────────── */}
-      <section id="como-funciona" className="py-20 bg-gray-50">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center mb-16 max-w-2xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-heading font-bold mb-4 text-brand-dark">
-              Así de fácil funciona
-            </h2>
-            <p className="text-muted-foreground text-lg">
-              Sin instalar apps, sin APIs, sin técnicos. Solo comparte el link y empieza a vender.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                step: "1",
-                icon: Link2,
-                title: "Comparte tu link de pedidos",
-                desc: "Cada negocio tiene un link único (ej. delywa.com/pedir/tu-colmado). Lo pones en tu historia de WhatsApp o lo mandas a tus clientes — ellos abren el chat desde el celular, sin descargar nada.",
-                color: "bg-blue-100 text-blue-600",
-              },
-              {
-                step: "2",
-                icon: MessageCircle,
-                title: "La IA toma el pedido",
-                desc: "El cliente escribe lo que quiere en texto libre, igual que en WhatsApp. La IA entiende el dominicano, confirma los productos, pregunta la dirección y recoge el método de pago — todo automático.",
-                color: "bg-green-100 text-green-600",
-              },
-              {
-                step: "3",
-                icon: TrendingUp,
-                title: "Tú vendes, DelyWa trabaja",
-                desc: "El pedido aparece en tu panel al instante. Asignas un delivery con un toque y el cliente ve su moto en tiempo real hasta que llega. Tú cuadras la caja al final del día sin sumar papelitos.",
-                color: "bg-orange-100 text-orange-600",
-              },
-            ].map((s, i) => (
-              <Card key={i} className="border-none shadow-md hover:shadow-xl transition-shadow duration-300 relative overflow-hidden">
-                <div className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-400">
-                  {s.step}
-                </div>
-                <CardContent className="p-8 flex flex-col items-center text-center">
-                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 ${s.color}`}>
-                    <s.icon size={32} />
-                  </div>
-                  <h3 className="text-xl font-bold mb-3 font-heading">{s.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed text-sm">{s.desc}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── App Interface Preview ──────────────────────────────────────────── */}
-      <section className="py-24 overflow-hidden">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="flex flex-col md:flex-row items-center gap-16">
-            <div className="w-full md:w-1/2 flex justify-center relative">
-              <div className="absolute inset-0 bg-primary/10 rounded-full blur-[100px] transform scale-150"></div>
-              <img
-                src={phoneImage}
-                alt="Chat web de pedidos DelyWa"
-                className="relative z-10 w-full max-w-md drop-shadow-2xl animate-in fade-in zoom-in duration-1000"
-              />
-            </div>
-            <div className="w-full md:w-1/2 space-y-8">
-              <h2 className="text-3xl md:text-5xl font-heading font-bold text-brand-dark leading-tight">
-                Una IA que entiende el "Dominicano"
-              </h2>
-              <div className="space-y-6">
-                {[
-                  { title: "Entiende jerga local", desc: "Sabe lo que es una 'fría', un 'pica pollo' y una 'recarga de claro'." },
-                  { title: "Recoge dirección y pago", desc: "Pregunta la dirección, el método de pago y calcula la devuelta exacta sin que tú hagas nada." },
-                  { title: "Tracking en tiempo real", desc: "Cuando el delivery sale, el cliente ve la moto moverse hasta su puerta. Cero llamadas de '¿dónde está mi pedido?'." },
-                ].map((feat, i) => (
-                  <div key={i} className="flex gap-4 items-start">
-                    <div className="mt-1 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                      <CheckCircle2 size={14} className="text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-lg text-brand-dark">{feat.title}</h4>
-                      <p className="text-muted-foreground">{feat.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <a
-                href={WA_SALES}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center mt-4 bg-brand-dark hover:bg-brand-dark/90 text-white rounded-full px-8 h-12 font-semibold"
-              >
-                Quiero mi link gratis <ArrowRight className="ml-2 h-4 w-4" />
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Tu WhatsApp, sin cambiar nada ──────────────────────────────────── */}
-      <section className="py-20 bg-white border-t border-gray-100">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center mb-12 max-w-3xl mx-auto">
-            <Badge variant="secondary" className="px-4 py-2 text-green-700 bg-green-50 rounded-full font-medium border-green-100 mb-4">
-              📲 Sin configuraciones complicadas
-            </Badge>
-            <h2 className="text-3xl md:text-4xl font-heading font-bold mb-4 text-brand-dark">
-              Usa tu WhatsApp — nosotros nos encargamos del resto
-            </h2>
-            <p className="text-muted-foreground text-lg">
-              No necesitas configurar APIs, contratar técnicos ni tocar nada de tu WhatsApp actual.
-              Solo comparte el link de tu colmado y nosotros atendemos a tus clientes.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            {[
-              {
-                emoji: "🔗",
-                title: "Tu link único",
-                desc: "Te damos un link personalizado para tu negocio. Lo compartes como quieras — Instagram, WhatsApp, cartel en la tienda.",
-                color: "bg-blue-50 border-blue-100",
-              },
-              {
-                emoji: "📲",
-                title: "Tus clientes piden desde el celular",
-                desc: "Entran al link, chatean con la IA como si fuera WhatsApp y hacen su pedido en menos de 2 minutos. Sin apps, sin registros.",
-                color: "bg-green-50 border-green-100",
-              },
-              {
-                emoji: "⚡",
-                title: "Sin instalaciones",
-                desc: "Todo funciona desde el navegador. Tú ves los pedidos en tu panel, tu delivery recibe la ruta en su celular. Punto.",
-                color: "bg-orange-50 border-orange-100",
-              },
-            ].map((item, i) => (
-              <div key={i} className={`rounded-2xl border p-8 text-center ${item.color}`}>
-                <div className="text-5xl mb-5">{item.emoji}</div>
-                <h3 className="text-xl font-bold mb-3 text-brand-dark font-heading">{item.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Para colmados y deliveries ─────────────────────────────────────── */}
-      <section id="delivery" className="py-24 bg-brand-dark text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl translate-x-1/2 -translate-y-1/2"></div>
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -translate-x-1/2 translate-y-1/2"></div>
-
-        <div className="container mx-auto px-4 md:px-6 relative z-10">
-          <div className="text-center mb-16">
-            <Badge variant="outline" className="text-primary border-primary mb-4 px-4 py-1">Plataforma Todo-en-Uno</Badge>
-            <h2 className="text-3xl md:text-5xl font-heading font-bold mb-6">Todo incluido desde el primer día</h2>
-            <p className="text-gray-300 text-lg max-w-2xl mx-auto">
-              Panel de ventas, gestión de deliveries y cuadre de caja — sin costos extra.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            <Card className="bg-white/5 border-white/10 backdrop-blur-sm text-white hover:bg-white/10 transition-colors">
-              <CardContent className="p-8">
-                <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center mb-6">
-                  <TrendingUp className="text-white" size={24} />
-                </div>
-                <h3 className="text-xl font-bold mb-3">Ventas Diarias</h3>
-                <p className="text-gray-400">
-                  Reportes automáticos de cuánto vendiste hoy. Sin sumar papelitos, todo digitalizado.
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/5 border-white/10 backdrop-blur-sm text-white hover:bg-white/10 transition-colors">
-              <CardContent className="p-8">
-                <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center mb-6">
-                  <Truck className="text-white" size={24} />
-                </div>
-                <h3 className="text-xl font-bold mb-3">Gestión de Delivery</h3>
-                <p className="text-gray-400">
-                  Agrega deliveries por número de teléfono. Asígnales rutas con un toque desde tu panel.
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/5 border-white/10 backdrop-blur-sm text-white hover:bg-white/10 transition-colors">
-              <CardContent className="p-8">
-                <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center mb-6">
-                  <ShieldCheck className="text-white" size={24} />
-                </div>
-                <h3 className="text-xl font-bold mb-3">Cuadre de Caja</h3>
-                <p className="text-gray-400">
-                  Conciliación automática de pedidos entregados vs cancelados. El dinero nunca falta.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 3 meses gratis / Pagas si vendes ──────────────────────────────── */}
-      <section className="py-24 bg-gray-50">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center mb-14 max-w-3xl mx-auto">
-            <Badge variant="secondary" className="px-4 py-2 text-primary bg-green-50 rounded-full font-medium border-green-100 mb-4">
-              💰 Sin mensualidades
-            </Badge>
-            <h2 className="text-3xl md:text-5xl font-heading font-bold mb-4 text-brand-dark">
-              Empieza gratis.<br />Crece sin riesgo.
-            </h2>
-            <p className="text-muted-foreground text-lg">
-              No hay cuota fija. Solo pagas una pequeña comisión de lo que vendas — y los primeros 3 meses son completamente gratis.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-14">
-            {[
-              {
-                icon: Gift,
-                title: "3 meses gratis",
-                desc: "Úsalo sin límite durante los primeros 3 meses. Sin tarjeta, sin contrato, sin letra pequeña.",
-                highlight: true,
-              },
-              {
-                icon: Zap,
-                title: "Pagas solo si vendes",
-                desc: "Después del período gratis, solo pagamos una comisión sobre lo que realmente vendiste. Cero pedidos = cero costo.",
-                highlight: false,
-              },
-              {
-                icon: CheckCircle2,
-                title: "Sin mensualidades fijas",
-                desc: "Olvídate de pagar una cuota aunque el mes estuvo flojo. Tu costo crece solo cuando tu negocio crece.",
-                highlight: false,
-              },
-            ].map((item, i) => (
-              <div
-                key={i}
-                className={`rounded-2xl p-8 text-center border transition-shadow hover:shadow-lg ${
-                  item.highlight
-                    ? "border-primary bg-primary/5 shadow-md"
-                    : "border-gray-200 bg-white"
-                }`}
-              >
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-5 mx-auto ${item.highlight ? "bg-primary text-white" : "bg-gray-100 text-gray-600"}`}>
-                  <item.icon size={28} />
-                </div>
-                <h3 className="text-xl font-bold mb-3 font-heading text-brand-dark">{item.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="text-center">
-            <a
-              href={WA_SALES}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center bg-primary hover:bg-primary/90 text-white h-16 px-12 rounded-full text-xl font-bold shadow-lg shadow-green-200 transition-all hover:-translate-y-1"
-            >
-              <Smartphone className="mr-3 h-6 w-6" />
-              Registra tu negocio — Es gratis
-            </a>
-            <p className="mt-4 text-sm text-muted-foreground">Sin tarjeta de crédito · Sin contrato · Cancela cuando quieras</p>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Ver Demo ───────────────────────────────────────────────────────── */}
-      <section id="ver-demo" className="py-24 bg-green-50 border-t border-green-100">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="max-w-3xl mx-auto text-center mb-12">
-            <Badge className="bg-green-100 text-primary border-green-200 px-4 py-2 rounded-full font-medium mb-4 text-sm">
-              🎬 Cuenta de Demostración
-            </Badge>
-            <h2 className="text-3xl md:text-4xl font-heading font-bold text-brand-dark mb-4">
-              Explora DelyWa sin registrarte
-            </h2>
-            <p className="text-muted-foreground text-lg">
-              Entra al panel de <strong>La Elegancia Colmado</strong> con datos reales de ejemplo — pedidos, deliveries, reportes y configuración lista para explorar.
-            </p>
-          </div>
-
-          <div className="max-w-xl mx-auto">
-            {/* Demo card */}
-            <div className="bg-white rounded-3xl border-2 border-green-200 shadow-xl overflow-hidden">
-              {/* Header with logo */}
-              <div className="bg-gradient-to-r from-primary to-green-500 p-6 flex items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-white/20 border-2 border-white/40 overflow-hidden flex items-center justify-center shrink-0">
-                  <img src="/logo-elegancia-demo.png" alt="La Elegancia" className="w-full h-full object-contain" />
-                </div>
-                <div className="text-white">
-                  <p className="font-bold text-xl font-heading">La Elegancia Colmado</p>
-                  <p className="text-green-100 text-sm">Cuenta de demostración · Datos de ejemplo</p>
-                </div>
-                <div className="ml-auto">
-                  <span className="bg-white/20 border border-white/40 text-white text-xs font-medium px-3 py-1 rounded-full">DEMO</span>
-                </div>
-              </div>
-
-              {/* Credentials */}
-              <div className="p-8 space-y-4">
-                <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Credenciales de acceso</p>
-
-                {/* Email */}
-                <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-400 mb-0.5">Usuario</p>
-                    <p className="font-mono font-semibold text-gray-800">demo@gmail.com</p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard("demo@gmail.com", "email")}
-                    className="text-gray-400 hover:text-primary transition-colors p-1.5 rounded-lg hover:bg-green-50"
-                    title="Copiar"
-                  >
-                    {copiedField === "email" ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                {/* Password */}
-                <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-400 mb-0.5">Contraseña</p>
-                    <p className="font-mono font-semibold text-gray-800 tracking-widest">123</p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard("123", "password")}
-                    className="text-gray-400 hover:text-primary transition-colors p-1.5 rounded-lg hover:bg-green-50"
-                    title="Copiar"
-                  >
-                    {copiedField === "password" ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                {/* What's included */}
-                <div className="pt-2 space-y-2">
-                  {[
-                    "14 pedidos con distintos estados (entregado, pendiente, en camino…)",
-                    "2 repartidores configurados con historial de entregas",
-                    "19 productos en el catálogo del colmado",
-                    "6 clientes registrados con historial de compras",
-                    "Reportes de ventas por período",
-                  ].map((item, i) => (
-                    <div key={i} className="flex items-start gap-2 text-sm text-gray-600">
-                      <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  onClick={() => setLocation("/login")}
-                  className="w-full mt-2 flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-2xl text-lg transition-colors shadow-md shadow-green-200"
-                >
-                  <Eye className="w-5 h-5" />
-                  Entrar al Demo
-                </button>
-
-                <p className="text-center text-xs text-gray-400">
-                  No necesitas tarjeta · Explora libremente
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Crear mi negocio ────────────────────────────────────────────────── */}
-      <section id="crear-negocio" className="py-20 bg-white border-t border-gray-100 scroll-mt-24">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="max-w-xl mx-auto text-center mb-8">
-            <h2 className="text-3xl md:text-4xl font-heading font-extrabold text-brand-dark mb-3">Crea tu negocio en DelyWa</h2>
-            <p className="text-muted-foreground">Llena tus datos. Revisamos cada negocio y te activamos para que empieces a recibir pedidos.</p>
-          </div>
-          <div className="max-w-xl mx-auto bg-gray-50 border border-gray-100 rounded-3xl p-6 md:p-8 shadow-sm">
-            <RegistroNegocioForm />
-          </div>
-        </div>
-      </section>
-
-      {/* ── CTA Final ──────────────────────────────────────────────────────── */}
-      <section className="py-24 bg-primary relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-        <div className="container mx-auto px-4 md:px-6 text-center relative z-10">
-          <h2 className="text-4xl md:text-5xl font-heading font-extrabold text-white mb-6 tracking-tight">
-            Empieza hoy gratis.<br />Sin mensualidades. Sin riesgo.
-          </h2>
-          <p className="text-green-50 text-xl mb-10 max-w-2xl mx-auto">
-            Únete a DelyWa y convierte tu WhatsApp en una máquina de ventas — los primeros 3 meses son completamente gratis.
+      {/* ── Hero con la foto del delivery ── */}
+      <section id="inicio" className="max-w-[1200px] mx-auto px-4 md:px-6 pt-10 md:pt-14 pb-16 md:pb-[72px] flex flex-wrap gap-12 items-center">
+        <div className="flex-[1_1_440px] min-w-0">
+          <p className="mb-4 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FFF0DC] text-[#8A4B08] font-extrabold text-[15px]">
+            <IconoMoto size={18} /> Delivery en motor para colmados
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a
-              href="#crear-negocio"
-              className="inline-flex items-center justify-center bg-white text-primary hover:bg-gray-100 text-lg h-14 px-8 rounded-full font-bold shadow-xl"
-            >
-              <Smartphone className="mr-2 h-5 w-5" />
-              Registrar mi Negocio Gratis
+          <h1 style={TITULO} className="m-0 font-bold text-[44px] sm:text-[56px] lg:text-[72px] leading-[1.02]">
+            Tu colmado,<br />hasta la puerta<br /><span className="text-[#17804F]">de tu cliente.</span>
+          </h1>
+          <p className="mt-5 max-w-[520px] text-[19px] md:text-xl text-[#4A524E]">
+            El cliente te escribe como en WhatsApp, tú despachas desde el mostrador y tu delivery sale con la dirección, lo que tiene que cobrar y la devuelta.
+          </p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <a href="#crear-negocio" className="inline-flex items-center gap-2.5 min-h-[56px] px-7 rounded-full bg-[#17804F] hover:bg-[#0F5C39] text-white font-extrabold text-lg">
+              Empezar gratis <ArrowRight className="w-[18px] h-[18px]" strokeWidth={2.6} />
             </a>
-            <a
-              href={WA_SALES}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center border-2 border-white text-white hover:bg-white/10 text-lg h-14 px-8 rounded-full font-bold"
-            >
-              Hablar con Ventas
-            </a>
+            <a href="#recorrido" className="inline-flex items-center min-h-[56px] px-6 rounded-full bg-white border-2 border-[#E6DCCB] font-extrabold text-lg">Ver cómo funciona</a>
+          </div>
+          <p className="mt-5 text-[15px] text-[#6B736F]">Sin descargar apps · Funciona en cualquier celular · Sin tarjeta para empezar</p>
+        </div>
+
+        <figure className="flex-[1_1_460px] min-w-0 m-0 relative dw-anima">
+          <picture>
+            <source srcSet="/landing/delivery-motor.webp" type="image/webp" />
+            <img src="/landing/delivery-motor.jpg" alt="Delivery en motor en una calle colonial de República Dominicana" width={1200} height={1200} className="block w-full aspect-square object-cover rounded-[32px]" />
+          </picture>
+          <div className="absolute left-2 sm:-left-3.5 top-6 max-w-[240px] px-4 py-3 rounded-[20px_20px_20px_6px] bg-white shadow-[0_14px_34px_rgba(60,40,10,0.18)] text-[15px]" style={{ animation: "dw-flota 4s ease-in-out infinite" }}>
+            <div className="text-xs font-extrabold text-[#17804F]">Cliente</div>
+            Mándame 2 frías, un salami y una funda de hielo
+          </div>
+          <div className="absolute right-3 sm:right-4 bottom-4 px-4 py-3 rounded-[18px] bg-white shadow-[0_14px_34px_rgba(60,40,10,0.18)] flex items-center gap-3">
+            <span aria-hidden="true" className="w-[42px] h-[42px] rounded-full bg-[#FFE8CC] grid place-items-center"><IconoMoto color="#C2610C" size={24} /></span>
+            <span>
+              <span className="block text-[13px] text-[#6B736F] font-bold">Pedido #128 en camino</span>
+              <span style={TITULO} className="block font-semibold text-xl">Llega en ~8 min</span>
+            </span>
+          </div>
+        </figure>
+      </section>
+
+      {/* ── El recorrido: colmado → moto → casa ── */}
+      <section id="recorrido" className="bg-[#FFF4E4] border-y border-[#F0E2CC] scroll-mt-20">
+        <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-16 md:py-[88px]">
+          <div className="text-center max-w-[760px] mx-auto">
+            <h2 style={TITULO} className="m-0 font-bold text-[34px] md:text-[52px] leading-[1.08]">Del mostrador a la puerta, sin una sola llamada</h2>
+            <p className="mt-4 text-[#4A524E]">Así llega un pedido con Delywa.</p>
+          </div>
+
+          <div role="img" aria-label="Ilustración: el delivery sale del colmado en su motor y llega a la casa del cliente" className="dw-anima relative mt-11 h-[220px] sm:h-[300px] rounded-[28px] overflow-hidden bg-[#DDF1FB]">
+            <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[74px] bg-[#4B5350]" />
+            <div aria-hidden="true" className="absolute inset-x-0 bottom-[34px] h-1" style={{ background: "repeating-linear-gradient(90deg, #FFE08A 0 34px, transparent 34px 64px)" }} />
+            <div aria-hidden="true" className="absolute inset-x-0 bottom-[74px] h-3.5 bg-[#E8DCC6]" />
+            <ColmadoFrente className="absolute left-[2%] bottom-[84px] w-[300px] max-w-[42%] h-auto" />
+            <CasaCliente className="absolute right-[2%] bottom-[84px] w-[200px] max-w-[28%] h-auto" />
+            <div aria-hidden="true" className="absolute bottom-[30px] w-[110px] sm:w-[150px]" style={{ animation: "dw-ruta 6s ease-in-out infinite alternate" }}>
+              <DeliveryMotor girando className="block w-full h-auto" />
+            </div>
+          </div>
+
+          <ol className="list-none p-0 mt-9 grid gap-[18px] grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
+            <Paso n={1} titulo="El cliente pide" texto="Abre tu enlace y escribe con sus palabras. El bot anota, pide la ubicación y cómo va a pagar." />
+            <Paso n={2} titulo="Tú despachas" texto="Confirmas el precio, preparas la funda y le asignas el pedido a tu delivery con un toque." />
+            <Paso n={3} naranja titulo="El delivery lo lleva" texto="Sale con la ruta, cobra, entrega la devuelta y el cliente lo ve llegar desde su celular." />
+          </ol>
+        </div>
+      </section>
+
+      {/* ── Para el colmado ── */}
+      <section id="colmado" className="max-w-[1200px] mx-auto px-4 md:px-6 py-16 md:py-24 flex flex-wrap gap-14 items-center scroll-mt-20">
+        <div className="flex-[1_1_440px] min-w-0">
+          <div className="bg-[#FFF4E4] rounded-[32px] px-7 pt-7 overflow-hidden">
+            <ColmadoDentro titulo="Ilustración de un colmado dominicano con su toldo y sus estantes" className="block w-full h-auto" />
+          </div>
+        </div>
+        <div className="flex-[1_1_420px] min-w-0">
+          <p className="m-0 font-extrabold text-[#17804F] text-base">PARA EL COLMADERO</p>
+          <h2 style={TITULO} className="mt-2 font-bold text-[34px] md:text-[50px] leading-[1.08]">Todo el despacho del día en tu celular o en la caja</h2>
+          <p className="mt-4 text-[#4A524E]">Los pedidos te llegan ordenados: por confirmar, preparando, en camino y entregados. Cada uno tiene un solo botón con lo que toca hacer.</p>
+          <ul className="mt-6 p-0 list-none grid gap-3.5">
+            <Punto>Confirmas el precio y el cliente lo recibe al momento.</Punto>
+            <Punto>Transferencias: ves la foto del comprobante y la apruebas antes de entregar.</Punto>
+            <Punto>Cuadre de caja y del delivery sin papelitos.</Punto>
+            <Punto>Dueño, colmadero y despachador, cada uno con lo suyo.</Punto>
+          </ul>
+        </div>
+      </section>
+
+      {/* ── Para el delivery ── */}
+      <section id="delivery" className="bg-[#FFF4E4] border-y border-[#F0E2CC] scroll-mt-20">
+        <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-16 md:py-24 flex flex-wrap-reverse gap-14 items-center">
+          <div className="flex-[1_1_420px] min-w-0">
+            <p className="m-0 font-extrabold text-[#A3520A] text-base">PARA EL DELIVERY</p>
+            <h2 style={TITULO} className="mt-2 font-bold text-[34px] md:text-[50px] leading-[1.08]">Sale con la ruta, el cobro y la devuelta</h2>
+            <p className="mt-4 text-[#4A524E]">Entra desde su celular con su número y un código. No tiene que descargar nada.</p>
+            <ul className="mt-6 p-0 list-none grid gap-3.5">
+              <Punto naranja>Las entregas en orden, con el mapa para llegar.</Punto>
+              <Punto naranja>Llama al cliente o al colmado con un toque.</Punto>
+              <Punto naranja>Si el cliente no aparece, devuelve el pedido con su motivo.</Punto>
+              <Punto naranja>Al final del turno cuadra el efectivo con el colmado.</Punto>
+            </ul>
+          </div>
+          <div className="flex-[1_1_440px] min-w-0 flex flex-wrap gap-[18px] items-end justify-center">
+            <DeliveryMotor titulo="Ilustración de un delivery en su motor con la caja de pedidos" className="w-[230px] max-w-[46%] h-auto" />
+            <div className="w-[280px] max-w-full rounded-[34px] border-8 border-[#1F2420] bg-white p-4 grid gap-2.5 shadow-[0_20px_40px_rgba(60,40,10,0.16)]">
+              <div className="text-[13px] font-extrabold text-[#6B736F]">Mis entregas · José</div>
+              <div className="rounded-[18px] bg-[#FFF4E4] p-3.5">
+                <div className="font-extrabold">#128 · Pedro Gómez</div>
+                <div className="text-[15px] text-[#4A524E]">Calle 5 #10, Los Mina</div>
+                <div className="mt-2 flex justify-between text-[15px]"><span>Cobra</span><b>RD$580</b></div>
+                <div className="flex justify-between text-[15px]"><span>Devuelta</span><b className="text-[#17804F]">RD$420</b></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2" aria-hidden="true">
+                <span className="min-h-[44px] grid place-items-center rounded-full border-2 border-[#E6DCCB] font-extrabold text-[15px]">Llamar</span>
+                <span className="min-h-[44px] grid place-items-center rounded-full bg-[#F28C28] font-extrabold text-[15px]">Entregado</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── Footer ─────────────────────────────────────────────────────────── */}
-      <footer className="bg-white py-12 border-t border-gray-100">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex items-center gap-2">
-              <img src="/delywa-logo.png" alt="DelyWa" className="h-10 w-auto" />
+      {/* ── Para el cliente ── */}
+      <section id="cliente" className="max-w-[1200px] mx-auto px-4 md:px-6 py-16 md:py-24 flex flex-wrap gap-14 items-center">
+        <div className="flex-[1_1_380px] min-w-0 flex justify-center">
+          <div className="w-[320px] max-w-full rounded-[38px] border-[9px] border-[#1F2420] bg-[#EFE7DB] overflow-hidden shadow-[0_20px_40px_rgba(60,40,10,0.16)]" role="img" aria-label="Ejemplo de conversación de un cliente pidiendo al colmado">
+            <div className="bg-[#17804F] text-white px-4 py-3.5 flex items-center gap-2.5">
+              <span aria-hidden="true" style={TITULO} className="w-[34px] h-[34px] rounded-full bg-white text-[#17804F] grid place-items-center font-bold">S</span>
+              <span><b className="block text-[15px]">Colmado El Sol</b><span className="text-xs opacity-90">en línea</span></span>
             </div>
-            <div className="flex gap-8 text-sm text-gray-500">
-              <a href="#como-funciona" className="hover:text-primary">Cómo funciona</a>
-              <a href="/legal#terminos" className="hover:text-primary">Términos</a>
-              <a href="/legal#privacidad" className="hover:text-primary">Privacidad</a>
-              <a href="/legal#dpa" className="hover:text-primary">DPA</a>
-              <a href="/contact" className="hover:text-primary">Contacto</a>
+            <div className="p-3.5 flex flex-col gap-2 text-[15px]">
+              <div className="self-end max-w-[82%] bg-[#D9FDD3] px-3 py-2 rounded-[14px_14px_4px_14px]">Buenas, quiero una libra de arroz, 2 libras de pollo y una fría</div>
+              <div className="self-start max-w-[86%] bg-white px-3 py-2 rounded-[14px_14px_14px_4px]">Anotado:<br />1 libra de arroz<br />2 libras de pollo<br />1 fría<br /><b>¿Algo más?</b></div>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="px-3 py-1.5 rounded-full bg-white text-[#17804F] font-extrabold text-sm">Eso es todo</span>
+                <span className="px-3 py-1.5 rounded-full bg-white text-[#17804F] font-extrabold text-sm">Agregar más</span>
+              </div>
+              <div className="self-end max-w-[82%] bg-[#D9FDD3] px-3 py-2 rounded-[14px_14px_4px_14px]">Llévamelo a mi casa, pago con 1000</div>
+              <div className="self-start max-w-[86%] bg-white px-3 py-2 rounded-[14px_14px_14px_4px]">Perfecto. El colmado está verificando tu pedido y te aviso cuando salga el delivery.</div>
             </div>
-            <p className="text-sm text-gray-400">
-              © {new Date().getFullYear()} DelyWa. Hecho con ❤️ en RD.
-            </p>
           </div>
+        </div>
+        <div className="flex-[1_1_420px] min-w-0">
+          <p className="m-0 font-extrabold text-[#17804F] text-base">PARA TU CLIENTE</p>
+          <h2 style={TITULO} className="mt-2 font-bold text-[34px] md:text-[50px] leading-[1.08]">Pide como siempre le ha pedido al colmado</h2>
+          <p className="mt-4 text-[#4A524E]">Escribe "una fría", "50 pesos de ajo" o manda una nota de voz. El bot lo anota tal cual, sin cambiarle las palabras. Si algo no entiende, te pasa el mensaje a ti.</p>
+          <p className="mt-4 text-[#4A524E]">Comparte tu enlace en tu estado de WhatsApp, en Instagram o con un letrero en el mostrador:</p>
+          <p className="mt-2.5 inline-block px-4 py-2.5 rounded-[14px] bg-[#FFF4E4] font-extrabold break-all">delywa.com/pedir/tu-colmado</p>
+        </div>
+      </section>
+
+      {/* ── Precio ── */}
+      <section id="precio" className="bg-[#17804F] text-white scroll-mt-20">
+        <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-16 md:py-[88px] flex flex-wrap gap-10 items-center">
+          <div className="flex-[1_1_440px] min-w-0">
+            <h2 style={TITULO} className="m-0 font-bold text-[34px] md:text-[52px] leading-[1.08]">1 mes gratis.<br />Pruébalo con tus clientes de verdad.</h2>
+            <p className="mt-4 text-[19px] text-[#E3F3EA] max-w-[520px]">Usa todo Delywa durante el primer mes: el chat de pedidos, el panel, el portal del delivery y los cuadres. Después eliges el plan que te conviene.</p>
+          </div>
+          <div className="flex-[1_1_300px] min-w-0 bg-white text-[#1F2420] rounded-[28px] p-7 text-center grid gap-1.5">
+            <span className="font-extrabold text-[#6B736F] text-[15px]">Prueba gratis</span>
+            <span style={TITULO} className="font-bold text-[60px] leading-[1.1] text-[#17804F]">1 mes</span>
+            <span className="text-[15px] text-[#4A524E]">Sin tarjeta · Sin contrato · Cancela cuando quieras</span>
+            <a href="#crear-negocio" className="mt-3 inline-flex justify-center items-center min-h-[54px] rounded-full bg-[#F28C28] hover:bg-[#E07B17] text-[#1F2420] font-extrabold text-lg">Empezar gratis</a>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Crear mi negocio ── */}
+      <section id="crear-negocio" className="max-w-[1000px] mx-auto px-4 md:px-6 py-16 md:py-24 scroll-mt-20">
+        <div className="text-center">
+          <h2 style={TITULO} className="m-0 font-bold text-[36px] md:text-[60px] leading-[1.05]">Pon tu colmado a vender por delivery <span className="text-[#17804F]">hoy mismo</span></h2>
+          <p className="mt-4 mx-auto max-w-[580px] text-[#4A524E] text-[19px]">Te registras en minutos, confirmas tu correo con un código y vas preparando tu menú mientras revisamos tu negocio.</p>
+        </div>
+        <div className="mt-10 max-w-xl mx-auto bg-white border border-[#F0E6D6] rounded-[28px] p-6 md:p-8 shadow-[0_14px_34px_rgba(60,40,10,0.08)]">
+          <RegistroNegocioForm />
+        </div>
+        <p className="mt-6 text-center text-[#4A524E]">
+          ¿Prefieres que te ayudemos? <a href={WA_VENTAS} target="_blank" rel="noopener noreferrer" className="font-extrabold text-[#17804F] underline">Escríbenos por WhatsApp</a> · <a href="/manual" className="font-extrabold text-[#17804F] underline">Ver el manual</a>
+        </p>
+      </section>
+
+      {/* ── Pie ── */}
+      <footer className="border-t border-[#F0E6D6] bg-[#FFF9EF]">
+        <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-7 flex flex-wrap gap-x-7 gap-y-3.5 justify-between items-center text-[15px] text-[#5B6460]">
+          <span className="flex items-center gap-2.5"><img src="/delywa-logo.png" alt="" className="w-10 h-10 object-contain" />Delywa · WRMA Developer · República Dominicana</span>
+          <span className="flex flex-wrap gap-[18px]">
+            <a href="/legal#terminos" className="text-[#17804F] hover:underline">Términos</a>
+            <a href="/legal#privacidad" className="text-[#17804F] hover:underline">Privacidad</a>
+            <a href="/legal#dpa" className="text-[#17804F] hover:underline">DPA</a>
+            <a href="/contact" className="text-[#17804F] hover:underline">Contacto</a>
+            <a href="mailto:soporte@delywa.com" className="text-[#17804F] hover:underline">soporte@delywa.com</a>
+          </span>
         </div>
       </footer>
     </div>
