@@ -1,0 +1,1 @@
+ALTER TABLE `pedidos` ADD `codigo_seguimiento` text;

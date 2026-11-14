@@ -1,3 +1,4 @@
+import { codigoSeguimientoValido } from "../lib/seguimiento";
 import { Hono } from "hono";
 import { z } from "zod";
 import { emojiDe } from "../bot/productos";
@@ -545,7 +546,8 @@ pedidoRoutes.get("/api/seguimiento/:pedidoId", async (c) => {
   const id = Number(c.req.param("pedidoId"));
   if (!Number.isInteger(id)) return c.json({ error: "ID inválido" }, 400);
   const pedido = await getPedidoById(db, id);
-  if (!pedido) return c.json({ error: "Pedido no encontrado" }, 404);
+  // Sin el código del enlace responde igual que si no existiera: no se puede adivinar.
+  if (!pedido || !codigoSeguimientoValido(pedido, c.req.query("t"))) return c.json({ error: "Pedido no encontrado" }, 404);
   if (pedido.estado === "fusionado") {
     return c.json({ error: `Este pedido está incluido en el Pedido #${pedido.fusionadoEnPedidoId}.`, pedidoPrincipalId: pedido.fusionadoEnPedidoId }, 410);
   }
@@ -580,12 +582,14 @@ pedidoRoutes.get("/api/seguimiento/:pedidoId", async (c) => {
 /** Página con vista previa (logo, título) para compartir el enlace de seguimiento. */
 pedidoRoutes.get("/compartir/seguimiento/:pedidoId", async (c) => {
   const id = Number(c.req.param("pedidoId"));
-  const destino = `/seguimiento/${id}`;
+  const t = c.req.query("t");
+  const destino = `/seguimiento/${id}${t ? `?t=${encodeURIComponent(t)}` : ""}`;
   if (!Number.isInteger(id) || id <= 0) return c.redirect("/", 302);
   try {
     const db = getDb(c.env.DB);
     const pedido = await getPedidoById(db, id);
-    if (!pedido || pedido.estado === "fusionado") return c.redirect(destino, 302);
+    // Sin el código correcto no se muestra ni el nombre del negocio en la vista previa.
+    if (!pedido || pedido.estado === "fusionado" || !codigoSeguimientoValido(pedido, t)) return c.redirect(destino, 302);
     const colmado = await getColmado(db, pedido.colmadoId);
     const origen = new URL(c.req.url).origin;
     const negocio = colmado?.nombre || "Tu negocio";

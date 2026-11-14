@@ -5,6 +5,7 @@ import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { checkZipFormat } from "../lib/zipValidation";
 import { soloDigitos } from "../lib/telefono";
+import { permitirEvento } from "../lib/rate-limit";
 import { enrichColmadoWithMoneda, generateSlug, getColmado, getPais } from "../storage/colmados";
 import { getMenuProductos } from "../storage/menu";
 import {
@@ -70,7 +71,7 @@ menuGraficoRoutes.get("/api/menu-grafico/colmado/:codigo", async (c) => {
 });
 
 const resumenPedido = (p: Awaited<ReturnType<typeof getPedidosByClienteWhatsapp>>[number]) => ({
-  id: p.id, estado: p.estado, total: p.total, tipoEntrega: p.tipoEntrega, fecha: p.fechaCreacion, productos: p.productos,
+  id: p.id, codigoSeguimiento: p.codigoSeguimiento, estado: p.estado, total: p.total, tipoEntrega: p.tipoEntrega, fecha: p.fechaCreacion, productos: p.productos,
 });
 
 /** Reconoce a un cliente que regresa por su número para precargar nombre y dirección. */
@@ -80,6 +81,10 @@ menuGraficoRoutes.post("/api/menu-grafico/buscar-cliente", async (c) => {
   const colmadoId = Number(body.colmadoId);
   const whatsapp = typeof body.whatsapp === "string" ? body.whatsapp : "";
   if (!Number.isInteger(colmadoId) || soloDigitos(whatsapp).length < 7) return c.json({ error: "Datos incompletos" }, 400);
+  // Frena a quien pruebe números uno tras otro para sacar nombres y direcciones.
+  if (!(await permitirEvento(db, `buscarcliente:${c.req.header("CF-Connecting-IP") ?? "sin-ip"}`, 20, 10 * 60 * 1000))) {
+    return c.json({ error: "Demasiadas búsquedas. Espera unos minutos." }, 429);
+  }
   if (!(await getColmado(db, colmadoId))) return c.json({ error: "Negocio no encontrado" }, 404);
   const [conversacion, cliente, suyos] = await Promise.all([
     getConversacionByCliente(db, colmadoId, whatsapp),
@@ -106,6 +111,9 @@ menuGraficoRoutes.get("/api/menu-grafico/pedidos-cliente", async (c) => {
   const colmadoId = Number(c.req.query("colmadoId"));
   const whatsapp = String(c.req.query("whatsapp") || "").trim();
   if (!Number.isInteger(colmadoId) || !whatsapp) return c.json({ error: "Datos incompletos" }, 400);
+  if (!(await permitirEvento(db, `pedidoscliente:${c.req.header("CF-Connecting-IP") ?? "sin-ip"}`, 60, 10 * 60 * 1000))) {
+    return c.json({ error: "Demasiadas consultas. Espera unos minutos." }, 429);
+  }
   if (!(await getColmado(db, colmadoId))) return c.json({ error: "Negocio no encontrado" }, 404);
   const suyos = await getPedidosByClienteWhatsapp(db, colmadoId, whatsapp);
   return c.json({ pedidos: suyos.filter((p) => p.estado !== "fusionado").slice(0, 2).map(resumenPedido) });
@@ -204,5 +212,5 @@ menuGraficoRoutes.post("/api/menu-grafico/pedido", async (c) => {
   await addMensaje(db, conversacion.id, "user",
     `🛒 *Nuevo pedido desde Menú Gráfico #${pedido.id}*\n\n📝 *Productos solicitados:*\n${texto}\n\n👤 *Cliente:* ${nombre}\n${entrega}\n💰 *Total estimado:* ${simbolo}${(subtotal + costoDelivery).toFixed(0)}\n\n⏳ El negocio está revisando tu pedido y te confirmará el total.`);
 
-  return c.json({ id: pedido.id, estado: pedido.estado, tipoEntrega: pedido.tipoEntrega, mensaje: "Pedido creado. El negocio te confirmará el total pronto." });
+  return c.json({ id: pedido.id, codigoSeguimiento: pedido.codigoSeguimiento, estado: pedido.estado, tipoEntrega: pedido.tipoEntrega, mensaje: "Pedido creado. El negocio te confirmará el total pronto." });
 });

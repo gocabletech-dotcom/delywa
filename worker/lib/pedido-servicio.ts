@@ -1,3 +1,4 @@
+import { enlaceSeguimiento } from "./seguimiento";
 import { eq } from "drizzle-orm";
 import { whatsappConversaciones, type Colmado, type Pedido } from "@shared/schema";
 import { transferenciaSinAprobar } from "./transferencia";
@@ -172,7 +173,7 @@ export async function cambiarEstadoPedido(
   if (colmado && notificar) {
     try {
       const repartidor = estado === "en_camino" && pedido.deliveryId ? (await getDeliveryById(db, pedido.deliveryId))?.nombre ?? "" : "";
-      const tracking = `${urlPublica(env, opciones.origen)}/seguimiento/${pedido.id}`;
+      const tracking = enlaceSeguimiento(urlPublica(env, opciones.origen), pedido);
       const mensaje = mensajeDeEstado(pedido, estado, await simboloMoneda(db, colmado), tracking, repartidor);
       // "llegando" solo va al chat web.
       if (mensaje) await notificarCliente(env, db, colmado, pedido, mensaje, { whatsapp: estado !== "llegando" });

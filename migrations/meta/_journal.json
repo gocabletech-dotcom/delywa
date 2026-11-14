@@ -85,6 +85,20 @@
       "when": 1794566662563,
       "tag": "0011_retorno_recibido",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794671125280,
+      "tag": "0012_correo_confirmado",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794671452046,
+      "tag": "0013_codigo_seguimiento",
+      "breakpoints": true
     }
   ]
 }

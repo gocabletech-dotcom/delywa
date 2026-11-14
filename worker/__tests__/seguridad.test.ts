@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { bitacora, colmados, errores, paises, planes, recuperaciones, respaldos, users } from "@shared/schema";
 import { correosEnviados, createTestApp } from "./helpers";
-import { createUser } from "../storage/users";
+import { createUser, updateUser } from "../storage/users";
 import { LIMITE, iniciarRespaldo, pasoRespaldo } from "../lib/respaldo";
 import { envEfectivo, olvidarCache } from "../lib/integraciones";
 import { avisosFinDePrueba } from "../lib/avisos";
@@ -103,6 +103,49 @@ describe("código de registro por correo", () => {
     expect((await t.client().request("POST", "/api/registro-negocio", { ...datos, codigo: malo }, h)).status).toBe(400);
     const r2 = await t.client().request("POST", "/api/registro-negocio", { ...datos, codigo }, h);
     expect(r2.status).toBe(201);
+    // El correo queda confirmado: el panel no le pide confirmarlo otra vez.
+    const [lia] = await t.db.select().from(users).where(eq(users.email, "lia@delywa.test"));
+    expect(lia.emailVerificadoAt).toBeTruthy();
+  });
+});
+
+describe("confirmar el correo de una cuenta que ya existe", () => {
+  it("manda el código, lo revisa, marca el correo y lo vuelve a pedir si cambia el correo", async () => {
+    await createUser(t.db, { idPrefix: "owner", email: "rafa@delywa.test", password: "clave-de-rafa-12", firstName: "Rafa", role: "colmado_owner" });
+    const c = t.client();
+    await c.request("POST", "/api/auth/login", { username: "rafa@delywa.test", password: "clave-de-rafa-12" });
+    let ses = (await c.request("GET", "/api/auth/session")).json;
+    expect(ses).toMatchObject({ correoActivo: true, user: { emailVerificado: false } });
+    // Sin sesión no se puede pedir.
+    expect((await t.client().request("POST", "/api/auth/correo/codigo")).status).toBe(401);
+
+    const r1 = await c.request("POST", "/api/auth/correo/codigo");
+    expect(r1.json).toMatchObject({ ok: true, correo: "rafa@delywa.test" });
+    const codigo = (correosEnviados.at(-1)!.subject.match(/^(\d{6})/) || [])[1];
+    expect(correosEnviados.at(-1)!.to).toEqual(["rafa@delywa.test"]);
+    const malo = codigo === "000000" ? "111111" : "000000";
+    expect((await c.request("POST", "/api/auth/correo/confirmar", { codigo: malo })).status).toBe(400);
+    expect((await c.request("POST", "/api/auth/correo/confirmar", { codigo })).status).toBe(200);
+    // Un código sirve una sola vez.
+    expect((await c.request("POST", "/api/auth/correo/confirmar", { codigo })).status).toBe(400);
+    ses = (await c.request("GET", "/api/auth/session")).json;
+    expect(ses.user.emailVerificado).toBe(true);
+    expect((await c.request("POST", "/api/auth/correo/codigo")).json).toMatchObject({ yaConfirmado: true });
+
+    // Si cambian el correo, hay que confirmarlo otra vez.
+    const [rafa] = await t.db.select().from(users).where(eq(users.email, "rafa@delywa.test"));
+    await updateUser(t.db, rafa.id, { email: "rafa.nuevo@delywa.test" });
+    const [despues] = await t.db.select().from(users).where(eq(users.id, rafa.id));
+    expect(despues.emailVerificadoAt).toBeNull();
+  });
+
+  it("no manda más de 4 códigos por hora a la misma cuenta", async () => {
+    await createUser(t.db, { idPrefix: "owner", email: "tito@delywa.test", password: "clave-de-tito-12", firstName: "Tito", role: "colmado_owner" });
+    const c = t.client();
+    await c.request("POST", "/api/auth/login", { username: "tito@delywa.test", password: "clave-de-tito-12" });
+    const estados = [];
+    for (let i = 0; i < 5; i++) estados.push((await c.request("POST", "/api/auth/correo/codigo")).status);
+    expect(estados).toEqual([200, 200, 200, 200, 429]);
   });
 });
 
@@ -170,5 +213,16 @@ describe("aviso de fin de prueba", () => {
     expect(await avisosFinDePrueba(env)).toBe(0);
     expect(correosEnviados.at(-1)).toMatchObject({ to: ["prueba@delywa.test"] });
     expect(correosEnviados.at(-1)!.subject).toContain("termina en 3 días");
+  });
+});
+
+describe("peticiones desde otra página", () => {
+  it("rechaza un cambio con la sesión si viene de otro sitio, y acepta el propio", async () => {
+    await createUser(t.db, { idPrefix: "owner", email: "otro-sitio@delywa.test", password: "clave-otro-sitio-1", firstName: "Oto", role: "colmado_owner" });
+    const c = t.client();
+    await c.request("POST", "/api/auth/login", { username: "otro-sitio@delywa.test", password: "clave-otro-sitio-1" });
+    expect((await c.request("POST", "/api/auth/logout", undefined, { Origin: "https://malo.example" })).status).toBe(403);
+    expect((await c.request("GET", "/api/auth/session")).json.isAuthenticated).toBe(true);
+    expect((await c.request("POST", "/api/auth/logout", undefined, { Origin: "https://delywa.test" })).status).toBe(200);
   });
 });

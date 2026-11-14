@@ -69,7 +69,8 @@ export default function SeguimientoPage() {
   const { data, isLoading, error, dataUpdatedAt } = useQuery<SeguimientoData>({
     queryKey: ["seguimiento", pedidoId],
     queryFn: async () => {
-      const res = await fetch(`/api/seguimiento/${pedidoId}`);
+      const t = new URLSearchParams(window.location.search).get("t");
+      const res = await fetch(`/api/seguimiento/${pedidoId}${t ? `?t=${encodeURIComponent(t)}` : ""}`);
       if (!res.ok) throw new Error("No se pudo obtener el seguimiento");
       return res.json();
     },

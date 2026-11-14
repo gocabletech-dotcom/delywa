@@ -79,7 +79,7 @@ describe("registro público de negocio", () => {
   it("mientras está apagado no recibe pedidos, ni chat web, ni el bot lo encuentra", async () => {
     const [n] = await t.db.select().from(colmados).where(eq(colmados.id, colmadoId));
     expect((await t.client().request("GET", `/api/chat-web/colmado/${n.slug}`)).status).toBe(404);
-    expect((await t.client().request("POST", "/api/chat-web/session", { colmadoId })).status).toBe(404);
+    expect((await t.client().request("GET", `/api/chat-colmado/${n.slug}/info`)).status).toBe(404);
   });
 
   it("limita los registros por conexión", async () => {

@@ -62,6 +62,21 @@ export async function mandarCodigoRegistro(env: Env, db: Db, email: string, nomb
   });
 }
 
+/** Código para confirmar el correo de una cuenta que ya existe (se registró antes de activar los correos, o lo cambió). */
+export async function mandarCodigoCuenta(env: Env, db: Db, email: string, nombre: string): Promise<void> {
+  const codigo = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
+  const fila = { email, codigoHash: await sha256(`${email}:${codigo}`), expira: new Date(Date.now() + VIGENCIA_CODIGO_MS), intentos: 0 };
+  await db.insert(codigosCorreo).values(fila).onConflictDoUpdate({ target: codigosCorreo.email, set: fila });
+  await enviarCorreo(env, {
+    para: email, asunto: `${codigo} es tu código de DelyWa`,
+    html: plantillaCorreo("Confirma tu correo", `<p>Hola ${escHtml(nombre)}: para confirmar que este correo es tuyo, escribe este código en DelyWa:</p>${destacado(codigo)}<p>Vence en 20 minutos. Si no fuiste tú, ignora este correo.</p>`, { resumen: `Tu código es ${codigo}. Vence en 20 minutos.` }),
+  });
+}
+
+export async function marcarCorreoConfirmado(db: Db, userId: string): Promise<void> {
+  await db.update(users).set({ emailVerificadoAt: new Date() }).where(eq(users.id, userId));
+}
+
 export type ResultadoCodigo = "ok" | "vencido" | "muchos" | "equivocado";
 export async function revisarCodigoRegistro(db: Db, email: string, codigo: string): Promise<ResultadoCodigo> {
   const [fila] = await db.select().from(codigosCorreo).where(eq(codigosCorreo.email, email));

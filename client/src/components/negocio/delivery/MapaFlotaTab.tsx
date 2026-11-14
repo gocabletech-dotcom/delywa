@@ -1,4 +1,5 @@
 import { useMemo, useEffect } from "react";
+import { enlaceSeguimiento, type PedidoConCodigo } from "@/lib/seguimiento";
 import { useQuery } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -18,6 +19,7 @@ interface EtaInfo {
 
 interface PedidoPendiente {
   id: number;
+  codigoSeguimiento?: string | null;
   clienteNombre: string;
   clienteUbicacion: string | null;
   clienteLatitud: string | null;
@@ -110,13 +112,14 @@ export function ubicacionDesactualizada(fecha: string | null): boolean {
   return Number.isFinite(timestamp) && Date.now() - timestamp > 20 * 60 * 1000;
 }
 
-function copiarLinkSeguimiento(pedidoId: number) {
-  const url = `${window.location.origin}/seguimiento/${pedidoId}`;
+function copiarLinkSeguimiento(pedido: PedidoConCodigo) {
+  const url = enlaceSeguimiento(pedido);
   navigator.clipboard.writeText(url);
 }
 
-async function compartirLinkSeguimiento(pedidoId: number) {
-  const url = `${window.location.origin}/seguimiento/${pedidoId}`;
+async function compartirLinkSeguimiento(pedido: PedidoConCodigo) {
+  const pedidoId = pedido.id;
+  const url = enlaceSeguimiento(pedido);
   if (typeof navigator.share === "function") {
     try {
       await navigator.share({
@@ -129,7 +132,7 @@ async function compartirLinkSeguimiento(pedidoId: number) {
     }
     return;
   }
-  await copiarLinkSeguimiento(pedidoId);
+  await copiarLinkSeguimiento(pedido);
 }
 
 export default function MapaFlotaTab({
@@ -335,7 +338,7 @@ export default function MapaFlotaTab({
                 )}
               </div>
               <button
-                onClick={() => copiarLinkSeguimiento(p.id)}
+                onClick={() => copiarLinkSeguimiento(p)}
                 title="Copiar link de seguimiento para el cliente"
                 aria-label="Copiar link de seguimiento para el cliente"
                 data-testid={`copiar-seguimiento-${p.id}`}
@@ -344,7 +347,7 @@ export default function MapaFlotaTab({
                 <Clipboard size={14} />
               </button>
               <button
-                onClick={() => compartirLinkSeguimiento(p.id)}
+                onClick={() => compartirLinkSeguimiento(p)}
                 title="Compartir link de seguimiento"
                 aria-label="Compartir link de seguimiento"
                 data-testid={`compartir-seguimiento-nativo-${p.id}`}

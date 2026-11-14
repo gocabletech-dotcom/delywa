@@ -132,7 +132,12 @@ export async function updateUser(
   data: { email?: string; password?: string; firstName?: string; lastName?: string },
 ): Promise<User | undefined> {
   const updateData: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
-  if (data.email !== undefined) updateData.email = normalizeEmail(data.email);
+  if (data.email !== undefined) {
+    updateData.email = normalizeEmail(data.email);
+    // Un correo distinto hay que confirmarlo de nuevo.
+    const [antes] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
+    if (antes && antes.email !== updateData.email) updateData.emailVerificadoAt = null;
+  }
   if (data.firstName !== undefined) updateData.firstName = data.firstName;
   if (data.lastName !== undefined) updateData.lastName = data.lastName;
   if (data.password) updateData.password = await hashPassword(data.password);

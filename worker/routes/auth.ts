@@ -6,7 +6,7 @@ import { getDb } from "../db";
 import { requireAuth } from "../lib/auth";
 import { claveDebil } from "../lib/claves";
 import { correoListo, SOPORTE } from "../lib/correo";
-import { cerrarSesionesDe, mandarEnlaceRecuperacion, revisarEquipo, usarEnlaceRecuperacion, usuarioDeId } from "../lib/cuenta";
+import { mandarCodigoCuenta, marcarCorreoConfirmado, revisarCodigoRegistro, cerrarSesionesDe, mandarEnlaceRecuperacion, revisarEquipo, usarEnlaceRecuperacion, usuarioDeId } from "../lib/cuenta";
 import { anotar } from "../lib/seguridad";
 import { timingSafeEqual, verifyAgainstDummy, verifyPassword } from "../lib/password";
 import { turnstileDelLogin, verificarTurnstile } from "../lib/turnstile";
@@ -113,10 +113,47 @@ authRoutes.post("/api/auth/recuperar/cambiar", async (c) => {
   const userId = await usarEnlaceRecuperacion(db, typeof body?.token === "string" ? body.token : "");
   if (!userId) return c.json({ error: "El enlace venció o ya se usó. Pide uno nuevo desde «¿Olvidaste tu contraseña?»." }, 400);
   await updateUser(db, userId, { password: body.password });
+  // Abrió el enlace que llegó a su correo: el correo es suyo.
+  await marcarCorreoConfirmado(db, userId);
   await cerrarSesionesDe(db, userId);
   const user = await usuarioDeId(db, userId);
   await anotar(db, { userId, usuario: user?.email, rol: user?.role, colmadoId: user?.colmadoId, accion: "Cambió su contraseña con el enlace del correo", ip });
   return c.json({ ok: true, mensaje: "Listo. Ya puedes entrar con tu contraseña nueva." });
+});
+
+// ---------- Confirmar el correo de una cuenta que ya existe ----------
+
+authRoutes.post("/api/auth/correo/codigo", requireAuth, async (c) => {
+  const db = getDb(c.env.DB);
+  const user = c.var.user;
+  if (!correoListo(c.env)) return c.json({ error: "La plataforma todavía no tiene activado el envío de correos." }, 503);
+  if (!user.email) return c.json({ error: "Tu cuenta no tiene correo." }, 400);
+  if (user.emailVerificadoAt) return c.json({ ok: true, yaConfirmado: true });
+  if (!(await permitirEvento(db, `correocodigo:${user.id}`, 4, 60 * 60 * 1000))) {
+    return c.json({ error: `Ya se mandaron varios códigos. Espera una hora o escríbenos a ${SOPORTE}.` }, 429);
+  }
+  try {
+    await mandarCodigoCuenta(c.env, db, user.email, user.firstName || "");
+  } catch (err) {
+    console.error("[correo] Código no enviado:", err instanceof Error ? err.message : err);
+    return c.json({ error: "No se pudo mandar el código. Intenta en unos minutos." }, 502);
+  }
+  return c.json({ ok: true, correo: user.email });
+});
+
+authRoutes.post("/api/auth/correo/confirmar", requireAuth, async (c) => {
+  const db = getDb(c.env.DB);
+  const user = c.var.user;
+  const body = await c.req.json().catch(() => null);
+  const codigo = typeof body?.codigo === "string" ? body.codigo : "";
+  if (!user.email || !codigo) return c.json({ error: "Escribe el código de 6 números." }, 400);
+  const r = await revisarCodigoRegistro(db, user.email, codigo);
+  if (r === "vencido") return c.json({ error: "El código venció o no existe. Pide otro.", codigoVencido: true }, 400);
+  if (r === "muchos") return c.json({ error: "Demasiados códigos equivocados. Pide otro.", codigoVencido: true }, 429);
+  if (r === "equivocado") return c.json({ error: `Código equivocado. Revisa el correo que te mandamos a ${user.email}.` }, 400);
+  await marcarCorreoConfirmado(db, user.id);
+  await anotar(db, { userId: user.id, usuario: user.email, rol: user.role, colmadoId: user.colmadoId, accion: "Confirmó su correo", ip: c.req.header("CF-Connecting-IP") ?? null });
+  return c.json({ ok: true });
 });
 
 /** Público: la clave del sitio de Turnstile (el login la muestra solo cuando el servidor la pide). */
@@ -139,7 +176,10 @@ authRoutes.get("/api/auth/session", async (c) => {
           role: user.role,
           colmadoId: user.colmadoId,
           deliveryId: user.deliveryId,
+          emailVerificado: Boolean(user.emailVerificadoAt),
         },
+        // Solo se pide confirmar cuando la plataforma puede mandar correos.
+        correoActivo: correoListo(c.env),
       });
     }
   }

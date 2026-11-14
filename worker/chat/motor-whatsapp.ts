@@ -139,7 +139,7 @@ function buildMenuDisplayWA(
   }
 
   const slug = colmadoSlug || `COLMADO${colmadoId}`;
-  const baseUrl = urlBasePublica(); // DELYWA: antes dependía de una variable de Replit
+  const baseUrl = urlBasePublica();
   text += `🔗 *Ver menú completo con fotos:* ${baseUrl}/menu/${slug}`;
   return text.trim();
 }
@@ -216,7 +216,7 @@ function _buildMenuDisplayWA(
     text += "\n";
   }
   const slug = colmadoSlug || `COLMADO${colmadoId}`;
-  const base = urlBasePublica(); // DELYWA: antes dependía de una variable de Replit
+  const base = urlBasePublica();
   return (text + `🔗 *Ver menú completo con fotos:* ${base}/menu/${slug}`).trim();
 }
 
@@ -1846,7 +1846,6 @@ async function transcribeWhatsAppAudio(mediaId: string, accessToken: string): Pr
     );
 
     // Step 4: Transcribe with OpenAI Whisper API with Dominican Spanish hints
-    // Using direct OpenAI client (not Replit proxy) as Whisper API is not supported by the proxy
     const transcription = await openaiWhisper.audio.transcriptions.create({
       file: audioFile,
       model: "whisper-1",

@@ -376,6 +376,8 @@ export const pedidos = sqliteTable("pedidos", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),
   deliveryId: integer("delivery_id"),
+  /** Código al azar del enlace de seguimiento (/seguimiento/ID?t=CÓDIGO). Sin él, el enlace no muestra nada. */
+  codigoSeguimiento: text("codigo_seguimiento").$defaultFn(() => crypto.randomUUID().replace(/-/g, "").slice(0, 16)),
   clienteNombre: text("cliente_nombre").notNull(),
   clienteWhatsapp: text("cliente_whatsapp").notNull(),
   clienteUbicacion: text("cliente_ubicacion").notNull(),

@@ -21,6 +21,8 @@ export const users = sqliteTable("users", {
   profileImageUrl: text("profile_image_url"),
   whatsappNumero: text("whatsapp_numero"),
   password: text("password"),
+  /** Cuándo confirmó que el correo es suyo (código de 6 números o enlace de recuperación). Vacío = sin confirmar. */
+  emailVerificadoAt: integer("email_verificado_at", { mode: "timestamp_ms" }),
   role: text("role").default("pending"),
   colmadoId: integer("colmado_id"),
   deliveryId: integer("delivery_id"),

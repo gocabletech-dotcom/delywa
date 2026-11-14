@@ -130,7 +130,12 @@ describe("panel del negocio", () => {
     await t.db.update(pedidos).set({ deliveryId: rep.id }).where(eq(pedidos.id, pedidoId));
     expect((await estado("en_camino")).status).toBe(200);
 
-    const seguimiento = await anon.request("GET", `/api/seguimiento/${pedidoId}`);
+    const [conCodigo] = await t.db.select().from(pedidos).where(eq(pedidos.id, pedidoId));
+    expect(conCodigo.codigoSeguimiento).toMatch(/^[0-9a-f]{16}$/);
+    // Sin el código del enlace (o con otro) responde como si no existiera: no se pueden recorrer los números.
+    expect((await anon.request("GET", `/api/seguimiento/${pedidoId}`)).status).toBe(404);
+    expect((await anon.request("GET", `/api/seguimiento/${pedidoId}?t=0000000000000000`)).status).toBe(404);
+    const seguimiento = await anon.request("GET", `/api/seguimiento/${pedidoId}?t=${conCodigo.codigoSeguimiento}`);
     expect(seguimiento.json).toMatchObject({ estado: "en_camino", delivery: { nombre: "Pedro" }, destino: { lat: 18.47 } });
     expect(seguimiento.json.eta).not.toBeNull();
 
@@ -162,12 +167,15 @@ describe("panel del negocio", () => {
 
   it("comparte el seguimiento con vista previa segura", async () => {
     await t.db.update(colmados).set({ tituloCompartirPedido: `<script>alert("x")</script>` }).where(eq(colmados.id, cafe.id));
-    const res = await anon.request("GET", `/compartir/seguimiento/${pedidoId}`);
+    const [p] = await t.db.select().from(pedidos).where(eq(pedidos.id, pedidoId));
+    // Sin el código no se muestra nada del negocio: solo lleva a la página, que dirá "no encontrado".
+    expect((await anon.request("GET", `/compartir/seguimiento/${pedidoId}`)).status).toBe(302);
+    const res = await anon.request("GET", `/compartir/seguimiento/${pedidoId}?t=${p.codigoSeguimiento}`);
     expect(res.status).toBe(200);
-    const html = await (await import("../index")).app.request(`https://delywa.test/compartir/seguimiento/${pedidoId}`, {}, t.env).then((r) => r.text());
+    const html = await (await import("../index")).app.request(`https://delywa.test/compartir/seguimiento/${pedidoId}?t=${p.codigoSeguimiento}`, {}, t.env).then((r) => r.text());
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain(`<script>alert`);
-    expect(html).toContain(`/seguimiento/${pedidoId}`);
+    expect(html).toContain(`/seguimiento/${pedidoId}?t=${p.codigoSeguimiento}`);
   });
 });
 
@@ -232,7 +240,7 @@ describe("fusionar, pickup, vuelto y borrado", () => {
     expect(origen).toMatchObject({ estado: "fusionado", fusionadoEnPedidoId: a.id });
     expect((await operador.request("PATCH", `/api/pedidos/${b.id}/estado`, { estado: "cancelado" })).json.reason).toBe("pedido_fusionado");
     expect((await operador.request("POST", `/api/pedidos/${a.id}/fusionar/${b.id}`)).status).toBe(400);
-    expect((await anon.request("GET", `/api/seguimiento/${b.id}`)).status).toBe(410);
+    expect((await anon.request("GET", `/api/seguimiento/${b.id}?t=${origen.codigoSeguimiento}`)).status).toBe(410);
   });
 
   it("cambia a pickup quitando el delivery y recalculando la devuelta", async () => {

@@ -9,10 +9,8 @@ import { ADMINISTRADORES, OPERADORES, puedeOperar } from "../lib/permisos";
 import { TIPOS_IMAGEN, tipoPorFirma } from "../lib/imagenes";
 import { getColmado, updateColmado } from "../storage/colmados";
 
-// Archivos en R2. El original pedía una URL prefirmada a Replit sin sesión ni
-// límites de tipo o tamaño. Aquí el navegador sigue los mismos dos pasos
-// (pedir enlace, luego PUT), pero el PUT llega a este Worker, que valida el
-// archivo antes de guardarlo en el bucket.
+// Archivos en R2. El navegador pide un enlace de un solo uso y luego hace PUT
+// a este Worker, que valida el tipo y el tamaño antes de guardarlo en el bucket.
 export const uploadRoutes = new Hono<AppEnv>();
 
 const MB = 1024 * 1024;

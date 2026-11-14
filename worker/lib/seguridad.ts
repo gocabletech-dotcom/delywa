@@ -19,11 +19,30 @@ export const cabecerasSeguridad: MiddlewareHandler<AppEnv> = async (c, next) => 
   }
 };
 
+// ---------- Peticiones desde otra página ----------
+
+/**
+ * Un cambio (POST, PUT, PATCH, DELETE) que trae la cookie de sesión tiene que venir de una página
+ * de DelyWa. Si el navegador dice que viene de otro sitio, se rechaza. Los avisos de Meta y otros
+ * servidores no mandan el encabezado Origin, así que no les afecta.
+ */
+export const mismoOrigen: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const metodo = c.req.method;
+  if (metodo === "GET" || metodo === "HEAD" || metodo === "OPTIONS") return next();
+  const origen = c.req.header("Origin");
+  if (origen && origen !== "null" && (c.req.header("Cookie") ?? "").includes("delywa_sid=")) {
+    let propio = false;
+    try { propio = new URL(origen).host === new URL(c.req.url).host; } catch { /* origen inválido */ }
+    if (!propio) return c.json({ error: "Petición rechazada: viene de otra página." }, 403);
+  }
+  return next();
+};
+
 // ---------- Bitácora ----------
 
 /** Rutas que cambian cosas pero no hace falta anotar (ruido o ya se anotan aparte). */
 const SIN_BITACORA = [
-  /^\/api\/auth\//, /^\/api\/chat-web\//, /^\/api\/chat-colmado\//, /^\/api\/webhook/, /^\/api\/uploads\/archivo\//,
+  /^\/api\/auth\//, /^\/api\/chat-colmado\//, /^\/api\/webhook/, /^\/api\/uploads\/archivo\//,
   /^\/api\/portal-repartidor\/heartbeat/, /^\/api\/deliveries\/\d+\/ubicacion/, /^\/api\/conversaciones\/\d+\/read/,
   /^\/api\/menu-grafico\//, /^\/api\/registro-negocio/, /^\/api\/empleado\/portal\//,
 ];

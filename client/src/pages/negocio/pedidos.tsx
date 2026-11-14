@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { enlaceSeguimiento, type PedidoConCodigo } from "@/lib/seguimiento";
 import { printOrderWindow, generateOrderPdf } from "@/services/PrinterService";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -114,8 +115,7 @@ const generateWhatsAppDeliveryMessage = (pedido: any, colmadoNombre: string, mon
   return encodeURIComponent(mensaje);
 };
 
-const getTrackingShareUrl = (pedidoId: number): string =>
-  `${window.location.origin}/compartir/seguimiento/${pedidoId}`;
+const getTrackingShareUrl = (pedido: PedidoConCodigo): string => enlaceSeguimiento(pedido, true);
 
 const getBusinessTimezone = (codigoPais?: string) => ({
   DO: "America/Santo_Domingo",
@@ -173,6 +173,7 @@ const formatProductosConSustituciones = (productosStr: string, sustituciones?: A
 
 interface PedidoNegocio {
   id: number;
+  codigoSeguimiento?: string | null;
   comprobanteUrl?: string | null;
   comprobanteConfirmado?: boolean | null;
   clienteNombre: string;
@@ -454,8 +455,8 @@ export default function PedidosPage() {
       && direccion(pedido.clienteUbicacion) === direccion(otro.clienteUbicacion);
   };
 
-  const copiarLinkSeguimiento = async (pedidoId: number) => {
-    const url = getTrackingShareUrl(pedidoId);
+  const copiarLinkSeguimiento = async (pedido: PedidoConCodigo) => {
+    const url = getTrackingShareUrl(pedido);
     try {
       await navigator.clipboard.writeText(url);
       toast({
@@ -471,8 +472,9 @@ export default function PedidosPage() {
     }
   };
 
-  const compartirLinkSeguimiento = async (pedidoId: number) => {
-    const url = getTrackingShareUrl(pedidoId);
+  const compartirLinkSeguimiento = async (pedido: PedidoConCodigo) => {
+    const pedidoId = pedido.id;
+    const url = getTrackingShareUrl(pedido);
     if (typeof navigator.share === "function") {
       try {
         await navigator.share({
@@ -486,7 +488,7 @@ export default function PedidosPage() {
       }
       return;
     }
-    await copiarLinkSeguimiento(pedidoId);
+    await copiarLinkSeguimiento(pedido);
   };
 
   const handlePrint = (pedido: any) => {
@@ -1277,7 +1279,7 @@ export default function PedidosPage() {
                               title="Copiar link de seguimiento para el cliente"
                               aria-label="Copiar link de seguimiento para el cliente"
                               data-testid={`compartir-seguimiento-${pedido.id}`}
-                              onClick={() => copiarLinkSeguimiento(pedido.id)}
+                              onClick={() => copiarLinkSeguimiento(pedido)}
                             >
                               <Copy size={14} />
                             </Button>
@@ -1290,7 +1292,7 @@ export default function PedidosPage() {
                               title="Compartir link de seguimiento"
                               aria-label="Compartir link de seguimiento"
                               data-testid={`compartir-seguimiento-nativo-${pedido.id}`}
-                              onClick={() => compartirLinkSeguimiento(pedido.id)}
+                              onClick={() => compartirLinkSeguimiento(pedido)}
                             >
                               <Share2 size={14} />
                             </Button>
@@ -2698,7 +2700,7 @@ export default function PedidosPage() {
             const imageUrl = colmadoData?.logo
               ? new URL(colmadoData.logo, window.location.origin).toString()
               : `${window.location.origin}/delywa-logo.png`;
-            const shareUrl = getTrackingShareUrl(pedidoVistaPrevia.id);
+            const shareUrl = getTrackingShareUrl(pedidoVistaPrevia);
 
             return (
               <>

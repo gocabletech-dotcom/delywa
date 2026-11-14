@@ -152,7 +152,7 @@ registroRoutes.post("/api/registro-negocio", async (c) => {
     });
     const userAgent = (c.req.header("User-Agent") ?? "").slice(0, 300);
     await db.batch([
-      db.update(users).set({ colmadoId: colmado.id, updatedAt: new Date() }).where(eq(users.id, user.id)),
+      db.update(users).set({ colmadoId: colmado.id, updatedAt: new Date(), ...(correoListo(c.env) ? { emailVerificadoAt: new Date() } : {}) }).where(eq(users.id, user.id)),
       db.insert(aceptacionesLegales).values(["terminos", "privacidad", "dpa"].map((documento) => ({
         userId: user.id, colmadoId: colmado.id, documento, version: VERSION_LEGAL, ip: ip ?? null, userAgent,
       }))),
@@ -182,7 +182,7 @@ registroRoutes.get("/api/admin/solicitudes-negocio", requireAuth, requireAdmin, 
       whatsappNumero: colmados.whatsappNumero, direccion: colmados.direccion, encargadoNombre: colmados.encargadoNombre,
       fechaSuscripcion: colmados.fechaSuscripcion, slug: colmados.slug,
       paisNombre: paises.nombre, paisBandera: paises.bandera,
-      duenoId: users.id, duenoNombre: users.firstName, duenoCorreo: users.email,
+      duenoId: users.id, duenoNombre: users.firstName, duenoCorreo: users.email, duenoCorreoConfirmadoAt: users.emailVerificadoAt,
     })
     .from(colmados)
     .leftJoin(paises, eq(paises.id, colmados.paisId))

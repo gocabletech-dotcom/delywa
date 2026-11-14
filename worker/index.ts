@@ -31,7 +31,7 @@ import { avisosFinDePrueba } from "./lib/avisos";
 import { olvidarEquiposViejos } from "./lib/cuenta";
 import { avisarCambios, tiempoRealRoutes } from "./routes/tiempo-real";
 import { envEfectivo } from "./lib/integraciones";
-import { bitacoraCambios, cabecerasSeguridad, limpiarSeguridad, registrarError } from "./lib/seguridad";
+import { bitacoraCambios, cabecerasSeguridad, limpiarSeguridad, mismoOrigen, registrarError } from "./lib/seguridad";
 import { procesarAviso, webhookRoutes, type AvisoWebhook } from "./routes/webhooks";
 
 export { SalaNegocio } from "./sala-negocio";
@@ -62,6 +62,7 @@ app.use("/api/*", async (c, next) => {
   c.env = await envEfectivo(c.env);
   await next();
 });
+app.use("/api/*", mismoOrigen);
 app.use("/api/*", sessionMiddleware);
 app.use("/api/*", avisarCambios);
 app.use("/api/*", bitacoraCambios);
@@ -90,8 +91,8 @@ app.route("/", chatColmadoRoutes);
 app.route("/", seguridadRoutes);
 app.route("/", tiempoRealRoutes);
 
-// Los módulos restantes se agregan por capas.
-app.all("/api/*", (c) => c.json({ message: "Endpoint aún no migrado" }, 501));
+// Cualquier otra dirección de la API no existe.
+app.all("/api/*", (c) => c.json({ message: "No existe esa dirección de la API" }, 501));
 
 export default {
   fetch: app.fetch,

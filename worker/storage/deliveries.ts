@@ -462,7 +462,7 @@ export async function getDeliveriesConUbicacion(db: Db, colmadoId: number) {
         }
       }
       return {
-        id: p.id, clienteNombre: p.clienteNombre, clienteUbicacion: p.clienteUbicacion,
+        id: p.id, codigoSeguimiento: p.codigoSeguimiento, clienteNombre: p.clienteNombre, clienteUbicacion: p.clienteUbicacion,
         clienteLatitud: p.clienteLatitud, clienteLongitud: p.clienteLongitud, estado: p.estado, eta,
       };
     });

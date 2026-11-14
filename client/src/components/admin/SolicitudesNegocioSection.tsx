@@ -24,6 +24,7 @@ type Solicitud = {
   paisBandera: string | null;
   duenoNombre: string | null;
   duenoCorreo: string | null;
+  duenoCorreoConfirmadoAt: string | number | null;
   aceptaciones: Array<{ documento: string; version: string; fecha: string; ip: string | null }>;
 };
 
@@ -64,7 +65,7 @@ export function SolicitudesNegocioSection() {
       <CardContent className="space-y-3 text-sm">
         <div className="grid sm:grid-cols-2 gap-2">
           <p className="flex items-center gap-2"><User className="w-4 h-4 text-gray-400" />{s.duenoNombre || s.encargadoNombre || "—"}</p>
-          <p className="flex items-center gap-2"><Mail className="w-4 h-4 text-gray-400" />{s.duenoCorreo || "—"}</p>
+          <p className="flex items-center gap-2"><Mail className="w-4 h-4 text-gray-400" />{s.duenoCorreo || "—"}{s.duenoCorreo && (s.duenoCorreoConfirmadoAt ? <span className="text-xs font-medium text-green-700" data-testid={`correo-confirmado-${s.id}`}>· confirmado</span> : <span className="text-xs font-medium text-amber-700" data-testid={`correo-sin-confirmar-${s.id}`}>· sin confirmar</span>)}</p>
           <p className="flex items-center gap-2">
             <Phone className="w-4 h-4 text-gray-400" />
             <a className="text-emerald-700 underline" href={`https://wa.me/${s.whatsappNumero}`} target="_blank" rel="noopener noreferrer">+{s.whatsappNumero}</a>

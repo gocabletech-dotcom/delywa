@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { enlaceSeguimiento, type PedidoConCodigo } from "@/lib/seguimiento";
 import { useParams } from "wouter";
 import { emojiDeProducto } from "@/lib/emojiProductos";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -90,12 +91,14 @@ interface CartItem extends MenuProducto {
 
 interface PedidoCreado {
   id: number;
+  codigoSeguimiento?: string | null;
   estado: string;
   tipoEntrega?: "delivery" | "pickup";
 }
 
 interface PedidoReciente {
   id: number;
+  codigoSeguimiento?: string | null;
   estado: string;
   total: string;
   fecha: string;
@@ -524,8 +527,9 @@ export default function MenuGraficoPage() {
     return productos?.substring(0, 50) + (productos?.length > 50 ? "..." : "") || "Sin productos";
   };
 
-  const compartirSeguimiento = async (pedidoId: number) => {
-    const url = `${window.location.origin}/compartir/seguimiento/${pedidoId}`;
+  const compartirSeguimiento = async (pedido: PedidoConCodigo) => {
+    const pedidoId = pedido.id;
+    const url = enlaceSeguimiento(pedido, true);
     const shareData = {
       title: `Seguimiento del pedido #${pedidoId}`,
       text: `Mira el estado de mi pedido #${pedidoId}`,
@@ -881,7 +885,7 @@ export default function MenuGraficoPage() {
                           className="h-8 w-8 shrink-0 text-green-600 hover:bg-green-100"
                           onClick={(event) => {
                             event.stopPropagation();
-                            compartirSeguimiento(pedido.id);
+                            compartirSeguimiento(pedido);
                           }}
                           aria-label={`Compartir seguimiento del pedido ${pedido.id}`}
                           data-testid={`button-compartir-seguimiento-${pedido.id}`}
@@ -942,7 +946,7 @@ export default function MenuGraficoPage() {
               type="button"
               variant="outline"
               className="w-full mb-3 border-green-200 text-green-700 hover:bg-green-50"
-              onClick={() => compartirSeguimiento(pedidoCreado.id)}
+              onClick={() => compartirSeguimiento(pedidoCreado)}
               data-testid="button-compartir-seguimiento"
             >
               {pedidoCompartidoId === pedidoCreado.id ? (

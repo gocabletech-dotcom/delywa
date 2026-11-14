@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
+import AvisoConfirmarCorreo from "./AvisoConfirmarCorreo";
 import { businessTheme } from "@/lib/temaNegocio";
 import { useTiempoReal } from "@/hooks/use-tiempo-real";
 
@@ -352,6 +353,7 @@ export default function NegocioLayout({
               <b>No pudimos aprobar tu negocio.</b> Escríbenos a soporte@delywa.com para revisar tu solicitud.
             </div>
           )}
+          <AvisoConfirmarCorreo />
           {children}
         </div>
       </div>

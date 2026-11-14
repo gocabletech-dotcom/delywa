@@ -30,7 +30,6 @@ const PlansAdminPage = lazyConReintento(() => import("@/pages/admin/plans"));
 const NegocioNuevoPage = lazyConReintento(() => import("@/pages/admin/negocio-nuevo"));
 const NegocioEditarPage = lazyConReintento(() => import("@/pages/admin/negocio-editar"));
 const ManualPage = lazyConReintento(() => import("@/pages/manual"));
-const AdminPedidosPage = lazyConReintento(() => import("@/pages/admin/pedidos"));
 const NegocioManualPage = lazyConReintento(() => import("@/pages/negocio/manual"));
 const NegocioDashboard = lazyConReintento(() => import("@/pages/negocio/dashboard"));
 const NegocioPedidosPage = lazyConReintento(() => import("@/pages/negocio/pedidos"));
@@ -110,7 +109,6 @@ function Router() {
       <Route path="/admin/negocio/:id/editar" component={NegocioEditarPage} />
       <Route path="/admin/manual" component={ManualPage} />
       <Route path="/manual" component={ManualPage} />
-      <Route path="/admin/pedidos" component={AdminPedidosPage} />
       
       {/* Panel de Negocio (dueños) */}
       <Route path="/negocio/dashboard" component={NegocioDashboard} />
