@@ -1,4 +1,5 @@
 import { prepararLogo } from "@/lib/imagen";
+import { CambiarClave } from "@/components/CambiarClave";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -3368,6 +3369,9 @@ export default function PlatformAdminPage() {
             <span className="text-xs md:text-sm bg-white/10 px-2 md:px-3 py-1 md:py-1.5 rounded-full hidden sm:inline" data-testid="text-admin-username">
               {user?.firstName || user?.email || "Admin"}
             </span>
+            <CambiarClave className="inline-flex items-center justify-center w-9 h-9 rounded-md text-white hover:bg-white/20">
+              <KeyRound className="w-4 h-4" aria-hidden="true" /><span className="sr-only">Mi contraseña</span>
+            </CambiarClave>
             <Button
               variant="ghost"
               size="sm"

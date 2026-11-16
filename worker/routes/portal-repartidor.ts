@@ -3,7 +3,10 @@ import type { Delivery } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { sesionPortalVencida, turnoTerminadoHoy, ventanaDeGracia } from "../lib/turno-repartidor";
-import { clearLoginFailures, loginBlockedFor, recordLoginFailure } from "../lib/rate-limit";
+import { borrarEventos, contarEventos, registrarEvento } from "../lib/rate-limit";
+
+/** Espera extra por cada fallo contra un mismo número en la última hora (las pruebas la ponen en 0). */
+export const PORTAL = { esperaPorFalloMs: 250 };
 import { cambiarEstadoPedido, coordenadasDelPedido, enriquecerDirecciones } from "../lib/pedido-servicio";
 import { extraerCoordenadas, optimizarRutaEntregaPorCarretera, type PuntoEntrega } from "../lib/routeOptimizer";
 import { fechaLocal } from "../lib/fechas";
@@ -82,21 +85,26 @@ portalRepartidorRoutes.post("/api/portal-repartidor/login", async (c) => {
   if (!soloDigitos(whatsappNumero)) return c.json({ error: "Escribe un número de WhatsApp válido." }, 400);
 
   // Mejora aprobada: límite de intentos por número y por IP, igual que el login del panel.
-  const clave = `portal:${slug.trim().toLowerCase()}:${soloDigitos(whatsappNumero)}`;
-  const ip = c.req.header("CF-Connecting-IP");
-  const bloqueado = await loginBlockedFor(db, clave, ip);
-  if (bloqueado > 0) {
-    c.header("Retry-After", String(bloqueado));
-    return c.json({ error: `Demasiados intentos. Intenta de nuevo en ${Math.ceil(bloqueado / 60)} minuto(s).`, reason: "rate_limited" }, 429);
+  // Se frena la conexión que falla, no el número: nadie puede dejar fuera a un repartidor a propósito.
+  const ip = c.req.header("CF-Connecting-IP") ?? "sin-ip";
+  const numero = `${slug.trim().toLowerCase()}:${soloDigitos(whatsappNumero)}`;
+  const clave = `portalf:${ip}:${numero}`, claveIp = `portalf:ip:${ip}`, claveNumero = `portalfn:${numero}`;
+  const VENTANA = 15 * 60 * 1000;
+  if ((await contarEventos(db, clave, VENTANA)) >= 5 || (await contarEventos(db, claveIp, VENTANA)) >= 30) {
+    c.header("Retry-After", String(VENTANA / 1000));
+    return c.json({ error: "Demasiados intentos desde esta conexión. Intenta de nuevo en 15 minuto(s).", reason: "rate_limited" }, 429);
   }
 
   const colmado = await getColmadoByCodigo(db, slug.trim());
   const delivery = colmado ? await getDeliveryByPortalLogin(db, colmado.id, whatsappNumero, codigoAcceso) : undefined;
   if (!colmado || !delivery) {
-    await recordLoginFailure(db, clave, ip);
+    await registrarEvento(db, clave, claveIp, claveNumero);
+    // Muchos fallos contra un mismo número (desde cualquier conexión): cada intento tarda más.
+    const espera = Math.min((await contarEventos(db, claveNumero, 60 * 60 * 1000)) * PORTAL.esperaPorFalloMs, 4000);
+    if (espera > 0) await new Promise((r) => setTimeout(r, espera));
     return c.json({ error: "No encontramos un repartidor con ese número y código. Revisa el prefijo, número y código de acceso." }, 401);
   }
-  await clearLoginFailures(db, clave);
+  await borrarEventos(db, clave);
   if (delivery.estado === "inactivo") {
     return c.json({ error: "Tu cuenta fue deshabilitada por el negocio. Contacta al dueño.", reason: "account_disabled" }, 403);
   }

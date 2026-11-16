@@ -5,6 +5,10 @@ import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { requireAuth } from "../lib/auth";
 import { clearLoginFailures, loginBlockedFor, recordLoginFailure } from "../lib/rate-limit";
+import { contarEventos, registrarEvento } from "../lib/rate-limit";
+
+/** Las pruebas ponen la espera en 0. */
+export const PORTAL_EMPLEADO = { esperaPorFalloMs: 200 };
 import { rangoDiaLocal, inicioDiaLocal } from "../lib/fechas";
 import { esFechaReal, getPoliticaNomina, NominaInvalida, validarReglas } from "../lib/nomina";
 import { getColmado, getColmadoTimezone, getPais } from "../storage/colmados";
@@ -138,6 +142,10 @@ empleadoRoutes.post("/api/empleado/portal/login", async (c) => {
   const empleado = await getEmpleadoByCodigoAcceso(db, codigo);
   if (!empleado || empleado.estado !== "activo" || empleado.sucursalIds.length === 0) {
     await recordLoginFailure(db, clave, undefined);
+    // Alguien probando códigos desde muchas conexiones: cuantos más fallos haya en toda la plataforma, más tarda cada intento.
+    await registrarEvento(db, "empleadof:todos");
+    const espera = Math.min(Math.max(0, (await contarEventos(db, "empleadof:todos", 15 * 60 * 1000)) - 10) * PORTAL_EMPLEADO.esperaPorFalloMs, 4000);
+    if (espera > 0) await new Promise((r) => setTimeout(r, espera));
     return c.json({ error: "Código inválido, empleado inactivo o sin sucursales asignadas" }, 401);
   }
   await clearLoginFailures(db, clave);

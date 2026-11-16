@@ -1,4 +1,5 @@
 import { useState, ReactNode } from "react";
+import { CambiarClave } from "@/components/CambiarClave";
 import { formatDominicanDateTime } from "@/lib/date-utils";
 import { VERSION_APP } from "@/version";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -286,6 +287,7 @@ export default function NegocioLayout({
 
         <div className="p-3 border-t border-slate-200 shrink-0">
           <p className="sr-only" data-testid="text-negocio-name">{colmadoData?.nombre || "Mi Negocio"}</p>
+          <CambiarClave className="flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[15px] font-medium text-slate-700 hover:bg-slate-100 w-full" />
           <button
             onClick={() => logout()}
             className="flex items-center gap-3 px-3 min-h-[44px] rounded-xl text-[15px] font-medium text-red-700 hover:bg-red-50 w-full"
@@ -417,6 +419,7 @@ export default function NegocioLayout({
                 {esDueno && otrasCard("/negocio/usuarios", "usuarios", UserCog, "Usuarios")}
                 {otrasCard("/negocio/manual", "manual", BookOpen, "Manual")}
               </div>
+              <CambiarClave className="w-full flex items-center justify-center gap-2.5 min-h-[48px] rounded-2xl bg-white border border-slate-200 text-slate-800 font-semibold text-sm mb-2" />
               <button
                 onClick={() => { setOtrasOpen(false); logout(); }}
                 className="w-full flex items-center justify-center gap-2.5 min-h-[48px] rounded-2xl bg-white border border-red-200 text-red-700 font-semibold text-sm"

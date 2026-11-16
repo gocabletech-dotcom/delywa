@@ -1,11 +1,11 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { eq } from "drizzle-orm";
 import { configuracionSistema } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { mensajeNegocioBloqueado, negocioBloqueado, requireAuth } from "../lib/auth";
 import { claveDebil } from "../lib/claves";
-import { correoListo, SOPORTE } from "../lib/correo";
+import { correoListo, enviarCorreo, escHtml, plantillaCorreo, SOPORTE } from "../lib/correo";
 import { mandarCodigoCuenta, marcarCorreoConfirmado, revisarCodigoRegistro, cerrarSesionesDe, mandarEnlaceRecuperacion, revisarEquipo, usarEnlaceRecuperacion, usuarioDeId } from "../lib/cuenta";
 import { anotar } from "../lib/seguridad";
 import { timingSafeEqual, verifyAgainstDummy, verifyPassword } from "../lib/password";
@@ -20,6 +20,20 @@ const SETUP_CODE_KEY = "setup_code";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const authRoutes = new Hono<AppEnv>();
+
+/** Cada entrada a la cuenta de plataforma se avisa por correo (si el correo está activado). */
+function avisarEntradaPlataforma(c: Context<AppEnv>, user: { email: string | null; firstName: string | null }) {
+  if (!user.email || !correoListo(c.env)) return;
+  const cf = (c.req.raw as unknown as { cf?: { city?: string; country?: string } }).cf;
+  const lugar = [cf?.city, cf?.country].filter(Boolean).join(", ");
+  const cuando = new Date().toLocaleString("es-DO", { timeZone: "America/Santo_Domingo", dateStyle: "long", timeStyle: "short" });
+  const equipo = (c.req.header("User-Agent") ?? "Navegador desconocido").slice(0, 160);
+  const html = plantillaCorreo("Entraron a la cuenta de plataforma",
+    `<p>Alguien entró a la cuenta de plataforma de DelyWa.</p><ul><li><b>Cuándo:</b> ${escHtml(cuando)} (hora de RD)</li><li><b>Equipo:</b> ${escHtml(equipo)}</li>${lugar ? `<li><b>Lugar aproximado:</b> ${escHtml(lugar)}</li>` : ""}</ul><p>Si fuiste tú, no tienes que hacer nada. <b>Si no fuiste tú</b>, entra y cambia la contraseña ahora mismo: al cambiarla se cierran las demás sesiones.</p>`);
+  const tarea = enviarCorreo(c.env, { para: user.email, asunto: "Entraron a la cuenta de plataforma de DelyWa", html })
+    .catch((err) => console.error("[cuenta] Aviso de entrada no enviado:", err instanceof Error ? err.message : err));
+  try { c.executionCtx.waitUntil(tarea); } catch { /* pruebas */ }
+}
 
 authRoutes.post("/api/auth/login", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -55,6 +69,8 @@ authRoutes.post("/api/auth/login", async (c) => {
 
   if (!user || !valid) {
     await registrarEvento(db, claveFallos, claveCorreo);
+    // Un intento fallido contra la cuenta de plataforma siempre queda anotado.
+    if (user?.role === "platform_admin") await anotar(db, { userId: user.id, usuario: user.email, rol: user.role, accion: "Intento fallido de entrar a la cuenta de plataforma", ip });
     // Muchos fallos contra un mismo correo (desde cualquier conexión): cada intento tarda más.
     const fallosCorreo = await contarEventos(db, claveCorreo, 60 * 60 * 1000);
     const espera = Math.min(LOGIN.esperaBaseMs + fallosCorreo * LOGIN.esperaPorFalloMs, 4000);
@@ -74,9 +90,11 @@ authRoutes.post("/api/auth/login", async (c) => {
     colmadoId: user.colmadoId,
     deliveryId: user.deliveryId,
     lastActivity: Date.now(),
+    loginAt: Date.now(),
   };
   session.touch();
   await revisarEquipo(c, db, user);
+  if (user.role === "platform_admin") avisarEntradaPlataforma(c, user);
   await anotar(db, { userId: user.id, usuario: user.email, rol: user.role, colmadoId: user.colmadoId, accion: "Inicio de sesión", ip });
   return c.json({
     success: true,
@@ -199,6 +217,37 @@ authRoutes.post("/api/auth/logout", (c) => {
   return c.json({ success: true });
 });
 
+// ---------- Mi contraseña y mis sesiones ----------
+
+/** Cada usuario cambia su propia contraseña: pide la actual y cierra las demás sesiones. */
+authRoutes.post("/api/auth/password", requireAuth, async (c) => {
+  const db = getDb(c.env.DB);
+  const user = c.var.user;
+  const ip = c.req.header("CF-Connecting-IP") ?? "sin-ip";
+  const body = await c.req.json().catch(() => null);
+  const actual = typeof body?.actual === "string" ? body.actual : "";
+  const nueva = typeof body?.nueva === "string" ? body.nueva : "";
+  if (!actual || !nueva) return c.json({ error: "Escribe tu contraseña actual y la nueva." }, 400);
+  if (!(await permitirEvento(db, `clave:${user.id}`, 8, 60 * 60 * 1000))) return c.json({ error: "Demasiados intentos. Espera una hora." }, 429);
+  if (!user.password || !(await verifyPassword(actual, user.password))) return c.json({ error: "La contraseña actual no es correcta." }, 400);
+  if (actual === nueva) return c.json({ error: "La contraseña nueva tiene que ser distinta de la actual." }, 400);
+  const debil = await claveDebil(nueva);
+  if (debil) return c.json({ error: debil }, 400);
+  await updateUser(db, user.id, { password: nueva });
+  await cerrarSesionesDe(db, user.id, c.var.session.id);
+  await anotar(db, { userId: user.id, usuario: user.email, rol: user.role, colmadoId: user.colmadoId, accion: "Cambió su contraseña", ip });
+  return c.json({ ok: true, mensaje: "Contraseña cambiada. Se cerró la sesión en los demás equipos." });
+});
+
+/** Cierra la sesión de esta persona en todos los demás equipos. */
+authRoutes.post("/api/auth/sesiones/cerrar-otras", requireAuth, async (c) => {
+  const db = getDb(c.env.DB);
+  const user = c.var.user;
+  await cerrarSesionesDe(db, user.id, c.var.session.id);
+  await anotar(db, { userId: user.id, usuario: user.email, rol: user.role, colmadoId: user.colmadoId, accion: "Cerró su sesión en los demás equipos", ip: c.req.header("CF-Connecting-IP") ?? null });
+  return c.json({ ok: true });
+});
+
 authRoutes.get("/api/auth/user", requireAuth, (c) => c.json(toPublicUser(c.var.user)));
 
 authRoutes.get("/api/user/role", async (c) => {
@@ -207,6 +256,7 @@ authRoutes.get("/api/user/role", async (c) => {
   const db = getDb(c.env.DB);
   const user = await getUserById(db, session.data.userId);
   if (!user) return c.json({ error: "Usuario no encontrado" }, 404);
+  if (await negocioBloqueado(db, user)) { session.destroy(); return c.json({ error: "No autenticado" }, 401); }
   const colmadoId = session.data.colmadoId || user.colmadoId;
   return c.json({
     role: user.role,
@@ -263,7 +313,7 @@ authRoutes.post("/api/auth/setup", async (c) => {
     await db.delete(configuracionSistema).where(eq(configuracionSistema.clave, SETUP_CODE_KEY));
     const session = c.var.session;
     session.regenerate();
-    session.data = { userId: user.id, userRole: user.role, colmadoId: null, deliveryId: null, lastActivity: Date.now() };
+    session.data = { userId: user.id, userRole: user.role, colmadoId: null, deliveryId: null, lastActivity: Date.now(), loginAt: Date.now() };
     session.touch();
     return c.json({ success: true, role: user.role }, 201);
   } catch (error) {

@@ -7,6 +7,8 @@ import { getColmado, getColmadoTimezone } from "../storage/colmados";
 import { canUserAccessColmado, getUserById } from "../storage/users";
 
 const ONE_HOUR_MS = 3_600_000;
+/** La cuenta de plataforma lo controla todo: su sesión se cierra sola a las 12 horas de haber entrado. */
+export const SESION_PLATAFORMA_MS = 12 * ONE_HOUR_MS;
 
 /**
  * Un negocio que se registró desde la página nace "pendiente_revision". Hasta que la plataforma lo
@@ -49,6 +51,14 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (bloqueo) {
     session.destroy();
     return c.json({ error: mensajeNegocioBloqueado(bloqueo), negocioEstado: bloqueo }, 403);
+  }
+
+  if (user.role === "platform_admin") {
+    if (!session.data.loginAt) session.set("loginAt", Date.now()); // sesiones de antes de esta regla
+    else if (Date.now() - session.data.loginAt > SESION_PLATAFORMA_MS) {
+      session.destroy();
+      return c.json({ error: "Tu sesión de plataforma venció. Entra de nuevo.", reason: "sesion_vencida" }, 401);
+    }
   }
 
   const sessionColmadoId = session.data.colmadoId;

@@ -234,3 +234,49 @@ describe("contraseñas nuevas", () => {
     expect(await claveDebil("mi perro come mango")).toBeNull();
   });
 });
+
+describe("mi contraseña y mis sesiones", () => {
+  const entrar = async (email: string, password: string, ip: string) => {
+    const c = t.client();
+    const r = await c.request("POST", "/api/auth/login", { username: email, password }, { "CF-Connecting-IP": ip });
+    return { c, r };
+  };
+
+  it("cambia la contraseña propia pidiendo la actual y cierra las demás sesiones", async () => {
+    const negocio = await nuevoColmado("Colmado Clave", "18097770001");
+    await createUser(t.db, { idPrefix: "staff", email: "clave@delywa.test", password: "vieja-clave-larga-77", firstName: "Cora", role: "admin_pedidos", colmadoId: negocio.id });
+    const a = (await entrar("clave@delywa.test", "vieja-clave-larga-77", "10.9.0.1")).c;
+    const b = (await entrar("clave@delywa.test", "vieja-clave-larga-77", "10.9.0.2")).c;
+    expect((await t.client().request("POST", "/api/auth/password", { actual: "x", nueva: "y" })).status).toBe(401);
+    expect((await a.request("POST", "/api/auth/password", { actual: "equivocada", nueva: "nueva-clave-larga-88" })).status).toBe(400);
+    expect((await a.request("POST", "/api/auth/password", { actual: "vieja-clave-larga-77", nueva: "12345" })).status).toBe(400);
+    expect((await a.request("POST", "/api/auth/password", { actual: "vieja-clave-larga-77", nueva: "vieja-clave-larga-77" })).status).toBe(400);
+    expect((await a.request("POST", "/api/auth/password", { actual: "vieja-clave-larga-77", nueva: "nueva-clave-larga-88" })).status).toBe(200);
+    // Quien la cambió sigue dentro; el otro equipo quedó fuera.
+    expect((await a.request("GET", "/api/auth/user")).status).toBe(200);
+    expect((await b.request("GET", "/api/auth/user")).status).toBe(401);
+    expect((await entrar("clave@delywa.test", "vieja-clave-larga-77", "10.9.0.3")).r.status).toBe(401);
+    // "Cerrar sesión en los demás equipos".
+    const c2 = (await entrar("clave@delywa.test", "nueva-clave-larga-88", "10.9.0.4")).c;
+    expect((await a.request("POST", "/api/auth/sesiones/cerrar-otras")).status).toBe(200);
+    expect((await c2.request("GET", "/api/auth/user")).status).toBe(401);
+    expect((await a.request("GET", "/api/auth/user")).status).toBe(200);
+  });
+
+  it("la sesión de plataforma vence a las 12 horas y sus intentos fallidos quedan anotados", async () => {
+    const { c, r } = await entrar(ADMIN.email, ADMIN.password, "10.9.1.1");
+    expect(r.status).toBe(200);
+    expect((await c.request("GET", "/api/auth/user")).status).toBe(200);
+    const filas = await t.db.select().from(sessions);
+    const deAdmin = filas.filter((f) => (f.sess as any)?.userRole === "platform_admin" && (f.sess as any)?.loginAt);
+    expect(deAdmin.length).toBeGreaterThan(0);
+    for (const f of deAdmin) await t.db.update(sessions).set({ sess: { ...(f.sess as any), loginAt: Date.now() - 13 * 3_600_000 } }).where(eq(sessions.sid, f.sid));
+    const vencida = await c.request("GET", "/api/auth/user");
+    expect(vencida.status).toBe(401);
+    expect(vencida.json.reason).toBe("sesion_vencida");
+    expect((await entrar(ADMIN.email, "no-es-la-clave", "10.9.1.2")).r.status).toBe(401);
+    const { bitacora } = await import("@shared/schema");
+    const notas = await t.db.select().from(bitacora);
+    expect(notas.some((n) => n.accion === "Intento fallido de entrar a la cuenta de plataforma")).toBe(true);
+  });
+});

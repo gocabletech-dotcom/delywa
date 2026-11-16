@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { asistencias, colmados, empleados, empleadoSucursales, paises } from "@shared/schema";
 import { createTestApp } from "./helpers";
+import { PORTAL_EMPLEADO } from "../routes/empleados";
+PORTAL_EMPLEADO.esperaPorFalloMs = 0;
 import { createUser, setUserSucursalIds } from "../storage/users";
 import { calcularDetalle, esFechaReal, getPoliticaNomina, validarReglas, REGLAS_POR_DEFECTO } from "../lib/nomina";
 

@@ -10,6 +10,8 @@ vi.mock("../lib/routeOptimizer", async (original) => ({
 }));
 
 import { createTestApp } from "./helpers";
+import { PORTAL } from "../routes/portal-repartidor";
+PORTAL.esperaPorFalloMs = 0;
 import { createUser, setUserSucursalIds } from "../storage/users";
 import { sesionPortalVencida, turnoTerminadoHoy, ventanaDeGracia, generarCodigoAcceso } from "../lib/turno-repartidor";
 import { claveAgrupacion } from "../lib/fechas";
@@ -122,6 +124,9 @@ describe("portal del repartidor", () => {
     const bloqueado = await portalLogin(intruso, "18094440002", segundo.codigoAcceso);
     expect(bloqueado.status).toBe(429);
     expect(Number(bloqueado.headers.get("Retry-After"))).toBeGreaterThan(0);
+    // Solo se frena la conexión que falló: el repartidor entra sin problema desde la suya.
+    const suyo = await t.client().request("POST", "/api/portal-repartidor/login", { slug: "colmado-prueba", whatsappNumero: "18094440002", codigoAcceso: segundo.codigoAcceso }, { "CF-Connecting-IP": "10.0.0.77" });
+    expect(suyo.status).toBe(200);
   });
 
   it("entra con número y código, sin importar formato ni mayúsculas", async () => {

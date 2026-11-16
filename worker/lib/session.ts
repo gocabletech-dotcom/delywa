@@ -15,6 +15,8 @@ export interface SessionData {
   colmadoId?: number | null;
   deliveryId?: number | null;
   lastActivity?: number;
+  /** Cuándo se inició la sesión (la de plataforma dura como máximo 12 horas). */
+  loginAt?: number;
   portalDeliveryId?: number;
   portalColmadoId?: number;
   portalSessionCreatedAt?: number;

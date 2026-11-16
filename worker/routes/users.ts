@@ -3,6 +3,7 @@ import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAdmin, requireAuth } from "../lib/auth";
 import { claveDebil } from "../lib/claves";
+import { cerrarSesionesDe } from "../lib/cuenta";
 import { getSucursalesByOwner } from "../storage/colmados";
 import {
   createUser, deleteUser, getAllUsers, getStaffForOwner, getUserByEmail, getUserById, getUserSucursalIds,
@@ -105,6 +106,8 @@ userRoutes.patch("/api/negocio/usuarios/:userId", requireAuth, async (c) => {
       lastName: typeof lastName === "string" ? lastName.trim() : "",
       ...(password ? { password } : {}),
     });
+    // Contraseña nueva puesta por el dueño: esa persona tiene que volver a entrar en todos sus equipos.
+    if (password && target.id !== owner.id) await cerrarSesionesDe(db, target.id);
     await updateUserRole(db, target.id, role, Number(sucursalIds[0]), role === "delivery" ? target.deliveryId : null);
     await setUserSucursalIds(db, target.id, sucursalIds.map(Number));
     const updated = await getUserById(db, target.id);
@@ -172,8 +175,13 @@ userRoutes.patch("/api/users/:userId", requireAuth, async (c) => {
     const existing = await getUserByEmail(db, email);
     if (existing && existing.id !== targetUserId) return c.json({ error: "Ya existe un usuario con este email" }, 409);
   }
+  if (password !== undefined && password !== "") {
+    const debil = await claveDebil(password);
+    if (debil) return c.json({ error: debil }, 400);
+  }
   const updated = await updateUser(db, targetUserId, { email, password, firstName, lastName });
   if (!updated) return c.json({ error: "Usuario no encontrado" }, 404);
+  if (password) await cerrarSesionesDe(db, targetUserId, targetUserId === c.var.user.id ? c.var.session.id : null);
   return c.json(toPublicUser(updated));
 });
 

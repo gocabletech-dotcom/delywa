@@ -44,8 +44,10 @@ export async function usarEnlaceRecuperacion(db: Db, token: string): Promise<str
 }
 
 /** Después de cambiar la contraseña se cierran todas las sesiones abiertas de esa persona. */
-export async function cerrarSesionesDe(db: Db, userId: string): Promise<void> {
-  await db.delete(sessions).where(sql`json_extract(${sessions.sess}, '$.userId') = ${userId}`);
+export async function cerrarSesionesDe(db: Db, userId: string, menosEsta?: string | null): Promise<void> {
+  await db.delete(sessions).where(menosEsta
+    ? sql`json_extract(${sessions.sess}, '$.userId') = ${userId} and ${sessions.sid} <> ${menosEsta}`
+    : sql`json_extract(${sessions.sess}, '$.userId') = ${userId}`);
 }
 
 // ---------- Código de registro ----------
