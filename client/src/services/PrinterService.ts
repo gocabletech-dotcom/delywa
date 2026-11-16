@@ -1,6 +1,9 @@
 import { formatDateRD } from "@/lib/date-utils";
 import { jsPDF } from "jspdf";
 
+/** Lo que escribe el cliente (nombre, dirección, productos) se muestra como texto, nunca como HTML. */
+export const esc = (v: unknown): string => String(v ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
+
 interface Producto {
   nombre: string;
   cantidad?: number;
@@ -123,9 +126,9 @@ export const printOrderTicket = (
     header.style.paddingBottom = '10px';
 
     header.innerHTML = `
-      <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px; text-transform: uppercase;">${colmadoNombre}</div>
-      ${direccion ? `<div style="font-size: 11px; margin-bottom: 2px;">${direccion}</div>` : ''}
-      ${telefono ? `<div style="font-size: 11px; margin-bottom: 2px;">Tel: ${telefono}</div>` : ''}
+      <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px; text-transform: uppercase;">${esc(colmadoNombre)}</div>
+      ${direccion ? `<div style="font-size: 11px; margin-bottom: 2px;">${esc(direccion)}</div>` : ''}
+      ${telefono ? `<div style="font-size: 11px; margin-bottom: 2px;">Tel: ${esc(telefono)}</div>` : ''}
     `;
     printContent.appendChild(header);
 
@@ -149,9 +152,9 @@ export const printOrderTicket = (
     const ubicacionLabel = formatUbicacion(pedido.clienteUbicacion);
     clientInfo.innerHTML = `
       <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 5px;">Cliente:</div>
-      <div style="margin-bottom: 2px;">${pedido.clienteNombre}</div>
-      <div style="margin-bottom: 2px;">${pedido.clienteWhatsapp}</div>
-      ${ubicacionLabel ? `<div style="margin-bottom: 2px;">${ubicacionLabel}</div><div style="margin-bottom: 2px; color: #555;">Plataforma WhatsApp</div>` : ''}
+      <div style="margin-bottom: 2px;">${esc(pedido.clienteNombre)}</div>
+      <div style="margin-bottom: 2px;">${esc(pedido.clienteWhatsapp)}</div>
+      ${ubicacionLabel ? `<div style="margin-bottom: 2px;">${esc(ubicacionLabel)}</div><div style="margin-bottom: 2px; color: #555;">Plataforma WhatsApp</div>` : ''}
     `;
     printContent.appendChild(clientInfo);
 
@@ -193,7 +196,7 @@ export const printOrderTicket = (
         
         tableHtml += `
           <tr style="border-bottom: 1px dotted #ccc;">
-            <td style="text-align: left; padding: 4px 0;">${p.nombre}</td>
+            <td style="text-align: left; padding: 4px 0;">${esc(p.nombre)}</td>
             <td style="text-align: center; padding: 4px 0;">${cantidad}</td>
             <td style="text-align: right; padding: 4px 0;">${precio > 0 ? `$${precio}` : '-'}</td>
             <td style="text-align: right; padding: 4px 0;">${subtotalProducto > 0 ? `$${subtotalProducto}` : '-'}</td>
@@ -216,7 +219,7 @@ export const printOrderTicket = (
         const cantidad = p.cantidad || 1;
         tableHtml += `
           <tr style="border-bottom: 1px dotted #ccc;">
-            <td style="text-align: left; padding: 4px 0;">${cantidad > 1 ? `${cantidad}x ` : ''}${p.nombre}</td>
+            <td style="text-align: left; padding: 4px 0;">${cantidad > 1 ? `${cantidad}x ` : ''}${esc(p.nombre)}</td>
           </tr>
         `;
       });
@@ -242,7 +245,7 @@ export const printOrderTicket = (
         <span>RD$${subtotalProductos.toLocaleString()}</span>
       </div>
       <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-        <span>${entrega.etiqueta}:</span>
+        <span>${esc(entrega.etiqueta)}:</span>
         <span>RD$${costoDelivery.toLocaleString()}</span>
       </div>
       <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; margin-top: 5px; padding-top: 5px; border-top: 2px double #333;">
@@ -302,7 +305,7 @@ export const printOrderTicket = (
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Pedido #${pedido.id} - ${colmadoNombre}</title>
+          <title>Pedido #${pedido.id} - ${esc(colmadoNombre)}</title>
           <meta charset="utf-8">
           <style>
             @page {
@@ -409,14 +412,14 @@ export const printOrderWindow = (
       
       if (tienePrecios) {
         return `<tr style="border-bottom: 1px dotted #ccc;">
-          <td style="padding: 4px 0;">${p.nombre}</td>
+          <td style="padding: 4px 0;">${esc(p.nombre)}</td>
           <td style="text-align: center; padding: 4px 0;">${cantidad}</td>
           <td style="text-align: right; padding: 4px 0;">${precio > 0 ? `$${precio}` : "-"}</td>
           <td style="text-align: right; padding: 4px 0;">${subtotalProducto > 0 ? `$${subtotalProducto}` : "-"}</td>
         </tr>`;
       } else {
         return `<tr style="border-bottom: 1px dotted #ccc;">
-          <td style="padding: 4px 0;">${cantidad > 1 ? `${cantidad}x ` : ''}${p.nombre}</td>
+          <td style="padding: 4px 0;">${cantidad > 1 ? `${cantidad}x ` : ''}${esc(p.nombre)}</td>
         </tr>`;
       }
     }).join("");
@@ -429,7 +432,7 @@ export const printOrderWindow = (
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Pedido #${pedido.id} - ${colmado.nombre}</title>
+        <title>Pedido #${pedido.id} - ${esc(colmado.nombre)}</title>
         <meta charset="UTF-8">
         <style>
           @page {
@@ -467,9 +470,9 @@ export const printOrderWindow = (
       <body>
 
         <div class="header">
-          <h1>${colmado.nombre}</h1>
-          ${colmado.direccion ? `<p>${colmado.direccion}</p>` : ""}
-          ${telefono ? `<p>Tel: ${telefono}</p>` : ""}
+          <h1>${esc(colmado.nombre)}</h1>
+          ${colmado.direccion ? `<p>${esc(colmado.direccion)}</p>` : ""}
+          ${telefono ? `<p>Tel: ${esc(telefono)}</p>` : ""}
         </div>
 
         <div class="pedido-id">PEDIDO #${pedido.id}</div>
@@ -478,9 +481,9 @@ export const printOrderWindow = (
 
         <div class="cliente-info">
           <p><strong>Fecha:</strong> ${fechaPedido}</p>
-          <p><strong>Cliente:</strong> ${pedido.clienteNombre}</p>
-          <p><strong>Tel:</strong> ${pedido.clienteWhatsapp}</p>
-          ${ubicacionLabel ? `<p><strong>Dir:</strong> ${ubicacionLabel}</p><p style="color:#555;">Plataforma WhatsApp</p>` : ""}
+          <p><strong>Cliente:</strong> ${esc(pedido.clienteNombre)}</p>
+          <p><strong>Tel:</strong> ${esc(pedido.clienteWhatsapp)}</p>
+          ${ubicacionLabel ? `<p><strong>Dir:</strong> ${esc(ubicacionLabel)}</p><p style="color:#555;">Plataforma WhatsApp</p>` : ""}
         </div>
 
         <div class="sep"></div>
@@ -501,7 +504,7 @@ export const printOrderWindow = (
 
         <div class="totales">
           <div class="row"><span>Subtotal:</span><span>RD$${subtotalProductos.toLocaleString()}</span></div>
-          <div class="row"><span>${entrega.etiqueta}:</span><span>RD$${costoDelivery.toLocaleString()}</span></div>
+          <div class="row"><span>${esc(entrega.etiqueta)}:</span><span>RD$${costoDelivery.toLocaleString()}</span></div>
           <div class="total-final">
             <span>TOTAL:</span>
             <span>RD$${totalPedido.toLocaleString()}</span>

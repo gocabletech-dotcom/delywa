@@ -1,11 +1,12 @@
-import { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { colmados, type Colmado } from "@shared/schema";
+import { Hono, type Context } from "hono";
+import { and, eq } from "drizzle-orm";
+import { clienteAparatos, colmados, type Colmado } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { checkZipFormat } from "../lib/zipValidation";
 import { soloDigitos } from "../lib/telefono";
-import { permitirEvento } from "../lib/rate-limit";
+import { contarEventos, permitirEvento, registrarEvento } from "../lib/rate-limit";
+import { turnstileDelLogin, verificarTurnstile } from "../lib/turnstile";
 import { enrichColmadoWithMoneda, generateSlug, getColmado, getPais } from "../storage/colmados";
 import { getMenuProductos } from "../storage/menu";
 import {
@@ -70,6 +71,26 @@ menuGraficoRoutes.get("/api/menu-grafico/colmado/:codigo", async (c) => {
   });
 });
 
+// ---------- Aparato conocido ----------
+// El teléfono no está verificado: cualquiera puede escribir el número de otra persona. Por eso la
+// dirección y los pedidos de un cliente solo se devuelven al navegador (aparato) desde el que ese
+// número ya pidió en este negocio. La página manda su identificador al azar en X-Delywa-Aparato.
+
+const aparatoDe = (c: Context<AppEnv>) => {
+  const a = c.req.header("X-Delywa-Aparato") ?? "";
+  return /^[0-9a-f]{32}$/.test(a) ? a : null;
+};
+
+async function aparatoConocido(db: Db, colmadoId: number, whatsapp: string, aparato: string | null): Promise<boolean> {
+  if (!aparato) return false;
+  const [fila] = await db.select({ id: clienteAparatos.id }).from(clienteAparatos)
+    .where(and(eq(clienteAparatos.colmadoId, colmadoId), eq(clienteAparatos.telefono, soloDigitos(whatsapp)), eq(clienteAparatos.aparato, aparato))).limit(1);
+  return Boolean(fila);
+}
+
+/** Topes de pedidos del menú gráfico (las pruebas los cambian). */
+export const TOPES_PEDIDO = { porTelefono: 5, porConexion: 10, turnstileDesde: 3, ventanaMs: 60 * 60 * 1000 };
+
 const resumenPedido = (p: Awaited<ReturnType<typeof getPedidosByClienteWhatsapp>>[number]) => ({
   id: p.id, codigoSeguimiento: p.codigoSeguimiento, estado: p.estado, total: p.total, tipoEntrega: p.tipoEntrega, fecha: p.fechaCreacion, productos: p.productos,
 });
@@ -86,6 +107,10 @@ menuGraficoRoutes.post("/api/menu-grafico/buscar-cliente", async (c) => {
     return c.json({ error: "Demasiadas búsquedas. Espera unos minutos." }, 429);
   }
   if (!(await getColmado(db, colmadoId))) return c.json({ error: "Negocio no encontrado" }, 404);
+  // Desde un aparato que nunca pidió con ese número no se devuelve nada del cliente.
+  if (!(await aparatoConocido(db, colmadoId, whatsapp, aparatoDe(c)))) {
+    return c.json({ encontrado: false, cliente: null, pedidosRecientes: [] });
+  }
   const [conversacion, cliente, suyos] = await Promise.all([
     getConversacionByCliente(db, colmadoId, whatsapp),
     getClienteByWhatsapp(db, colmadoId, whatsapp),
@@ -115,6 +140,7 @@ menuGraficoRoutes.get("/api/menu-grafico/pedidos-cliente", async (c) => {
     return c.json({ error: "Demasiadas consultas. Espera unos minutos." }, 429);
   }
   if (!(await getColmado(db, colmadoId))) return c.json({ error: "Negocio no encontrado" }, 404);
+  if (!(await aparatoConocido(db, colmadoId, whatsapp, aparatoDe(c)))) return c.json({ pedidos: [] });
   const suyos = await getPedidosByClienteWhatsapp(db, colmadoId, whatsapp);
   return c.json({ pedidos: suyos.filter((p) => p.estado !== "fusionado").slice(0, 2).map(resumenPedido) });
 });
@@ -144,6 +170,18 @@ menuGraficoRoutes.post("/api/menu-grafico/pedido", async (c) => {
   if (!colmado) return c.json({ error: "Negocio no encontrado" }, 404);
   if (colmado.estado !== "activo" || colmado.estadoSuscripcion === "suspendida") {
     return c.json({ error: "Este negocio no está recibiendo pedidos en este momento." }, 409);
+  }
+
+  // Topes contra pedidos falsos: por teléfono y por conexión cada hora; pasado un número, verificación de robot.
+  const ip = c.req.header("CF-Connecting-IP") ?? "sin-ip";
+  const claveTel = `pedidomg:t:${colmadoId}:${soloDigitos(clienteWhatsapp)}`, claveIp = `pedidomg:ip:${ip}`;
+  const [delTelefono, deLaConexion] = await Promise.all([contarEventos(db, claveTel, TOPES_PEDIDO.ventanaMs), contarEventos(db, claveIp, TOPES_PEDIDO.ventanaMs)]);
+  if (delTelefono >= TOPES_PEDIDO.porTelefono || deLaConexion >= TOPES_PEDIDO.porConexion) {
+    return c.json({ error: "Se hicieron demasiados pedidos seguidos. Espera un rato o llama al negocio." }, 429);
+  }
+  const turnstile = turnstileDelLogin(c.env);
+  if (turnstile && deLaConexion >= TOPES_PEDIDO.turnstileDesde && !(await verificarTurnstile(turnstile.secreto, body.turnstileToken, ip))) {
+    return c.json({ error: "Confirma que no eres un robot y vuelve a enviar el pedido.", turnstile: true, siteKey: turnstile.siteKey }, 403);
   }
 
   const menu = await getMenuProductos(db, colmadoId);
@@ -202,6 +240,10 @@ menuGraficoRoutes.post("/api/menu-grafico/pedido", async (c) => {
     costoDeliveryAplicado: costoDelivery.toFixed(2),
   });
   await updateConversacionPedidoEstado(db, conversacion.id, "pendiente_confirmacion");
+  await registrarEvento(db, claveTel, claveIp);
+  // Este aparato ya pidió con este número: podrá ver sus pedidos y su dirección la próxima vez.
+  const aparato = aparatoDe(c);
+  if (aparato) await db.insert(clienteAparatos).values({ colmadoId, telefono: soloDigitos(clienteWhatsapp), aparato }).onConflictDoNothing();
 
   const simbolo = (await enrichColmadoWithMoneda(db, colmado)).simboloMoneda;
   const subtotal = lineas.reduce((s, p) => s + p.monto, 0);

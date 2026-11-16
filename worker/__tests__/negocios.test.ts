@@ -135,7 +135,7 @@ describe("negocios", () => {
     for (const cliente of [t.client(), duenoOtro]) {
       const pub = await cliente.request("GET", `/api/colmados/${cafe.id}`);
       expect(pub.status).toBe(200);
-      expect(pub.json).toMatchObject({ nombre: "Café Ñapa", whatsappConfigured: true, codigoPais: "DO" });
+      expect(pub.json).toMatchObject({ nombre: "Café Ñapa", codigoPais: "DO" });
       const texto = JSON.stringify(pub.json);
       for (const secreto of ["TOKEN-META-SECRETO", "EVO-SECRETA", "prompt interno", "ownerUserId", "evo.test"]) expect(texto).not.toContain(secreto);
     }
@@ -166,7 +166,18 @@ describe("negocios", () => {
   });
 
   it("protege métodos de pago y suscripciones por negocio", async () => {
-    expect((await t.client().request("GET", `/api/colmados/${cafe.id}/metodos-pago`)).json).toMatchObject({ efectivo: true, transferencia: false, bancos: [] });
+    // Las cuentas de banco ya no son públicas: solo el personal del negocio.
+    expect((await t.client().request("GET", `/api/colmados/${cafe.id}/metodos-pago`)).status).toBe(401);
+    expect((await duenoOtro.request("GET", `/api/colmados/${cafe.id}/metodos-pago`)).status).toBe(403);
+    expect((await duenoCafe.request("GET", `/api/colmados/${cafe.id}/metodos-pago`)).json).toMatchObject({ efectivo: true, transferencia: false, bancos: [] });
+    // La ficha pública no dice el plan ni la suscripción; el personal sí la ve completa.
+    const publica = (await t.client().request("GET", `/api/colmados/${cafe.id}`)).json;
+    expect(publica.nombre).toBeTruthy();
+    expect(publica).not.toHaveProperty("planId");
+    expect(publica).not.toHaveProperty("estadoSuscripcion");
+    expect(publica).not.toHaveProperty("whatsappPhoneNumberId");
+    expect((await duenoOtro.request("GET", `/api/colmados/${cafe.id}`)).json).not.toHaveProperty("planId");
+    expect((await duenoCafe.request("GET", `/api/colmados/${cafe.id}`)).json).toHaveProperty("planId");
     const cuerpo = { transferencia: true, bancos: [{ nombre: "Banreservas", numeroCuenta: "123", titular: "Carla" }, { malo: 1 }] };
     expect((await duenoOtro.request("PUT", `/api/colmados/${cafe.id}/metodos-pago`, cuerpo)).status).toBe(403);
     expect((await t.client().request("PUT", `/api/colmados/${cafe.id}/metodos-pago`, cuerpo)).status).toBe(401);
@@ -196,8 +207,10 @@ describe("negocios", () => {
     const res = await nuevo.request("POST", "/api/user/register-colmado", { nombre: "Colmado Nico", whatsappNumero: "18095550009", direccion: "Calle 9", planId: 3 });
     expect(res.status).toBe(201);
     expect(res.json.planId).toBe(1);
-    expect((await nuevo.request("GET", "/api/user/role")).json).toMatchObject({ role: "colmado_owner", colmadoId: res.json.id, sucursales: [res.json.id] });
-    expect((await nuevo.request("POST", "/api/user/register-colmado", { nombre: "Otro más", whatsappNumero: "18095550010", direccion: "Calle 10" })).status).toBe(403);
+    // Nace en revisión, como los que se registran desde la página: no entra hasta que la plataforma lo apruebe.
+    expect(res.json.estado).toBe("pendiente_revision");
+    expect((await nuevo.request("GET", "/api/auth/user")).status).toBe(403);
+    expect((await t.client().request("POST", "/api/auth/login", { username: "nuevo@delywa.test", password: "nuevo1234" })).status).toBe(403);
   });
 
   it("revisa suscripciones, estado y borra en cascada", async () => {

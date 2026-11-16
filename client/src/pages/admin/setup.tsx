@@ -38,8 +38,8 @@ export default function SetupPage() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Colmado registrado exitosamente" });
-      setLocation("/admin/dashboard");
+      toast({ title: "Recibimos tu negocio", description: "Está en revisión. Te avisaremos por correo cuando lo aprobemos." });
+      setLocation("/login");
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });

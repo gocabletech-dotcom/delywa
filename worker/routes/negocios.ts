@@ -111,7 +111,8 @@ negocioRoutes.post("/api/user/register-colmado", requireAuth, async (c) => {
   try {
     const colmado = await crearNegocio(db, {
       nombre: nombre.trim(), whatsappNumero: whatsappNumero.trim(), direccion: direccion.trim(),
-      planId: trial.id, estado: "activo", ownerUserId: user.id,
+      // Igual que el registro de la página: nace en revisión hasta que la plataforma lo aprueba.
+      planId: trial.id, estado: "pendiente_revision", ownerUserId: user.id,
     });
     await updateUserRole(db, user.id, "colmado_owner", colmado.id, null);
     c.var.session.set("colmadoId", colmado.id);
@@ -134,11 +135,17 @@ negocioRoutes.get("/api/colmados/:id", async (c) => {
   const db = getDb(c.env.DB);
   const colmado = Number.isInteger(id) ? await getColmado(db, id) : undefined;
   if (!colmado) return c.json({ error: "Colmado no encontrado" }, 404);
-  let conAcceso = false;
+  let conAcceso = false, personal = false;
   const userId = c.var.session.data.userId;
   if (userId) {
     const user = await getUserById(db, userId);
     conAcceso = Boolean(user && (user.role === "platform_admin" || (user.role === "colmado_owner" && await isOwnerOfColmado(db, user.id, id))));
+    personal = conAcceso || Boolean(user && await canUserAccessColmado(db, user, id));
+  }
+  // Quien no trabaja en el negocio solo ve lo que ve cualquier cliente (no plan, suscripción ni configuración).
+  if (!personal) {
+    const { nombre, slug, logo, colorPrimario, direccion, ciudad, provincia, whatsappNumero, tipoNegocio, costoDelivery, tiempoEstimado, horarios, estaAbiertoManual, mensajeCerrado, paisId } = colmado as Record<string, any>;
+    return c.json(await enrichColmadoWithMoneda(db, { id, nombre, slug, logo, colorPrimario, direccion, ciudad, provincia, whatsappNumero, tipoNegocio, costoDelivery, tiempoEstimado, horarios, estaAbiertoManual, mensajeCerrado, paisId } as any));
   }
   return c.json(await enrichColmadoWithMoneda(db, toSafeColmado(colmado, conAcceso)));
 });
@@ -339,8 +346,8 @@ negocioRoutes.patch("/api/colmados/:id/whatsapp-config", requireAuth, async (c) 
 
 // ---------- Métodos de pago ----------
 
-// Público: el chat de pedidos necesita saber cómo se puede pagar.
-negocioRoutes.get("/api/colmados/:id/metodos-pago", async (c) => {
+// Solo el personal del negocio: aquí van las cuentas de banco. El bot las lee directo de la base.
+negocioRoutes.get("/api/colmados/:id/metodos-pago", requireAuth, requireBusinessAccess(), async (c) => {
   const colmadoId = Number(c.req.param("id"));
   const metodos = Number.isInteger(colmadoId) ? await getMetodosPago(getDb(c.env.DB), colmadoId) : undefined;
   return c.json(metodos ?? {

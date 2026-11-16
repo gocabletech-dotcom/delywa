@@ -13,6 +13,10 @@ vi.mock("../lib/routeOptimizer", async (original) => ({
 import { createTestApp } from "./helpers";
 import { createUser, setUserSucursalIds } from "../storage/users";
 import { enviarRecordatoriosComprobante } from "../lib/cron";
+import { TOPES_PEDIDO } from "../routes/menu-grafico";
+
+// Este archivo hace muchos pedidos de prueba desde la misma "conexión": los topes se prueban aparte.
+Object.assign(TOPES_PEDIDO, { porTelefono: 1000, porConexion: 1000 });
 
 let t: Awaited<ReturnType<typeof createTestApp>>;
 type Client = ReturnType<Awaited<ReturnType<typeof createTestApp>>["client"]>;
@@ -26,10 +30,11 @@ async function login(email: string, password: string) {
 }
 
 const CLIENTE = "+1 (809) 555-0101";
+const APARATO = { "X-Delywa-Aparato": "a".repeat(32) };
 const pedirDelMenu = (extra: Record<string, unknown> = {}) => anon.request("POST", "/api/menu-grafico/pedido", {
   colmadoId: cafe.id, clienteNombre: "Luisa", clienteWhatsapp: CLIENTE, direccionTexto: "Calle El Sol #5, Santiago",
   productos: [{ nombre: "Mangú", cantidad: 2, precio: 150 }], ...extra,
-});
+}, APARATO);
 
 beforeAll(async () => {
   t = await createTestApp();
@@ -82,10 +87,17 @@ describe("pedido desde el menú gráfico", () => {
     expect(fila).toMatchObject({ costoDeliveryAplicado: "50.00", costoDeliveryAplicadoFijado: true, total: "0.00" });
     expect(JSON.parse(fila.productos)).toEqual([{ nombre: "Mangú", monto: 300, cantidad: 2, precioUnitario: 150 }]);
 
-    const buscado = await anon.request("POST", "/api/menu-grafico/buscar-cliente", { colmadoId: cafe.id, whatsapp: "18095550101" });
+    // Desde otro aparato (o sin aparato) el número de teléfono no saca nada del cliente.
+    for (const cabeceras of [undefined, { "X-Delywa-Aparato": "f".repeat(32) }]) {
+      const ajeno = await anon.request("POST", "/api/menu-grafico/buscar-cliente", { colmadoId: cafe.id, whatsapp: "18095550101" }, cabeceras);
+      expect(ajeno.json).toEqual({ encontrado: false, cliente: null, pedidosRecientes: [] });
+      expect((await anon.request("GET", `/api/menu-grafico/pedidos-cliente?colmadoId=${cafe.id}&whatsapp=%2B18095550101`, undefined, cabeceras)).json.pedidos).toEqual([]);
+    }
+    // El aparato que hizo el pedido sí reconoce a su cliente.
+    const buscado = await anon.request("POST", "/api/menu-grafico/buscar-cliente", { colmadoId: cafe.id, whatsapp: "18095550101" }, APARATO);
     expect(buscado.json).toMatchObject({ encontrado: true, cliente: { nombre: "Luisa", direccion: "Calle El Sol #5, Santiago" } });
     expect(buscado.json.pedidosRecientes).toHaveLength(1);
-    expect((await anon.request("GET", `/api/menu-grafico/pedidos-cliente?colmadoId=${cafe.id}&whatsapp=%2B18095550101`)).json.pedidos).toHaveLength(1);
+    expect((await anon.request("GET", `/api/menu-grafico/pedidos-cliente?colmadoId=${cafe.id}&whatsapp=%2B18095550101`, undefined, APARATO)).json.pedidos).toHaveLength(1);
     expect((await anon.request("GET", `/api/pedidos/${res.json.id}/estado`)).json.estado).toBe("pendiente_confirmacion");
   });
 });
@@ -444,3 +456,19 @@ describe("transferencia: no se entrega sin el pago aprobado", () => {
   });
 });
 
+describe("topes del menú gráfico", () => {
+  it("frena los pedidos falsos: tope por teléfono y por conexión", async () => {
+    const antes = { ...TOPES_PEDIDO };
+    try {
+      Object.assign(TOPES_PEDIDO, { porTelefono: 2, porConexion: 1000 });
+      const tel = { clienteWhatsapp: "18095557701" };
+      expect((await pedirDelMenu(tel)).status).toBe(200);
+      expect((await pedirDelMenu(tel)).status).toBe(200);
+      expect((await pedirDelMenu(tel)).status).toBe(429);
+      // Otro teléfono sigue pudiendo, hasta que la conexión llega a su tope.
+      expect((await pedirDelMenu({ clienteWhatsapp: "18095557702" })).status).toBe(200);
+      Object.assign(TOPES_PEDIDO, { porTelefono: 1000, porConexion: 1 });
+      expect((await pedirDelMenu({ clienteWhatsapp: "18095557703" })).status).toBe(429);
+    } finally { Object.assign(TOPES_PEDIDO, antes); }
+  });
+});

@@ -643,6 +643,18 @@ export const clienteDirecciones = sqliteTable("cliente_direcciones", {
   unique("cliente_direcciones_cliente_etiqueta_uniq").on(t.clienteId, t.etiqueta),
 ]);
 
+// Aparatos (navegadores) desde los que un teléfono ya pidió en un negocio. El menú gráfico solo
+// devuelve la dirección y los pedidos de un cliente al aparato que ya los conoce.
+export const clienteAparatos = sqliteTable("cliente_aparatos", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),
+  telefono: text("telefono").notNull(),
+  aparato: text("aparato").notNull(),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (t) => [
+  unique("cliente_aparatos_uniq").on(t.colmadoId, t.telefono, t.aparato),
+]);
+
 export const whatsappConversaciones = sqliteTable("whatsapp_conversaciones", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),

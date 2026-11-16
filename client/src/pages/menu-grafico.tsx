@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { enlaceSeguimiento, type PedidoConCodigo } from "@/lib/seguimiento";
 import { useParams } from "wouter";
+import { cabeceraAparato } from "@/lib/aparato";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { emojiDeProducto } from "@/lib/emojiProductos";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -120,6 +122,10 @@ type ViewState = "auth" | "menu" | "checkout" | "tracking" | "historial";
 export default function MenuGraficoPage() {
   const { codigo } = useParams<{ codigo: string }>();
   const [cart, setCart] = useState<CartItem[]>([]);
+  // Verificación de robot: solo aparece si el servidor la pide (muchos pedidos desde la misma conexión).
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [reinicioTurnstile, setReinicioTurnstile] = useState(0);
   const [categoriaActiva, setCategoriaActiva] = useState<string>("Todos");
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [viewState, setViewState] = useState<ViewState>("auth");
@@ -213,7 +219,7 @@ export default function MenuGraficoPage() {
         colmadoId: String(colmado?.id),
         whatsapp: clienteWhatsapp,
       });
-      const res = await fetch(`/api/menu-grafico/pedidos-cliente?${params.toString()}`);
+      const res = await fetch(`/api/menu-grafico/pedidos-cliente?${params.toString()}`, { headers: cabeceraAparato() });
       if (!res.ok) throw new Error("Error al obtener pedidos activos");
       const data = await res.json();
       return data.pedidos ?? [];
@@ -263,11 +269,13 @@ export default function MenuGraficoPage() {
     }) => {
       const res = await fetch("/api/menu-grafico/pedido", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json", ...cabeceraAparato() },
+        body: JSON.stringify({ ...data, turnstileToken: turnstileToken ?? undefined }),
       });
       if (!res.ok) {
         const error = await res.json();
+        // Muchos pedidos desde la misma conexión: el servidor pide confirmar que no es un robot.
+        if (error.turnstile && error.siteKey) { setTurnstileSiteKey(error.siteKey); setTurnstileToken(null); setReinicioTurnstile((n) => n + 1); }
         throw new Error(error.error || "Error al crear pedido");
       }
       return res.json();
@@ -481,7 +489,7 @@ export default function MenuGraficoPage() {
     try {
       const res = await fetch("/api/menu-grafico/buscar-cliente", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...cabeceraAparato() },
         body: JSON.stringify({
           colmadoId: colmado?.id,
           whatsapp: clienteWhatsapp.trim(),
@@ -1374,6 +1382,7 @@ export default function MenuGraficoPage() {
               </div>
             )}
 
+            {turnstileSiteKey && <TurnstileWidget siteKey={turnstileSiteKey} onToken={setTurnstileToken} reinicio={reinicioTurnstile} />}
             {formError && (
               <p className="text-sm text-red-500 bg-red-50 p-2 rounded" data-testid="text-error">
                 {formError}
@@ -1382,7 +1391,7 @@ export default function MenuGraficoPage() {
 
             <Button
               onClick={handleSubmitPedido}
-              disabled={crearPedidoMutation.isPending}
+              disabled={crearPedidoMutation.isPending || Boolean(turnstileSiteKey && !turnstileToken)}
               className="w-full bg-green-600 hover:bg-green-700"
               size="lg"
               data-testid="button-enviar-pedido"

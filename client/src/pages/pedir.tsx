@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { aparato } from "@/lib/aparato";
 import { useParams } from "wouter";
 import { Loader2, Square } from "lucide-react";
 import { Avatar, Burbuja, IOS, IPhone, IconoIOS, SeparadorFecha, fondoWhatsApp, horaCorta, textoFecha } from "@/components/whatsapp/ios";
@@ -27,17 +28,6 @@ function leerGuardado(codigo: string): Guardado | null {
 }
 function guardar(codigo: string, g: Guardado | null) {
   try { g ? localStorage.setItem(claveLocal(codigo), JSON.stringify(g)) : localStorage.removeItem(claveLocal(codigo)); } catch { /* navegador sin almacenamiento */ }
-}
-/** Identificador al azar de este navegador: la conversación solo se reabre desde el mismo aparato. */
-function aparato(): string {
-  try {
-    let a = localStorage.getItem("delywa-aparato") || "";
-    if (!/^[0-9a-f]{32}$/.test(a)) {
-      a = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
-      localStorage.setItem("delywa-aparato", a);
-    }
-    return a;
-  } catch { return ""; }
 }
 const hora = (f: string | number) => new Date(f).toLocaleTimeString("es-DO", { hour: "numeric", minute: "2-digit" });
 
