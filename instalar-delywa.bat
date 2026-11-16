@@ -105,6 +105,11 @@ echo   Solo en una emergencia puedes escribir PUBLICAR para seguir de todos modo
 set "SEGUIR="
 set /p "SEGUIR=  Escribe PUBLICAR o presiona Enter para salir: "
 if /I not "%SEGUIR%"=="PUBLICAR" goto :error
+echo.
+echo   Publicar con pruebas fallidas puede danar el sistema o abrir un hueco de seguridad.
+set "SEGURO="
+set /p "SEGURO=  Para confirmar escribe SI ESTOY SEGURO, o presiona Enter para salir: "
+if /I not "%SEGURO%"=="SI ESTOY SEGURO" goto :error
 echo   Sigues bajo tu responsabilidad.
 :pruebas_ok
 

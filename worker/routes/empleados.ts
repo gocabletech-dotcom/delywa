@@ -54,7 +54,7 @@ const empleadoSchema = z.object({
   apellidos: texto(120), cedula: texto(40), email: texto(160), telefono: texto(40), direccion: texto(300), puesto: texto(120),
   fechaIngreso: z.preprocess((v) => v || null, z.string().nullable().refine((v) => v === null || esFechaReal(v), "Fecha de ingreso inválida")),
   estado: z.enum(["activo", "inactivo"]),
-  tipoPago: z.enum(["por_hora", "salario"], { errorMap: () => ({ message: "Tipo de pago inválido" }) }),
+  tipoPago: z.enum(["por_hora", "salario"], { error: "Tipo de pago inválido" }),
   tarifaHora: monto, salarioFijo: monto,
   periodoPago: z.enum(["semanal", "quincenal", "mensual"]),
   moneda: z.string().trim().min(1).max(8),

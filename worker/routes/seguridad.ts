@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { and, desc, eq, lt } from "drizzle-orm";
-import { bitacora, errores, respaldos } from "@shared/schema";
+import { bitacora, errores, respaldos, users } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAdmin, requireAuth } from "../lib/auth";
 import { descargarRespaldo, iniciarRespaldo, pasoRespaldo } from "../lib/respaldo";
+import { anotar } from "../lib/seguridad";
+import { correoListo, enviarCorreo, escHtml, plantillaCorreo } from "../lib/correo";
 
 // Plataforma → Seguridad: bitácora, errores del sistema y respaldos. Solo platform_admin.
 export const seguridadRoutes = new Hono<AppEnv>();
@@ -47,6 +49,15 @@ seguridadRoutes.get("/api/admin/respaldos/:dia/descargar", async (c) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || !c.env.RESPALDOS) return c.json({ error: "Respaldo no encontrado" }, 404);
   const [r] = await getDb(c.env.DB).select().from(respaldos).where(eq(respaldos.dia, dia));
   if (!r || r.estado !== "listo") return c.json({ error: "Ese respaldo todavía no está listo" }, 404);
+  // Descargar la base completa siempre queda anotado y se avisa por correo a los administradores.
+  const quien = c.var.user, ip = c.req.header("CF-Connecting-IP") ?? null;
+  await anotar(getDb(c.env.DB), { userId: quien.id, usuario: quien.email, rol: quien.role, accion: `Descargó el respaldo del ${dia}`, ip });
+  if (correoListo(c.env)) {
+    const admins = await getDb(c.env.DB).select({ email: users.email }).from(users).where(eq(users.role, "platform_admin"));
+    const html = plantillaCorreo("Se descargó un respaldo de la base", `<p><b>${escHtml(quien.email ?? "Un administrador")}</b> descargó el respaldo del ${escHtml(dia)}${ip ? ` desde la conexión ${escHtml(ip)}` : ""}.</p><p>Si no fuiste tú, cambia la contraseña de la cuenta de plataforma ahora mismo.</p>`);
+    const tarea = Promise.all(admins.filter((a) => a.email).map((a) => enviarCorreo(c.env, { para: a.email!, asunto: "Se descargó un respaldo de DelyWa", html }))).catch(() => undefined);
+    try { c.executionCtx.waitUntil(tarea); } catch { /* pruebas */ }
+  }
   return new Response(descargarRespaldo(c.env, dia, r.parte), {
     headers: { "Content-Type": "application/sql; charset=utf-8", "Content-Disposition": `attachment; filename="delywa-respaldo-${dia}.sql"`, "Cache-Control": "no-store" },
   });

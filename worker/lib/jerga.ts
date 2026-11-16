@@ -153,7 +153,7 @@ export async function promoverSiCorresponde(db: Db, paisId: number, tipoNegocio:
 }
 
 /** Lo que aprendió el bot en un colmado: va a su diccionario y alimenta el del país. */
-export async function aprenderJerga(db: Db, colmado: Pick<Colmado, "id" | "tipoNegocio" | "paisId">, jergaCruda: string, productoCrudo: string, precio?: string) {
+export async function aprenderJerga(db: Db, colmado: Pick<Colmado, "id" | "tipoNegocio" | "paisId">, jergaCruda: string, productoCrudo: string, precio?: string, opciones: { promover?: boolean } = {}) {
   const jerga = normalizar(jergaCruda).slice(0, 80);
   const producto = productoCrudo.trim().slice(0, 120);
   if (jerga.length < 3 || !producto || jerga === normalizar(producto)) return null;
@@ -179,7 +179,9 @@ export async function aprenderJerga(db: Db, colmado: Pick<Colmado, "id" | "tipoN
         target: [jergaAprendizaje.paisId, jergaAprendizaje.tipoNegocio, jergaAprendizaje.jerga, jergaAprendizaje.productoIdentificado, jergaAprendizaje.colmadoId],
         set: { vecesUsado: sql`${jergaAprendizaje.vecesUsado} + 1`, ultimoUso: new Date() },
       });
-    await promoverSiCorresponde(db, paisId, tipo, jerga, producto);
+    // El chat de la página no verifica el teléfono: lo que se aprende ahí queda «esperando» hasta que
+    // la plataforma lo apruebe, para que nadie meta palabras falsas al diccionario del país con chats inventados.
+    if (opciones.promover !== false) await promoverSiCorresponde(db, paisId, tipo, jerga, producto);
   }
   return entrada;
 }

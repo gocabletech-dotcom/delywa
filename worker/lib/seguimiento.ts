@@ -9,9 +9,9 @@ export function enlaceSeguimiento(base: string, pedido: ConCodigo, compartir = f
   return pedido.codigoSeguimiento ? `${ruta}?t=${encodeURIComponent(pedido.codigoSeguimiento)}` : ruta;
 }
 
-/** ¿El código del enlace es el de este pedido? Los pedidos de antes de v2.33.0 no tienen código y se aceptan sin él. */
+/** ¿El código del enlace es el de este pedido? Desde v2.40.0 todos los pedidos tienen código (migración 0016). */
 export function codigoSeguimientoValido(pedido: ConCodigo, t: string | undefined | null): boolean {
-  if (!pedido.codigoSeguimiento) return true;
+  if (!pedido.codigoSeguimiento) return false;
   const a = new TextEncoder().encode(pedido.codigoSeguimiento), b = new TextEncoder().encode(String(t ?? ""));
   if (a.length !== b.length) return false;
   let dif = 0;

@@ -147,6 +147,10 @@ describe("panel del negocio", () => {
     // Sin el código del enlace (o con otro) responde como si no existiera: no se pueden recorrer los números.
     expect((await anon.request("GET", `/api/seguimiento/${pedidoId}`)).status).toBe(404);
     expect((await anon.request("GET", `/api/seguimiento/${pedidoId}?t=0000000000000000`)).status).toBe(404);
+    // Un pedido sin código (no debería existir desde la migración 0016) tampoco abre sin él.
+    const { codigoSeguimientoValido } = await import("../lib/seguimiento");
+    expect(codigoSeguimientoValido({ id: 1, codigoSeguimiento: null }, undefined)).toBe(false);
+    expect(codigoSeguimientoValido({ id: 1, codigoSeguimiento: null }, "")).toBe(false);
     const seguimiento = await anon.request("GET", `/api/seguimiento/${pedidoId}?t=${conCodigo.codigoSeguimiento}`);
     expect(seguimiento.json).toMatchObject({ estado: "en_camino", delivery: { nombre: "Pedro" }, destino: { lat: 18.47 } });
     expect(seguimiento.json.eta).not.toBeNull();

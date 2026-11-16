@@ -309,7 +309,7 @@ async function conIa(c: Contexto, texto: string, paso: string): Promise<Respuest
   if (r.tipo === "productos" && r.productos.length) {
     for (const p of r.productos) {
       if (p.jergaOriginal && normalizar(p.jergaOriginal) !== normalizar(p.nombre)) {
-        await aprenderJerga(c.db, c.colmado, p.jergaOriginal, p.nombre).catch(() => undefined);
+        await aprenderJerga(c.db, c.colmado, p.jergaOriginal, p.nombre, undefined, { promover: false }).catch(() => undefined);
       }
     }
     // Se anota con las palabras del cliente (solo con la ortografía corregida), no con el nombre que eligió la IA.

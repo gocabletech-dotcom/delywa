@@ -88,6 +88,17 @@ describe("panel de plataforma", () => {
     await admin.request("POST", "/api/auth/login", { username: "admin@delywa.test", password: "admin1234" });
   });
 
+  it("lo aprendido en el chat de la página espera la aprobación de la plataforma", async () => {
+    const [uno, dos] = negocios;
+    const pagina = { promover: false };
+    await aprenderJerga(t.db, uno, "una jumbo", "Cerveza Presidente Jumbo", undefined, pagina);
+    await aprenderJerga(t.db, dos, "una jumbo", "Cerveza Presidente Jumbo", undefined, pagina);
+    // Dos colmados la "usaron", pero vino de chats sin teléfono verificado: no entra sola al país.
+    expect(await t.db.select().from(plantillasJerga).where(and(eq(plantillasJerga.paisId, rd), eq(plantillasJerga.jerga, "una jumbo")))).toHaveLength(0);
+    // Cada colmado sí la conserva en su propio diccionario.
+    expect((await buscarJerga(t.db, uno, "dame una jumbo"))[0]).toMatchObject({ origen: "negocio" });
+  });
+
   it("muestra lo aprendido con su estado y solo para la plataforma", async () => {
     expect((await t.client().request("GET", "/api/admin/jerga-aprendida")).status).toBe(401);
     const r = await admin.request("GET", `/api/admin/jerga-aprendida?paisId=${rd}`);

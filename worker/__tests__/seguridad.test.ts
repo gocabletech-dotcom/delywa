@@ -203,6 +203,12 @@ describe("respaldo diario en R2", () => {
       expect(sqlTexto).not.toContain(`INSERT INTO "sessions"`);
       expect(sqlTexto).not.toContain("CREATE TABLE `sessions`");
       expect((await t.client().raw("GET", "/api/admin/respaldos/2026-01-01/descargar")).status).toBe(401);
+      // Los enlaces de recuperación no van en el respaldo (su tabla sí, vacía), y la descarga queda anotada.
+      expect(sqlTexto).toContain("CREATE TABLE `recuperaciones`");
+      expect(sqlTexto).not.toContain(`INSERT INTO "recuperaciones"`);
+      expect(sqlTexto).not.toContain(`INSERT INTO "codigos_correo"`);
+      const notas = await t.db.select().from(bitacora);
+      expect(notas.some((n) => n.accion === "Descargó el respaldo del 2026-01-01")).toBe(true);
     } finally {
       LIMITE.filasPorVuelta = limite;
     }

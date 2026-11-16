@@ -51,12 +51,8 @@ app.onError((err, c) => {
 
 app.use("*", cabecerasSeguridad);
 
-app.get("/api/health", async (c) => {
-  const row = await getDb(c.env.DB).get<{ tablas: number }>(
-    sql`SELECT count(*) AS tablas FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations'`,
-  );
-  return c.json({ ok: true, servicio: "delywa", tablas: row?.tablas ?? 0 });
-});
+// No dice nada de la base: solo que el servicio responde.
+app.get("/api/health", (c) => c.json({ ok: true, servicio: "delywa" }));
 
 // Llaves configuradas en el panel de plataforma: se aplican encima de los secretos de Cloudflare.
 app.use("/api/*", async (c, next) => {

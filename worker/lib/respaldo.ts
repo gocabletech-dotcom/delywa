@@ -10,6 +10,8 @@ import { getDb } from "../db";
 // No se copian las sesiones ni los contadores de intentos.
 
 const EXCLUIDAS = new Set(["sessions", "login_intentos", "respaldos", "_cf_KV", "_cf_METADATA"]);
+// Se respalda su estructura pero no sus filas: solo sirven unos minutos (códigos, enlaces de recuperación) o identifican equipos.
+const SIN_FILAS = new Set(["codigos_correo", "recuperaciones", "dispositivos", "subidas_pendientes"]);
 const FILAS_POR_CONSULTA = 500;
 export const LIMITE = { filasPorVuelta: 2000, diasGuardados: 30 };
 
@@ -39,7 +41,7 @@ export async function iniciarRespaldo(env: Env, dia = hoyUtc()): Promise<boolean
   const { results } = await env.DB.prepare("SELECT name, sql FROM sqlite_master WHERE type IN ('table','index') AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, rowid")
     .all<{ name: string; sql: string }>();
   const tablasEsquema = (await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid").all<{ name: string }>()).results
-    .map((r) => r.name).filter((n) => !EXCLUIDAS.has(n));
+    .map((r) => r.name).filter((n) => !EXCLUIDAS.has(n) && !SIN_FILAS.has(n));
   // Parte 0: la estructura (tablas e índices), sin las tablas excluidas.
   const esquema = results
     .filter((r) => {
