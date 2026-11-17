@@ -1,4 +1,5 @@
 import "./columns";
+import { secreto } from "./columns";
 import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, numeric, unique, index, primaryKey, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -154,7 +155,7 @@ export const colmados = sqliteTable("colmados", {
   estado: text("estado").notNull().default("activo"),
   ownerUserId: text("owner_user_id"),
   whatsappPhoneNumberId: text("whatsapp_phone_number_id"),
-  whatsappAccessToken: text("whatsapp_access_token"),
+  whatsappAccessToken: secreto("whatsapp_access_token"),
   fechaSuscripcion: integer("fecha_suscripcion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
   tipoNegocio: text("tipo_negocio").notNull().default("colmado"),
   impuesto: numeric("impuesto").default("0"),
@@ -188,7 +189,7 @@ export const colmados = sqliteTable("colmados", {
   descripcionCompartirPedido: text("descripcion_compartir_pedido"),
   // Evolution API fields (alternative to Meta WhatsApp API)
   evolutionApiUrl: text("evolution_api_url"),
-  evolutionApiKey: text("evolution_api_key"),
+  evolutionApiKey: secreto("evolution_api_key"),
   evolutionInstanceName: text("evolution_instance_name"),
   whatsappProvider: text("whatsapp_provider").default("meta"), // "meta" or "evolution"
   // Multi-country support

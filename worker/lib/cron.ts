@@ -1,3 +1,5 @@
+import { eq } from "drizzle-orm";
+import { pedidos, subidasPendientes } from "@shared/schema";
 import type { Env } from "../env";
 import { getDb } from "../db";
 import { getColmado } from "../storage/colmados";
@@ -19,4 +21,29 @@ export async function enviarRecordatoriosComprobante(env: Env): Promise<void> {
       console.error(`[cron] Recordatorio del pedido #${pedido.id} falló:`, err);
     }
   }
+}
+
+/**
+ * Borra de R2 las fotos de comprobante que nunca se pegaron a un pedido y tienen más de 7 días
+ * (el cliente subió la foto y no terminó, o un robot subió archivos). Autorizado por el dueño el 2026-11-16.
+ * Nunca toca un comprobante que algún pedido referencia, ni fotos de productos o logos.
+ */
+export const COMPROBANTES_HUERFANOS = { dias: 7, porVuelta: 300 };
+export async function borrarComprobantesHuerfanos(env: Env, ahora = Date.now()): Promise<number> {
+  const db = getDb(env.DB);
+  const limite = ahora - COMPROBANTES_HUERFANOS.dias * 24 * 60 * 60 * 1000;
+  const lista = await env.UPLOADS.list({ prefix: "comprobantes/", limit: COMPROBANTES_HUERFANOS.porVuelta });
+  const viejos = lista.objects.filter((o) => o.uploaded.getTime() < limite);
+  let borrados = 0;
+  for (const o of viejos) {
+    const url = `/uploads/${o.key}`;
+    const [enUso] = await db.select({ id: pedidos.id }).from(pedidos).where(eq(pedidos.comprobanteUrl, url)).limit(1);
+    if (enUso) continue;
+    const [pendiente] = await db.select({ clave: subidasPendientes.clave }).from(subidasPendientes).where(eq(subidasPendientes.clave, o.key)).limit(1);
+    if (pendiente) continue;
+    await env.UPLOADS.delete(o.key);
+    borrados++;
+  }
+  if (borrados) console.log(`[cron] Comprobantes sin pedido borrados: ${borrados}`);
+  return borrados;
 }

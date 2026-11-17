@@ -19,7 +19,8 @@ async function login(email: string, password: string) {
   expect((await c.request("POST", "/api/auth/login", { username: email, password })).status).toBe(200);
   return c;
 }
-const portal = (c: Client, body: unknown, ip = "10.1.1.1") => c.request("POST", "/api/empleado/portal/login", body, { "CF-Connecting-IP": ip });
+// El enlace de asistencia lleva el negocio: sin él, o con otro negocio, el código no sirve.
+const portal = (c: Client, body: Record<string, unknown>, ip = "10.1.1.1") => c.request("POST", "/api/empleado/portal/login", { negocio: principal.slug, ...body }, { "CF-Connecting-IP": ip });
 
 beforeAll(async () => {
   t = await createTestApp();
@@ -82,6 +83,14 @@ describe("portal del empleado", () => {
   it("pide sucursal si hay varias, y limita los intentos por IP", async () => {
     p = t.client();
     expect((await portal(p, {})).status).toBe(400);
+    // Enlace viejo (sin negocio): ya no entra. Con el enlace de otro negocio, el código tampoco vale.
+    const viejo = await portal(p, { negocio: undefined, codigoAcceso: porHora.codigoAcceso }, "10.2.2.1");
+    expect(viejo.status).toBe(400);
+    expect(viejo.json.reason).toBe("enlace_viejo");
+    expect((await portal(p, { negocio: otro.slug, codigoAcceso: porHora.codigoAcceso, sucursalId: principal.id }, "10.2.2.2")).status).toBe(401);
+    expect((await portal(p, { negocio: "no-existe", codigoAcceso: porHora.codigoAcceso }, "10.2.2.3")).status).toBe(401);
+    // El enlace de una sucursal del mismo negocio sí sirve.
+    expect((await portal(t.client(), { negocio: sucursal.slug, codigoAcceso: porHora.codigoAcceso, sucursalId: principal.id }, "10.2.2.4")).status).toBe(200);
     const varias = await portal(p, { codigoAcceso: porHora.codigoAcceso.toLowerCase() });
     expect(varias.status).toBe(400);
     expect(varias.json.sucursales).toHaveLength(2);

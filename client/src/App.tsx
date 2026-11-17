@@ -132,6 +132,7 @@ function Router() {
       <Route path="/negocio/sucursales" component={NegocioSucursalesPage} />
       <Route path="/negocio/usuarios" component={NegocioSucursalesPage} />
       <Route path="/negocio/empleados" component={NegocioEmpleadosPage} />
+      <Route path="/asistencia/:negocio" component={EmpleadoPortalPage} />
       <Route path="/empleado/:codigo" component={EmpleadoPortalPage} />
       <Route path="/empleado" component={EmpleadoPortalPage} />
       <Route path="/negocio/manual" component={NegocioManualPage} />

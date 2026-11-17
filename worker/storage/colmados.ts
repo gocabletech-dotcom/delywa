@@ -79,7 +79,8 @@ export function toSafeColmado<T extends Partial<Colmado>>(colmado: T, conAcceso:
   const { whatsappAccessToken, evolutionApiKey, evolutionApiUrl, botPromptCustom, ownerUserId, ...publico } = colmado;
   const whatsappConfigured = Boolean(colmado.whatsappPhoneNumberId && whatsappAccessToken);
   if (!conAcceso) return { ...publico, whatsappConfigured };
-  return { ...publico, evolutionApiKey, evolutionApiUrl, botPromptCustom, ownerUserId, whatsappConfigured };
+  // La llave de Evolution nunca vuelve completa al panel: solo sus últimos 4 caracteres.
+  return { ...publico, evolutionApiKey: evolutionApiKey ? `••••${evolutionApiKey.slice(-4)}` : null, evolutionApiUrl, botPromptCustom, ownerUserId, whatsappConfigured };
 }
 
 // ---------- Slugs ----------

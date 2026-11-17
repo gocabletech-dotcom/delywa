@@ -1,4 +1,4 @@
-import { SQLiteNumeric } from "drizzle-orm/sqlite-core";
+import { SQLiteNumeric, customType } from "drizzle-orm/sqlite-core";
 
 // PostgreSQL devolvía las columnas decimal como texto con escala fija ("75.00").
 // SQLite/D1 las devuelve como número (75). Para que la API y las pantallas sigan
@@ -29,3 +29,19 @@ proto.mapToDriverValue = function (value: unknown) {
   const n = Number(value);
   return value.trim() !== "" && Number.isFinite(n) ? n : value;
 };
+
+// ---------- Columnas secretas ----------
+// Tokens y llaves de terceros (WhatsApp de Meta, Evolution) se guardan cifrados en la base.
+// El cifrado lo pone el servidor (worker/lib/secretos.ts); aquí solo está el enganche, para que
+// este archivo, que también usa el navegador, no cargue nada de criptografía.
+export const codecSecretos: { cifrar: (texto: string) => string; descifrar: (guardado: string) => string } = {
+  cifrar: (t) => t,
+  descifrar: (g) => g,
+};
+
+/** Columna de texto que se cifra al guardar y se descifra al leer. Para el resto del código es texto normal. */
+export const secreto = customType<{ data: string; driverData: string }>({
+  dataType: () => "text",
+  toDriver: (valor) => (valor ? codecSecretos.cifrar(valor) : valor),
+  fromDriver: (guardado) => (guardado ? codecSecretos.descifrar(guardado) : guardado),
+});

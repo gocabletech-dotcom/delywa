@@ -126,8 +126,14 @@ negocioRoutes.post("/api/user/register-colmado", requireAuth, async (c) => {
 
 // ---------- Negocios ----------
 
-negocioRoutes.get("/api/colmados", requireAuth, requireAdmin, async (c) => c.json(await getAllColmados(getDb(c.env.DB))));
-negocioRoutes.get("/api/admin/colmados", requireAuth, requireAdmin, async (c) => c.json(await getAllColmados(getDb(c.env.DB))));
+// La plataforma ve todos los datos del negocio, pero los tokens nunca salen completos del servidor.
+const paraPlataforma = async (db: ReturnType<typeof getDb>) => (await getAllColmados(db)).map((n) => ({
+  ...n,
+  whatsappAccessToken: n.whatsappAccessToken ? `••••${n.whatsappAccessToken.slice(-4)}` : null,
+  evolutionApiKey: n.evolutionApiKey ? `••••${n.evolutionApiKey.slice(-4)}` : null,
+}));
+negocioRoutes.get("/api/colmados", requireAuth, requireAdmin, async (c) => c.json(await paraPlataforma(getDb(c.env.DB))));
+negocioRoutes.get("/api/admin/colmados", requireAuth, requireAdmin, async (c) => c.json(await paraPlataforma(getDb(c.env.DB))));
 
 // Público: lo usan las páginas de pedido y seguimiento. Nunca incluye credenciales.
 negocioRoutes.get("/api/colmados/:id", async (c) => {

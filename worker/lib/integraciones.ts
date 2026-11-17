@@ -1,4 +1,5 @@
 import { like } from "drizzle-orm";
+import { instalarSecretos } from "./secretos";
 import { configuracionSistema } from "@shared/schema";
 import type { Env } from "../env";
 import { getDb, type Db } from "../db";
@@ -114,6 +115,8 @@ export async function leerIntegraciones(env: Env, db: Db = getDb(env.DB)): Promi
  * leyendo env.OPENAI_API_KEY, env.META_APP_SECRET, etc.
  */
 export async function envEfectivo(env: Env): Promise<Env> {
+  // Toda petición, vuelta del cron y lote de la cola pasa por aquí: deja listo el cifrado de las columnas secretas.
+  instalarSecretos(env.DELYWA_CLAVE_MAESTRA);
   if (env.__integraciones) return env;
   let datos: Integraciones;
   try {

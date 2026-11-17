@@ -49,6 +49,9 @@ export default function EmpleadosPage() {
     queryKey: ["sucursales"], queryFn: async () => (await fetch("/api/negocio/sucursales")).json(), enabled: isAuthenticated,
   });
   const branches = branchesData?.sucursales || [];
+  // Cualquier sucursal del negocio sirve para el enlace; se prefiere la principal.
+  const slugNegocio = ((branches as any[]).find((b) => !b.negocioPrincipalId) ?? (branches as any[])[0])?.slug as string | undefined;
+  const enlaceAsistencia = slugNegocio ? `${window.location.origin}/asistencia/${slugNegocio}` : "";
   const { data: employees = [] } = useQuery<Empleado[]>({
     queryKey: ["empleados"], queryFn: async () => (await fetch("/api/negocio/empleados")).json(), enabled: isAuthenticated,
   });
@@ -145,6 +148,16 @@ export default function EmpleadosPage() {
     <NegocioLayout title="Empleados" activeNav="empleados">
       <main className="flex-1 overflow-auto p-3 sm:p-4 lg:p-6">
         <div className="max-w-6xl mx-auto space-y-4">
+          {enlaceAsistencia && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col sm:flex-row sm:items-center gap-3" data-testid="enlace-asistencia">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-slate-900">Enlace de asistencia de tu negocio</p>
+                <p className="text-sm text-slate-600">Tus empleados marcan entrada y salida aquí, con su código. El código solo sirve en este enlace.</p>
+                <p className="mt-1 text-sm font-mono text-[#0F5C39] break-all">{enlaceAsistencia}</p>
+              </div>
+              <Button variant="outline" onClick={async () => { await navigator.clipboard.writeText(enlaceAsistencia); toast({ title: "Enlace copiado" }); }}>Copiar enlace</Button>
+            </div>
+          )}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-sm text-slate-600">Personal, asistencia y nómina en un solo lugar.</p>
             {tab === "empleados" && <Button onClick={openCreate} data-testid="button-nuevo-empleado"><Plus className="w-4 h-4 mr-2" />Nuevo empleado</Button>}

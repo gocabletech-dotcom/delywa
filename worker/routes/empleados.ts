@@ -1,4 +1,6 @@
 import { Hono, type Context } from "hono";
+import { eq } from "drizzle-orm";
+import { colmados } from "@shared/schema";
 import { z } from "zod";
 import type { NominaReglas, User } from "@shared/schema";
 import type { AppEnv } from "../env";
@@ -131,20 +133,26 @@ empleadoRoutes.post("/api/empleado/portal/login", async (c) => {
   const codigo = String(body.codigoAcceso || "").trim().toUpperCase();
   if (!codigo) return c.json({ error: "Ingresa tu código de acceso" }, 400);
 
-  // El código es la única credencial: se limita por IP para que no se pueda adivinar.
+  // El código solo vale dentro de su negocio: el enlace de asistencia lleva el nombre corto (slug) del negocio.
+  const slug = String(body.negocio || "").trim().toLowerCase();
+  if (!slug) return c.json({ error: "Este enlace ya no sirve. Pídele a tu encargado el enlace nuevo de asistencia.", reason: "enlace_viejo" }, 400);
+  const [negocio] = await db.select({ id: colmados.id, principal: colmados.negocioPrincipalId }).from(colmados).where(eq(colmados.slug, slug)).limit(1);
+  const negocioId = negocio ? negocio.principal || negocio.id : 0;
+
+  // Se limita por conexión y negocio para que no se pueda adivinar.
   const ip = c.req.header("CF-Connecting-IP");
-  const clave = `empleado:${ip ?? "sin-ip"}`;
-  const bloqueado = await loginBlockedFor(db, clave, undefined);
+  const clave = `empleado:${ip ?? "sin-ip"}:${slug.slice(0, 80)}`;
+  const bloqueado = await loginBlockedFor(db, clave, ip);
   if (bloqueado > 0) {
     c.header("Retry-After", String(bloqueado));
     return c.json({ error: `Demasiados intentos. Intenta de nuevo en ${Math.ceil(bloqueado / 60)} minuto(s).`, reason: "rate_limited" }, 429);
   }
-  const empleado = await getEmpleadoByCodigoAcceso(db, codigo);
-  if (!empleado || empleado.estado !== "activo" || empleado.sucursalIds.length === 0) {
-    await recordLoginFailure(db, clave, undefined);
-    // Alguien probando códigos desde muchas conexiones: cuantos más fallos haya en toda la plataforma, más tarda cada intento.
-    await registrarEvento(db, "empleadof:todos");
-    const espera = Math.min(Math.max(0, (await contarEventos(db, "empleadof:todos", 15 * 60 * 1000)) - 10) * PORTAL_EMPLEADO.esperaPorFalloMs, 4000);
+  const empleado = negocioId ? await getEmpleadoByCodigoAcceso(db, codigo) : undefined;
+  if (!empleado || empleado.negocioId !== negocioId || empleado.estado !== "activo" || empleado.sucursalIds.length === 0) {
+    await recordLoginFailure(db, clave, ip);
+    // Muchos fallos contra un mismo negocio (desde cualquier conexión): cada intento tarda más.
+    await registrarEvento(db, `empleadof:${negocioId}`);
+    const espera = Math.min(Math.max(0, (await contarEventos(db, `empleadof:${negocioId}`, 15 * 60 * 1000)) - 10) * PORTAL_EMPLEADO.esperaPorFalloMs, 4000);
     if (espera > 0) await new Promise((r) => setTimeout(r, espera));
     return c.json({ error: "Código inválido, empleado inactivo o sin sucursales asignadas" }, 401);
   }

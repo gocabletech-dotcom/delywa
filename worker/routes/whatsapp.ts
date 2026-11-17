@@ -173,7 +173,9 @@ whatsappRoutes.post("/api/colmados/:id/evolution-config", requireAuth, async (c)
   if (!url) return c.json({ error: "La dirección de Evolution API debe ser pública y empezar con https://" }, 400);
   if (!instanciaValida(body.evolutionInstanceName)) return c.json({ error: "Nombre de instancia inválido (letras, números, guion, punto o guion bajo)" }, 400);
   // Si no se envía la llave se conserva la guardada: el panel nunca la recibe de vuelta.
-  const apiKey = typeof body.evolutionApiKey === "string" && body.evolutionApiKey.trim() ? body.evolutionApiKey.trim().slice(0, 300) : r.colmado.evolutionApiKey;
+  // (También si llega la versión enmascarada "••••1234" que muestra el panel.)
+  const enviada = typeof body.evolutionApiKey === "string" ? body.evolutionApiKey.trim() : "";
+  const apiKey = enviada && !enviada.includes("•") ? enviada.slice(0, 300) : r.colmado.evolutionApiKey;
   if (!apiKey) return c.json({ error: "Se requiere la llave de Evolution API" }, 400);
   await updateColmado(r.db, r.colmado.id, { evolutionApiUrl: url, evolutionApiKey: apiKey, evolutionInstanceName: body.evolutionInstanceName, whatsappProvider: "evolution" });
   return c.json({ success: true });

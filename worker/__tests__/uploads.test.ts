@@ -112,6 +112,22 @@ describe("comprobantes de pago", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("private, no-store");
   });
+
+  it("borra los comprobantes viejos que ningún pedido usa, y nada más", async () => {
+    const { borrarComprobantesHuerfanos } = await import("../lib/cron");
+    const jpg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+    await t.env.UPLOADS.put("comprobantes/huerfano-de-prueba.jpg", jpg);
+    await t.env.UPLOADS.put("productos/1/foto-de-prueba.jpg", jpg);
+    // Hoy no se borra nada: todavía no tienen 7 días.
+    expect(await borrarComprobantesHuerfanos(t.env)).toBe(0);
+    expect(await t.env.UPLOADS.head("comprobantes/huerfano-de-prueba.jpg")).not.toBeNull();
+    // Ocho días después: se va el que no tiene pedido; el del pedido y las fotos de productos se quedan.
+    const borrados = await borrarComprobantesHuerfanos(t.env, Date.now() + 8 * 24 * 60 * 60 * 1000);
+    expect(borrados).toBeGreaterThanOrEqual(1);
+    expect(await t.env.UPLOADS.head("comprobantes/huerfano-de-prueba.jpg")).toBeNull();
+    expect(await t.env.UPLOADS.head(ruta.slice("/uploads/".length))).not.toBeNull();
+    expect(await t.env.UPLOADS.head("productos/1/foto-de-prueba.jpg")).not.toBeNull();
+  });
 });
 
 describe("logo del negocio", () => {

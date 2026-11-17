@@ -1,9 +1,10 @@
 import { Hono } from "hono";
+import { cifrarSecretosPendientes } from "./lib/secretos";
 import { sql } from "drizzle-orm";
 import type { AppEnv, Env } from "./env";
 import { getDb } from "./db";
 import { deleteExpiredSessions, sessionMiddleware } from "./lib/session";
-import { enviarRecordatoriosComprobante } from "./lib/cron";
+import { borrarComprobantesHuerfanos, enviarRecordatoriosComprobante } from "./lib/cron";
 import { authRoutes } from "./routes/auth";
 import { userRoutes } from "./routes/users";
 import { negocioRoutes } from "./routes/negocios";
@@ -99,6 +100,8 @@ export default {
     ctx.waitUntil(deleteExpiredSessions(env.DB));
     ctx.waitUntil(enviarRecordatoriosComprobante(env));
     ctx.waitUntil(limpiarSubidasPendientes(env));
+    // Tokens de WhatsApp guardados antes de v2.41.0: se cifran solos en la primera vuelta.
+    ctx.waitUntil(cifrarSecretosPendientes(env).catch((err) => console.error("[cron] No se pudieron cifrar los tokens:", err instanceof Error ? err.message : err)));
     // Tareas diarias (hora UTC; el cron corre cada 5 minutos).
     const ahora = new Date(_event.scheduledTime || Date.now());
     const hora = ahora.getUTCHours(), primeraVuelta = ahora.getUTCMinutes() < 5;
@@ -106,7 +109,7 @@ export default {
       // 09:00 UTC (5:00 a.m. en RD): empieza el respaldo del día; cada vuelta copia una parte.
       if (hora === 9 && primeraVuelta) await iniciarRespaldo(env);
       await pasoRespaldo(env);
-      if (hora === 3 && primeraVuelta) { await limpiarSeguridad(env); await borrarRespaldosViejos(env); await olvidarEquiposViejos(getDb(env.DB)); }
+      if (hora === 3 && primeraVuelta) { await borrarComprobantesHuerfanos(env); await limpiarSeguridad(env); await borrarRespaldosViejos(env); await olvidarEquiposViejos(getDb(env.DB)); }
       // 14:00 UTC (10:00 a.m. en RD): aviso de fin de prueba gratis.
       if (hora === 14 && primeraVuelta) await avisosFinDePrueba(env);
     })().catch((err) => console.error("[cron] Tarea diaria falló:", err instanceof Error ? err.message : err)));

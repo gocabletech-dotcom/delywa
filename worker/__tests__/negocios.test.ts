@@ -140,7 +140,7 @@ describe("negocios", () => {
       for (const secreto of ["TOKEN-META-SECRETO", "EVO-SECRETA", "prompt interno", "ownerUserId", "evo.test"]) expect(texto).not.toContain(secreto);
     }
     const propio = await duenoCafe.request("GET", `/api/colmados/${cafe.id}`);
-    expect(propio.json.evolutionApiKey).toBe("EVO-SECRETA");
+    expect(propio.json.evolutionApiKey).toBe("••••RETA"); // nunca completa
     expect(JSON.stringify(propio.json)).not.toContain("TOKEN-META-SECRETO");
     expect((await t.client().request("GET", "/api/colmados/99999")).status).toBe(404);
   });
