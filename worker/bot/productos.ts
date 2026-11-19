@@ -135,7 +135,19 @@ const RELLENO = new Set([
   "saludos", "klk", "oye", "mira", "vecino", "vecina", "jefe", "mi", "amor", "mami", "papi", "loco", "manito", "manin", "tigre",
   "de", "del", "la", "el", "los", "las", "lo", "unos", "unas", "algo", "para", "pa", "que", "q", "si", "puedes", "podrias", "me", "lleva", "llevar",
   "hey", "ey", "ei", "epa", "epale", "dimelo", "diga", "holi", "hello", "hi", "wey", "saludo", "bendiciones", "bendicion",
+  // Verbos con que empiezan las notas de voz: «pedir tres cervezas», «me puedes mandar dos panes».
+  "pedir", "pido", "pide", "pideme", "mandar", "mandarme", "mandeme", "traer", "traerme", "enviar", "enviarme", "comprar", "compra",
+  "llevame", "llevarme", "llevenme", "puede", "podria", "podrian", "pueden", "quisieramos", "queremos", "seria", "va", "ser",
 ]);
+
+/** Marcas que el cliente dice después del producto: «tres cervezas jumbo, Presidente» es una sola cosa. */
+const MARCAS_DE: Record<string, string[]> = {
+  cerveza: ["presidente", "bohemia", "heineken", "corona", "brahma", "stella", "modelo", "michelob", "one"],
+  refresco: ["coca cola", "coca", "pepsi", "country club", "red rock", "seven up", "7up", "sprite", "fanta", "kola real"],
+  ron: ["brugal", "barcelo", "bermudez", "siboney", "macorix"],
+  malta: ["morena", "india", "malta morena"],
+  agua: ["planeta azul", "crystal", "cristal", "alpina"],
+};
 
 // ---------- Nombre que se anota: las palabras del cliente ----------
 // El bot NO cambia lo que el cliente escribe por otro producto ("sopita" sigue siendo "Sopita",
@@ -319,6 +331,11 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
   const palabras = t.split(" ");
   // Quitar relleno al principio ("dame", "quiero", "por favor"...), pero no los números.
   while (palabras.length && RELLENO.has(palabras[0]) && leerNumero(palabras[0]) === null) palabras.shift();
+  // «llévame ahorita tres cervezas»: palabras sueltas antes del número que no son productos se quitan.
+  {
+    const k = palabras.slice(0, 4).findIndex((w) => leerNumero(w) !== null);
+    if (k > 0 && palabras[k + 1] && palabras.slice(0, k).every((w) => !buscarEnCatalogo(w))) palabras.splice(0, k);
+  }
   let cantidad: number | null = null;
   let unidad: string | null = null;
   if (palabras.length && leerNumero(palabras[0]) !== null) {
@@ -383,7 +400,23 @@ export function leerPedido(mensaje: string, jerga: Map<string, string>): Item[] 
     .replace(/(?<!\d)[.!?¡¿]+(?!\d)/g, ",")
     .replace(/\s+(y|e|mas|más|tambien|también|ademas|además|con|\+)\s+(?=(\d|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|media|medio|[a-záéíóúñ]))/gi, "|")
     .split(/[|,;\n]+/);
-  return pedazos.map((p) => leerItem(p, jerga)).filter((x): x is Item => x !== null);
+  const items = pedazos.map((p) => leerItem(p, jerga)).filter((x): x is Item => x !== null);
+  // Una marca sola después del producto («tres cervezas jumbo y Presidente») es la marca de ese producto.
+  const r: Item[] = [];
+  for (const it of items) {
+    const antes = r[r.length - 1];
+    if (antes && it.sinCantidad && !antes.sinCantidad && esMarcaDe(antes.nombre, it.nombre)) {
+      antes.nombre = `${antes.nombre} ${it.nombre}`.slice(0, 60);
+      continue;
+    }
+    r.push(it);
+  }
+  return r;
+}
+
+function esMarcaDe(producto: string, posibleMarca: string): boolean {
+  const p = normalizar(producto), m = normalizar(posibleMarca);
+  return Object.entries(MARCAS_DE).some(([tipo, marcas]) => new RegExp(`\\b${tipo}`).test(p) && marcas.includes(m) && !p.includes(m));
 }
 
 /** Cómo se muestra un producto anotado: "2 libras de Arroz", "1 Aceite", "Un chin de Sal". */

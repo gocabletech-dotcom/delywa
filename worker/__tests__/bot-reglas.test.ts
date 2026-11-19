@@ -14,6 +14,14 @@ describe("productos sin cantidad", () => {
     expect(leerPedido("2 libras de arroz, un aceite, 50 pesos de queso, una libra de azúcar, la verde", jerga).some((i) => i.sinCantidad)).toBe(false);
   });
 
+  it("nota de voz: la cantidad va después del verbo y la marca después del producto", () => {
+    expect(leer("Pedir tres cervezas jumbo y presidente.")).toEqual(["3 Cerveza jumbo Presidente"]);
+    expect(leer("Dame 3 cervezas jumbo, Presidente.")).toEqual(["3 Cerveza jumbo Presidente"]);
+    expect(leer("Quiero pedir 2 libras de arroz")).toEqual(["2 libras de Arroz"]);
+    expect(leer("Me puedes mandar tres cervezas")).toEqual(["3 Cerveza"]);
+    expect(leerPedido("Pedir tres cervezas jumbo y presidente.", jerga).some((i) => i.sinCantidad)).toBe(false);
+  });
+
   it("lee las cantidades en orden: números, montos y unidades", () => {
     expect(leerCantidades("15, 25, 30")).toEqual([{ cantidad: 1, unidad: null, monto: 15 }, { cantidad: 1, unidad: null, monto: 25 }, { cantidad: 1, unidad: null, monto: 30 }]);
     expect(leerCantidades("15 25 30").map((x) => x.monto)).toEqual([15, 25, 30]);
