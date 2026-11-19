@@ -283,6 +283,9 @@ export default function PedidosPage() {
   const [tabActual, setTabActual] = useState<"activos" | "historial">("activos");
   const [masAbierto, setMasAbierto] = useState<number[]>([]);
   const [historialAbierto, setHistorialAbierto] = useState<number | null>(null);
+  // Comprobante de transferencia abierto en grande para revisarlo.
+  const [verComprobante, setVerComprobante] = useState<PedidoNegocio | null>(null);
+  const [motivoRechazo, setMotivoRechazo] = useState("");
   const [retornoDialog, setRetornoDialog] = useState<{ pedido: PedidoNegocio; paso: "motivo" | "recibir" | "reenviar" } | null>(null);
   const [retornoMotivo, setRetornoMotivo] = useState("");
   const [columnaMovil, setColumnaMovil] = useState<"confirmar" | "preparando" | "camino" | "cerrados">("confirmar");
@@ -617,11 +620,27 @@ export default function PedidosPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pedidos"] });
-      toast({ title: "Pago aprobado", description: "Al cliente le llegó la confirmación y el pedido ya se puede entregar." });
+      setVerComprobante(null);
+      toast({ title: "Pago aprobado", description: "Al cliente le llegó la confirmación. Ya puedes asignarlo al delivery." });
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo confirmar el pago", variant: "destructive" });
     },
+  });
+
+  const rechazarComprobanteMutation = useMutation({
+    mutationFn: async ({ pedidoId, motivo }: { pedidoId: number; motivo: string }) => {
+      const res = await fetch(`/api/pedidos/${pedidoId}/rechazar-comprobante`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ motivo }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo rechazar el comprobante");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pedidos"] });
+      setVerComprobante(null); setMotivoRechazo("");
+      toast({ title: "Comprobante rechazado", description: "Al cliente le llegó que envíe otro comprobante." });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const avisarComprobanteMutation = useMutation({
@@ -1036,9 +1055,15 @@ export default function PedidosPage() {
       // Preparación (antes estaba en la pantalla "Cocina").
       case "pendiente": return { texto: "Empezar a preparar", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "en_preparacion" }) };
       case "en_preparacion": return { texto: "Marcar listo", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "listo" }) };
-      case "listo": return pedido.tipoEntrega === "pickup"
-        ? { texto: "Entregado al cliente", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" }) }
-        : { texto: "Asignar repartidor", accion: () => abrirAsignar(pedido) };
+      case "listo":
+        if (pedido.tipoEntrega === "pickup") return { texto: "Entregado al cliente", accion: () => updateEstadoMutation.mutate({ id: pedido.id, estado: "entregado" }) };
+        // Transferencia: primero se revisa el comprobante; después se asigna el delivery.
+        if (pedido.metodoPago === "transferencia" && !pedido.comprobanteConfirmado) {
+          return pedido.comprobanteUrl
+            ? { texto: "Revisar comprobante", accion: () => setVerComprobante(pedido) }
+            : { texto: "Pedir comprobante", accion: () => avisarComprobanteMutation.mutate(pedido.id) };
+        }
+        return { texto: "Asignar repartidor", accion: () => abrirAsignar(pedido) };
       // Retorno: primero se recibe lo que trae el repartidor; después se puede volver a enviar.
       case "retorno":
         if (!pedido.retornoRecibidoAt) return { texto: "Recibir devolución", accion: () => setRetornoDialog({ pedido, paso: "recibir" }) };
@@ -1166,14 +1191,30 @@ export default function PedidosPage() {
                   {/* ── Transferencia: el cliente manda la foto del comprobante y el colmado aprueba el pago ── */}
                   {pedido.metodoPago === "transferencia" && !["cancelado", "fusionado", "pendiente_confirmacion"].includes(pedido.estado) && (pedido.estado !== "entregado" || !pedido.comprobanteConfirmado) && (
                     pedido.comprobanteConfirmado ? (
-                      <p className="text-xs font-medium text-emerald-700" data-testid={`pago-aprobado-${pedido.id}`}>🏦 Transferencia aprobada ✓</p>
+                      <div className="flex items-center gap-2" data-testid={`pago-aprobado-${pedido.id}`}>
+                        {pedido.comprobanteUrl && (
+                          <button type="button" onClick={() => setVerComprobante(pedido)} className="shrink-0 w-9 h-9 rounded-md overflow-hidden border border-emerald-200" aria-label="Ver el comprobante">
+                            <img src={pedido.comprobanteUrl} alt="" loading="lazy" className="w-full h-full object-cover object-top" />
+                          </button>
+                        )}
+                        <p className="text-xs font-medium text-emerald-700">🏦 Transferencia aprobada ✓</p>
+                      </div>
                     ) : (
                       <div className="rounded-xl bg-indigo-50 border border-indigo-200 px-3 py-2.5 text-[13px] text-indigo-950 leading-snug" data-testid={`transferencia-${pedido.id}`}>
-                        <p className="font-semibold">{pedido.comprobanteUrl ? "🏦 El cliente envió el comprobante" : "🏦 Transferencia: falta el comprobante"}</p>
-                        <p className="mt-0.5 text-indigo-900/80">{pedido.comprobanteUrl ? "Revísalo en tu banco y aprueba el pago." : "Pídeselo al cliente: le llegan tus cuentas y cómo enviar la foto."} No se puede entregar hasta aprobarlo.</p>
+                        <div className="flex gap-3">
+                          {pedido.comprobanteUrl && (
+                            <button type="button" onClick={() => setVerComprobante(pedido)} className="shrink-0 self-start w-16 h-16 rounded-lg overflow-hidden border border-indigo-300 bg-white" aria-label="Ver el comprobante en grande" data-testid={`miniatura-comprobante-${pedido.id}`}>
+                              <img src={pedido.comprobanteUrl} alt="Comprobante de la transferencia" loading="lazy" className="w-full h-full object-cover object-top" />
+                            </button>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-semibold">{pedido.comprobanteUrl ? "🏦 El cliente envió el comprobante" : "🏦 Transferencia: falta el comprobante"}</p>
+                            <p className="mt-0.5 text-indigo-900/80">{pedido.comprobanteUrl ? "Tócalo para verlo en grande y revisa en tu banco que llegó." : "Pídeselo al cliente: le llegan tus cuentas y cómo enviar la foto."} Sin aprobarlo no sale con el delivery.</p>
+                          </div>
+                        </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {pedido.comprobanteUrl ? (
-                            <a href={pedido.comprobanteUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center min-h-[38px] rounded-lg border border-indigo-300 bg-white px-3 font-semibold text-indigo-800" data-testid={`ver-comprobante-tarjeta-${pedido.id}`}>📄 Ver comprobante</a>
+                            <button type="button" onClick={() => setVerComprobante(pedido)} className="inline-flex items-center min-h-[38px] rounded-lg border border-indigo-300 bg-white px-3 font-semibold text-indigo-800" data-testid={`ver-comprobante-tarjeta-${pedido.id}`}>📄 Ver comprobante</button>
                           ) : (
                             <button type="button" className="min-h-[38px] rounded-lg border border-indigo-300 bg-white px-3 font-semibold text-indigo-800 disabled:opacity-60" disabled={avisarComprobanteMutation.isPending} onClick={() => avisarComprobanteMutation.mutate(pedido.id)} data-testid={`pedir-comprobante-${pedido.id}`}>
                               <Send size={13} className="inline mr-1" /> Pedir comprobante
@@ -1212,7 +1253,7 @@ export default function PedidosPage() {
                       </div>
                     );
                   })()}
-                  {pedido.tipoEntrega !== "pickup" && ["pendiente", "en_preparacion"].includes(pedido.estado) && (
+                  {pedido.tipoEntrega !== "pickup" && ["pendiente", "en_preparacion"].includes(pedido.estado) && !(pedido.metodoPago === "transferencia" && !pedido.comprobanteConfirmado) && (
                     <button type="button" className="self-start text-xs font-semibold text-primary min-h-[28px]" onClick={() => abrirAsignar(pedido)} data-testid={`asignar-ya-${pedido.id}`}>
                       Asignar repartidor ya
                     </button>
@@ -2738,6 +2779,39 @@ export default function PedidosPage() {
       </Dialog>
       {/* ── Controlled delivery assignment dialog (with devuelta step for cash orders) ── */}
       {/* ── Retorno: motivo, recibir la devolución y volver a enviar ── */}
+      {/* ── Comprobante de transferencia en grande: aprobar o pedir otro ── */}
+      <Dialog open={!!verComprobante} onOpenChange={(o) => { if (!o) { setVerComprobante(null); setMotivoRechazo(""); } }}>
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-lg max-h-[92vh] overflow-y-auto [&>*]:min-w-0" data-testid="dialogo-comprobante">
+          <DialogHeader>
+            <DialogTitle>Comprobante del pedido #{verComprobante?.id}</DialogTitle>
+            <DialogDescription>
+              {verComprobante?.clienteNombre ? `${verComprobante.clienteNombre} · ` : ""}Total: {moneda}{parseFloat(verComprobante?.totalConfirmado || verComprobante?.total || "0").toLocaleString("es-DO")}. Revisa en tu banco que el dinero llegó a tu cuenta antes de aprobar.
+            </DialogDescription>
+          </DialogHeader>
+          {verComprobante?.comprobanteUrl && (
+            <a href={verComprobante.comprobanteUrl} target="_blank" rel="noopener noreferrer" className="block min-w-0 rounded-xl overflow-hidden border bg-slate-50" title="Abrir en otra pestaña">
+              <img src={verComprobante.comprobanteUrl} alt="Comprobante de la transferencia" className="block w-full max-w-full max-h-[55vh] object-contain" data-testid="imagen-comprobante" />
+            </a>
+          )}
+          {verComprobante && !verComprobante.comprobanteConfirmado ? (
+            <div className="space-y-3">
+              <Button className="w-full min-h-[48px] bg-[#17804F] hover:bg-[#0F5C39] text-white text-base font-bold" disabled={confirmarPagoMutation.isPending} onClick={() => confirmarPagoMutation.mutate(verComprobante.id)} data-testid="dialogo-aprobar-pago">
+                ✓ Es real · aprobar pago
+              </Button>
+              <div className="rounded-xl border border-red-200 p-3 space-y-2">
+                <Label htmlFor="motivo-rechazo" className="text-sm">¿No llegó o no coincide? (opcional: di por qué)</Label>
+                <Input id="motivo-rechazo" value={motivoRechazo} onChange={(e) => setMotivoRechazo(e.target.value)} maxLength={200} placeholder="Ej.: el monto no coincide" />
+                <Button variant="outline" className="w-full min-h-[44px] border-red-300 text-red-700 hover:bg-red-50" disabled={rechazarComprobanteMutation.isPending} onClick={() => rechazarComprobanteMutation.mutate({ pedidoId: verComprobante.id, motivo: motivoRechazo })} data-testid="dialogo-rechazar-comprobante">
+                  No es válido · pedir otro comprobante
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm font-medium text-emerald-700">🏦 Esta transferencia ya está aprobada.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!retornoDialog} onOpenChange={(o) => { if (!o) { setRetornoDialog(null); setRetornoMotivo(""); } }}>
         <DialogContent className="max-w-md rounded-2xl" data-testid="retorno-dialog">
           {retornoDialog?.paso === "motivo" && (

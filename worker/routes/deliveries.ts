@@ -7,6 +7,7 @@ import { requireAdmin, requireAuth, requireBusinessAccess } from "../lib/auth";
 import { ADMINISTRADORES, nombreUsuario, puedeOperar } from "../lib/permisos";
 import { enlaceWhatsApp, enviarWhatsApp, notificarCliente } from "../lib/mensajeria";
 import { mensajeParaRepartidor } from "../lib/mensaje-repartidor";
+import { transferenciaSinAprobar } from "../lib/transferencia";
 import { coordenadasDelPedido, enriquecerDirecciones, simboloMoneda } from "../lib/pedido-servicio";
 import { calcularMetricasDistanciaPedidoConRutas, parseCoordinatePair } from "../lib/orderDistance";
 import { soloDigitos } from "../lib/telefono";
@@ -330,6 +331,13 @@ deliveryRoutes.patch("/api/pedidos/:id/asignar", requireAuth, async (c) => {
     }, 409);
   }
   if (pedido.tipoEntrega === "pickup") return c.json({ error: "Este pedido es pickup y debe entregarlo el negocio.", reason: "pedido_pickup" }, 400);
+  // Transferencia: primero se revisa el comprobante y se aprueba el pago; después sale con el delivery.
+  if (transferenciaSinAprobar(pedido)) {
+    return c.json({
+      error: pedido.comprobanteUrl ? "Primero revisa el comprobante y aprueba el pago; después lo asignas al delivery." : "El cliente todavía no envió el comprobante de la transferencia. Pídeselo y apruébalo antes de asignar el delivery.",
+      reason: "transferencia_sin_aprobar",
+    }, 409);
+  }
   if (pedido.estado !== "listo") {
     return c.json({ error: "El pedido debe estar listo en cocina antes de asignarlo a un delivery.", reason: "pedido_no_listo" }, 409);
   }

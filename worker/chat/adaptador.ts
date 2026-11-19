@@ -4,7 +4,7 @@ import { llaveOpenAI } from "../lib/integraciones";
 import { avisarNegocio } from "../lib/tiempo-real";
 import { aprenderJerga, buscarJerga, incrementarUsoJerga } from "../lib/jerga";
 import OpenAI from "openai";
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import {
   botIntenciones, chatWebMensajes, chatWebSesiones, clientes, colmados, conocimientoArchivos, deliveries, diccionarioJerga,
   mensajesSistema, menuPlantillaItems, menuPlantillas, metaWebhookEventos, pedidos, plantillasJerga, whatsappConversaciones, zipAlertaEventos, type ChatWebSesion,
@@ -403,8 +403,10 @@ export const storage = {
   },
   /** Asignación del bot: como en el original, no exige que cocina haya marcado el pedido como listo. */
   async asignarPedidoADelivery(pedidoId: number, deliveryId: number): Promise<boolean> {
+    // DELYWA: una transferencia sin aprobar no se asigna sola; el colmado revisa el comprobante primero.
     const filas = await ctx().db.update(pedidos).set({ deliveryId })
-      .where(and(eq(pedidos.id, pedidoId), ne(pedidos.estado, "fusionado"), ne(pedidos.tipoEntrega, "pickup"))).returning({ id: pedidos.id });
+      .where(and(eq(pedidos.id, pedidoId), ne(pedidos.estado, "fusionado"), ne(pedidos.tipoEntrega, "pickup"),
+        or(ne(pedidos.metodoPago, "transferencia"), isNull(pedidos.metodoPago), eq(pedidos.comprobanteConfirmado, true)))).returning({ id: pedidos.id });
     return filas.length > 0;
   },
   async updateSustituciones(pedidoId: number, sustituciones: any[]) {

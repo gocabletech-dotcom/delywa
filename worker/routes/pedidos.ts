@@ -18,16 +18,16 @@ import { inicioDiaLocal } from "../lib/fechas";
 import { enrichColmadoWithMoneda, getColmado, getColmadoTimezone } from "../storage/colmados";
 import { getAccessibleColmadoIds } from "../storage/users";
 import { getPlan } from "../storage/catalogos";
-import { getClientesByColmado, getConversacionByCliente, getOrCreateConversacion, addMensaje } from "../storage/conversaciones";
+import { getClientesByColmado, getChatWebSessionByPedidoId, getConversacionByCliente, getOrCreateConversacion, addMensaje } from "../storage/conversaciones";
 import {
   contarConfirmadosHoy, claimTransicionEstado, confirmarPagoTransferencia, confirmarPedido, convertirAPickup, deletePedido,
   entregarVueltoAlDelivery, fusionarPedidos, getDeliveryById, getPedidoById, getPedidosByColmado, getPedidosEntre, getPedidosRecientes, getVueltosLog, leerProductos,
   marcarRetornoRecibido, registrarEnVentas, reenviarRetorno, updateMetodoPago, updatePedidoCoordenadas, updatePedidoEstado, updatePedidoProductos,
   updateProductosYTotalConfirmado, updateVuelto, ESTADOS_TERMINALES, type Sustitucion,
 } from "../storage/pedidos";
-import { pedidos, whatsappConversaciones } from "@shared/schema";
+import { chatWebMensajes, pedidos, whatsappConversaciones } from "@shared/schema";
 import { avisarNegocio } from "../lib/tiempo-real";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, not, or, isNull } from "drizzle-orm";
 
 export const pedidoRoutes = new Hono<AppEnv>();
 
@@ -439,6 +439,35 @@ pedidoRoutes.patch("/api/pedidos/:id/confirmar-pago", requireAuth, async (c) => 
   await notificarCliente(c.env, db, colmado, pedido, mensaje, { estadoChat: "finalizado" });
   await avisarNegocio(c.env, pedido.colmadoId, ["pedidos"]);
   return c.json({ success: true, message: "Pago aprobado: el pedido ya se puede entregar" });
+});
+
+/** El comprobante no sirve (monto o cuenta equivocados, foto ilegible): se quita y se le pide otro al cliente. */
+pedidoRoutes.post("/api/pedidos/:id/rechazar-comprobante", requireAuth, async (c) => {
+  const db = getDb(c.env.DB);
+  const r = await cargarPedidoOperable(db, c.var.user, Number(c.req.param("id")));
+  if (r.error) return c.json(r.error.body, r.error.status);
+  const pedido = r.pedido;
+  const body = (await c.req.json().catch(() => null)) || {};
+  const motivo = typeof body.motivo === "string" ? body.motivo.trim().slice(0, 200) : "";
+  const filas = await db.update(pedidos).set({ comprobanteUrl: null })
+    .where(and(eq(pedidos.id, pedido.id), eq(pedidos.metodoPago, "transferencia"), isNotNull(pedidos.comprobanteUrl),
+      or(isNull(pedidos.comprobanteConfirmado), eq(pedidos.comprobanteConfirmado, false)),
+      not(inArray(pedidos.estado, ["entregado", "cancelado", "fusionado", "retorno"]))))
+    .returning({ id: pedidos.id });
+  if (!filas.length) return c.json({ error: "Este pedido no tiene un comprobante por revisar." }, 409);
+  const colmado = await getColmado(db, pedido.colmadoId);
+  if (!colmado) return c.json({ error: "Negocio no encontrado" }, 404);
+  const mensaje = `⚠️ No pudimos confirmar tu transferencia del pedido *#${pedido.id}*${motivo ? `: ${motivo}` : "."}\n\nRevisa el monto y la cuenta, y envíanos otra *foto del comprobante* con el botón 📸.\n\n${await instruccionesTransferencia(db, colmado.id)}`;
+  // En el chat de la página, con el botón para mandar la foto otra vez.
+  const sesion = await getChatWebSessionByPedidoId(db, pedido.id);
+  if (sesion) await db.insert(chatWebMensajes).values({ sessionId: sesion.sessionId, rol: "assistant", contenido: mensaje, opciones: [{ texto: "📸 Enviar comprobante", accion: "comprobante" }] });
+  await notificarCliente(c.env, db, colmado, pedido, mensaje, { chatWeb: false });
+  if (pedido.clienteWhatsapp) {
+    const conv = await getConversacionByCliente(db, pedido.colmadoId, pedido.clienteWhatsapp);
+    if (conv) await addMensaje(db, conv.id, "assistant", mensaje);
+  }
+  await avisarNegocio(c.env, pedido.colmadoId, ["pedidos", "conversaciones"]);
+  return c.json({ success: true, message: "Se le pidió otro comprobante al cliente" });
 });
 
 const revisarProductosSchema = z.object({

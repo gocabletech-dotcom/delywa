@@ -196,7 +196,7 @@ export const GUIA: Record<ClaveManual, Manual> = {
       },
       {
         id: "transferencia", icono: "card", titulo: "Pagos por transferencia", ruta: "pedidos", cap: "transferencia",
-        que: "Cuando el cliente paga por transferencia, le llegan tus cuentas y se le pide la foto del comprobante. Tú la revisas y apruebas el pago. Mientras no lo apruebes, nadie puede marcar el pedido entregado.",
+        que: "Cuando el cliente paga por transferencia, le llegan tus cuentas y se le pide la foto del comprobante. Sale en el pedido en pequeño; tócala para verla en grande, revísala y aprueba el pago. Mientras no lo apruebes, el pedido no se puede asignar al delivery.",
         spots: [
           ['[data-testid="transferencia-10"]', "El estado del pago: si falta el comprobante o si el cliente ya lo envió."],
           ['[data-testid="pedir-comprobante-10"], [data-testid="ver-comprobante-tarjeta-10"]', "Pedir comprobante: al cliente le llegan tus cuentas y que debe enviar la foto. Cuando la envíe, aquí sale «Ver comprobante»."],
@@ -206,14 +206,18 @@ export const GUIA: Record<ClaveManual, Manual> = {
           "Pon tus cuentas en Configuración → Formas de pago (banco, tipo, número y a nombre de quién).",
           "El cliente elige Transferencia y recibe tus cuentas en el chat.",
           "Si no ha enviado la foto, pulsa «Pedir comprobante».",
-          "Revisa la foto y tu banco, y pulsa «Aprobar pago».",
-          "El pedido puede salir antes de aprobarlo, pero el repartidor no lo podrá marcar entregado hasta que lo apruebes.",
+          "Cuando el cliente la envíe, sale la foto pequeña en el pedido: tócala para verla en grande.",
+          "Revisa en tu banco que llegó y pulsa «Es real · aprobar pago». Si no llegó o no coincide, pulsa «No es válido · pedir otro comprobante».",
+          "Con el pago aprobado, asígnalo al delivery como siempre.",
         ],
         tips: [
           "El repartidor ve en su portal «Transferencia sin aprobar» y un botón para llamarte.",
           "Si el repartidor entrega sin aprobación y el comprobante resulta falso, ese dinero lo paga él (así se lo dice el portal).",
         ],
-        faq: [["¿Dónde se guarda la foto?", "En el pedido: «Ver comprobante» la abre. También queda en la conversación del cliente."]],
+        faq: [
+          ["¿Dónde se guarda la foto?", "En el pedido, en pequeño: tócala para verla en grande. También queda en la conversación del cliente."],
+          ["¿Puedo mandarlo con el delivery antes de aprobar?", "No. Primero se revisa el comprobante; así el repartidor nunca sale con un pedido sin pagar."],
+        ],
       },
       {
         id: "retorno", icono: "undo", titulo: "No se pudo entregar (devoluciones)", ruta: "pedidos", cap: "retorno",

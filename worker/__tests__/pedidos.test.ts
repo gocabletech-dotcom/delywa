@@ -461,6 +461,38 @@ describe("transferencia: no se entrega sin el pago aprobado", () => {
   });
 });
 
+describe("transferencia: comprobante antes del delivery", () => {
+  it("no se asigna al delivery sin aprobar; el colmado puede rechazar el comprobante y pedir otro", async () => {
+    const [rep] = await t.db.insert(deliveries).values({ colmadoId: cafe.id, nombre: "Lalo", whatsappNumero: "18093330096", estado: "activo" }).returning();
+    const [p] = await t.db.insert(pedidos).values({
+      colmadoId: cafe.id, clienteNombre: "Mía", clienteWhatsapp: "18095550104", clienteUbicacion: "Calle 10",
+      productos: JSON.stringify([{ nombre: "Pan", monto: 50, cantidad: 1 }]), total: "100", totalConfirmado: "100", montoPago: "0",
+      metodoPago: "transferencia", estado: "listo",
+    }).returning();
+    // Sin comprobante: no se asigna.
+    const sin = await operador.request("PATCH", `/api/pedidos/${p.id}/asignar`, { deliveryId: rep.id });
+    expect(sin.status).toBe(409);
+    expect(sin.json.reason).toBe("transferencia_sin_aprobar");
+    expect(sin.json.error).toContain("no envió el comprobante");
+    // Rechazar sin comprobante: no hay nada que rechazar.
+    expect((await operador.request("POST", `/api/pedidos/${p.id}/rechazar-comprobante`, {})).status).toBe(409);
+    // El cliente manda una foto; el colmado la rechaza.
+    const foto = "/uploads/comprobantes/00000000-0000-4000-8000-000000000001.jpg";
+    await t.db.update(pedidos).set({ comprobanteUrl: foto }).where(eq(pedidos.id, p.id));
+    expect((await operador.request("PATCH", `/api/pedidos/${p.id}/asignar`, { deliveryId: rep.id })).json.error).toContain("revisa el comprobante");
+    expect((await operador.request("POST", `/api/pedidos/${p.id}/rechazar-comprobante`, { motivo: "el monto no coincide" })).status).toBe(200);
+    let [fila] = await t.db.select().from(pedidos).where(eq(pedidos.id, p.id));
+    expect(fila.comprobanteUrl).toBeNull();
+    // Manda otra; esta vez se aprueba y ya se puede asignar.
+    await t.db.update(pedidos).set({ comprobanteUrl: foto }).where(eq(pedidos.id, p.id));
+    expect((await operador.request("PATCH", `/api/pedidos/${p.id}/confirmar-pago`)).status).toBe(200);
+    expect((await operador.request("POST", `/api/pedidos/${p.id}/rechazar-comprobante`, {})).status).toBe(409); // ya aprobado
+    expect((await operador.request("PATCH", `/api/pedidos/${p.id}/asignar`, { deliveryId: rep.id })).status).toBe(200);
+    [fila] = await t.db.select().from(pedidos).where(eq(pedidos.id, p.id));
+    expect(fila.deliveryId).toBe(rep.id);
+  });
+});
+
 describe("topes del menú gráfico", () => {
   it("frena los pedidos falsos: tope por teléfono y por conexión", async () => {
     const antes = { ...TOPES_PEDIDO };
