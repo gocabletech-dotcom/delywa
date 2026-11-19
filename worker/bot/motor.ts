@@ -1,4 +1,5 @@
 import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { conocimientoParaPrompt } from "../lib/conocimiento";
 import { botNoEntendidos, botRegistro, chatWebSesiones, clienteDirecciones, clientes, diccionarioJerga, pedidos, type ChatWebSesion, type Colmado } from "@shared/schema";
 import { textoCuentas } from "../lib/transferencia";
 import type { Env } from "../env";
@@ -302,7 +303,7 @@ async function noEntendido(c: Contexto, texto: string): Promise<Respuesta> {
 
 /** Cuando las reglas no alcanzan: IA de Cloudflare, y lo que entienda se le enseña al diccionario. */
 async function conIa(c: Contexto, texto: string, paso: string): Promise<Respuesta | null> {
-  const r = await interpretar(c.env, { mensaje: texto, colmado: infoColmado(c.colmado), paso });
+  const r = await interpretar(c.env, { mensaje: texto, colmado: infoColmado(c.colmado), paso, conocimiento: await conocimientoParaPrompt(c.db, c.colmado, texto).catch(() => "") });
   if (!r) return null;
   await anotarMetrica(c, "conIa");
   await c.db.insert(botNoEntendidos).values({ colmadoId: c.colmado.id, texto: texto.slice(0, 300), resueltoConIa: true }).catch(() => undefined);
@@ -351,7 +352,7 @@ async function fueraDelPaso(c: Contexto, texto: string, paso: string): Promise<R
     return despues([{ texto: `Anotado también ✍️
 ${lista(items.map((n) => ({ ...n, unidad: n.unidad ?? null, monto: n.monto ?? null })))}` }]);
   }
-  const ia = await interpretar(c.env, { mensaje: texto, colmado: infoColmado(c.colmado), paso });
+  const ia = await interpretar(c.env, { mensaje: texto, colmado: infoColmado(c.colmado), paso, conocimiento: await conocimientoParaPrompt(c.db, c.colmado, texto).catch(() => "") });
   if (ia) {
     await anotarMetrica(c, "conIa");
     if (ia.tipo === "productos" && ia.productos.length) {

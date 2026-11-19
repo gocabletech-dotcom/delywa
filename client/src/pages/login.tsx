@@ -14,6 +14,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [avisoNegocio, setAvisoNegocio] = useState<{ estado: string; texto: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // Verificación en dos pasos (cuenta de plataforma): después de la contraseña se pide el código de la app.
+  const [pideCodigo, setPideCodigo] = useState(false);
+  const [codigo, setCodigo] = useState("");
   const { toast } = useToast();
   const [primerAcceso, setPrimerAcceso] = useState(false);
   // Verificación de Cloudflare Turnstile, solo si la plataforma la activó.
@@ -76,7 +79,10 @@ export default function LoginPage() {
 
       const data = await res.json();
 
-      if (res.ok) {
+      if (res.ok && data.requiereDosPasos) {
+        setPideCodigo(true);
+        setCodigo("");
+      } else if (res.ok) {
         toast({ title: "Bienvenido", description: `Iniciaste sesión como ${data.role}` });
         window.location.href = "/admin";
       } else if (data.negocioEstado) {
@@ -89,6 +95,25 @@ export default function LoginPage() {
         if (turnstileSiteKey) setReinicioTurnstile((n) => n + 1);
       }
     } catch (error) {
+      toast({ title: "Error", description: "Error de conexión", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const enviarCodigo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/auth/dos-pasos/verificar", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ codigo }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) { window.location.href = "/admin"; return; }
+      toast({ title: "No se pudo entrar", description: data.error || "Código incorrecto", variant: "destructive" });
+      if (data.reason === "dos_pasos_vencido") { setPideCodigo(false); setPassword(""); }
+      setCodigo("");
+    } catch {
       toast({ title: "Error", description: "Error de conexión", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -136,6 +161,25 @@ export default function LoginPage() {
             </div>
           )}
 
+          {pideCodigo ? (
+          <form onSubmit={enviarCodigo} className="space-y-4" data-testid="form-dos-pasos">
+            <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-900">
+              <b className="block mb-1">Verificación en dos pasos</b>
+              Abre tu app de verificación (Google Authenticator u otra) y escribe el código de 6 números de DelyWa.
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="codigo-2p">Código</Label>
+              <Input id="codigo-2p" inputMode="numeric" autoComplete="one-time-code" autoFocus placeholder="123 456" maxLength={12}
+                value={codigo} onChange={(e) => setCodigo(e.target.value)} required data-testid="input-codigo-dos-pasos" className="text-center text-xl tracking-[0.3em]" />
+              <p className="text-xs text-gray-500">¿Perdiste el teléfono? Escribe uno de tus códigos de respaldo (como K7P2-9XQM).</p>
+            </div>
+            <Button type="submit" className="w-full bg-[#17804F] hover:bg-[#17804F]/90" disabled={isLoading || codigo.trim().length < 6} data-testid="button-verificar-codigo">
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Entrar
+            </Button>
+            <button type="button" className="w-full text-sm text-gray-600 underline" onClick={() => { setPideCodigo(false); setPassword(""); }}>Volver</button>
+          </form>
+          ) : (
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="username">Correo</Label>
@@ -175,6 +219,7 @@ export default function LoginPage() {
               Iniciar Sesión
             </Button>
           </form>
+          )}
 
           {recuperarDisponible && (
             <div className="mt-4 text-center text-sm">

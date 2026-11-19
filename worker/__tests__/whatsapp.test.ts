@@ -122,7 +122,7 @@ describe("Meta Cloud API", () => {
   });
 
   it("conecta el número con el registro integrado de Meta", async () => {
-    simular({ "oauth/access_token": { body: { access_token: "token-del-negocio" } }, "/phone_numbers": { body: { data: [{ id: "555000111" }] } } });
+    simular({ "oauth/access_token": { body: { access_token: "token-del-negocio" } }, "/phone_numbers": { body: { data: [{ id: "555000111" }] } }, "me?fields=id": { body: { id: "10203040506070" } } });
     const datos = { code: "codigo", colmadoId: negocio.id, wabaId: "999000" };
     expect((await ajeno.request("POST", "/api/whatsapp/oauth/callback", datos)).status).toBe(403);
     expect((await operador.request("POST", "/api/whatsapp/oauth/callback", datos)).status).toBe(403);
@@ -201,6 +201,14 @@ describe("eliminación de datos de Meta", () => {
     const estado = await anon.request("GET", `/api/deletion-status/${res.confirmation_code}`);
     expect(estado.json).toMatchObject({ status: "completed", data_deleted: { conversaciones: 1, mensajes: 3 } });
     expect((await anon.request("GET", "/api/deletion-status/no-existe")).status).toBe(404);
+  });
+
+  it("borra la conexión de WhatsApp del usuario de Facebook que la hizo", async () => {
+    await t.db.update(colmados).set({ metaUsuarioId: "10203040506070", whatsappAccessToken: "token-x", whatsappPhoneNumberId: "555000111" }).where(eq(colmados.id, negocio.id));
+    const res = await anon.request("POST", "/api/webhook/data-deletion", { signed_request: await firmar({ user_id: "10203040506070" }) });
+    const estado = await anon.request("GET", `/api/deletion-status/${res.json.confirmation_code}`);
+    expect(estado.json.data_deleted).toMatchObject({ conexiones: 1 });
+    expect(await negocioActual()).toMatchObject({ whatsappAccessToken: null, whatsappPhoneNumberId: null, metaUsuarioId: null });
   });
 });
 

@@ -28,6 +28,7 @@ import { jergaAprendidaRoutes } from "./routes/jerga-aprendida";
 import { chatColmadoRoutes } from "./routes/chat-colmado";
 import { seguridadRoutes } from "./routes/seguridad";
 import { facturacionElectronicaRoutes } from "./routes/facturacion-electronica";
+import { conocimientoRoutes } from "./routes/conocimiento";
 import { borrarRespaldosViejos, iniciarRespaldo, pasoRespaldo } from "./lib/respaldo";
 import { avisosFinDePrueba } from "./lib/avisos";
 import { olvidarEquiposViejos } from "./lib/cuenta";
@@ -88,6 +89,7 @@ app.route("/", jergaAprendidaRoutes);
 app.route("/", chatColmadoRoutes);
 app.route("/", seguridadRoutes);
 app.route("/", facturacionElectronicaRoutes);
+app.route("/", conocimientoRoutes);
 app.route("/", tiempoRealRoutes);
 
 // Cualquier otra dirección de la API no existe.

@@ -147,6 +147,8 @@ interface ConocimientoArchivo {
   nombre: string;
   contenido: string;
   fechaCreacion: string;
+  paisId?: number | null;
+  nivel?: "plataforma" | "pais" | "negocio";
 }
 
 interface Pais {
@@ -243,6 +245,8 @@ export default function PlatformAdminPage() {
   const [palabraPorEnsenar, setPalabraPorEnsenar] = useState<string | null>(null);
   
   const [selectedTipoConocimiento, setSelectedTipoConocimiento] = useState<string>("colmado");
+  // "" = para todos los países; un id = solo para ese país.
+  const [paisConocimiento, setPaisConocimiento] = useState<string>("");
   const [showUploadConocimiento, setShowUploadConocimiento] = useState(false);
   const [newConocimientoNombre, setNewConocimientoNombre] = useState("");
   const [newConocimientoContenido, setNewConocimientoContenido] = useState("");
@@ -781,7 +785,7 @@ export default function PlatformAdminPage() {
   const { data: conocimientoArchivos, isLoading: conocimientoLoading } = useQuery<ConocimientoArchivo[]>({
     queryKey: ["conocimiento", selectedTipoConocimiento],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/conocimiento/${selectedTipoConocimiento}`);
+      const res = await fetch(`/api/admin/conocimiento-niveles/${selectedTipoConocimiento}`);
       if (!res.ok) throw new Error("Error al cargar archivos de conocimiento");
       return res.json();
     },
@@ -843,8 +847,8 @@ export default function PlatformAdminPage() {
   });
 
   const createConocimientoMutation = useMutation({
-    mutationFn: async (data: { tipoNegocio: string; nombre: string; contenido: string }) => {
-      const res = await fetch("/api/admin/conocimiento", {
+    mutationFn: async (data: { tipoNegocio: string; nombre: string; contenido: string; paisId?: number | null }) => {
+      const res = await fetch("/api/admin/conocimiento-niveles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -2503,7 +2507,7 @@ export default function PlatformAdminPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-slate-500">Sube archivos .txt con información específica para cada tipo de negocio. El bot usará esta información para responder preguntas.</p>
+          <p className="text-sm text-slate-500">Sube archivos .txt con información para cada tipo de negocio: para todos los países o solo para uno. Cada negocio agrega además sus propias preguntas frecuentes en Configuración → Preguntas frecuentes. El bot solo recibe la parte que tiene que ver con lo que escribió el cliente.</p>
           
           <div className="flex flex-wrap gap-2">
             {tiposNegocioLocal.map(tipo => (
@@ -2547,6 +2551,9 @@ export default function PlatformAdminPage() {
                     <div className="flex items-center gap-2">
                       <FileText className="w-4 h-4 text-emerald-600" />
                       <span className="font-medium text-slate-700">{archivo.nombre}</span>
+                      <span className="text-xs rounded-full px-2 py-0.5 bg-slate-100 text-slate-600" data-testid={`nivel-conocimiento-${archivo.id}`}>
+                        {archivo.paisId ? `Solo ${paises.find((p) => p.id === archivo.paisId)?.nombre ?? "un país"}` : "Todos los países"}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-slate-400">
@@ -2587,6 +2594,13 @@ export default function PlatformAdminPage() {
           {showUploadConocimiento && (
             <Card className="border-2 border-emerald-200 bg-emerald-50/30">
               <CardContent className="pt-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="conocimiento-pais">Para quién es</Label>
+                  <select id="conocimiento-pais" className="w-full h-10 rounded-md border px-3 text-sm bg-white" value={paisConocimiento} onChange={(e) => setPaisConocimiento(e.target.value)} data-testid="select-conocimiento-pais">
+                    <option value="">Todos los países</option>
+                    {paises.map((p) => <option key={p.id} value={p.id}>Solo {p.nombre}</option>)}
+                  </select>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="conocimiento-nombre">Nombre del archivo</Label>
                   <Input
@@ -2649,6 +2663,7 @@ export default function PlatformAdminPage() {
                       tipoNegocio: selectedTipoConocimiento,
                       nombre: newConocimientoNombre,
                       contenido: newConocimientoContenido,
+                      paisId: paisConocimiento ? Number(paisConocimiento) : null,
                     })}
                     disabled={!newConocimientoNombre || !newConocimientoContenido || createConocimientoMutation.isPending}
                     className="bg-emerald-600 hover:bg-emerald-700"

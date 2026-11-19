@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { eq, inArray, sql } from "drizzle-orm";
 import {
+  colmados,
   chatWebMensajes, chatWebSesiones, metaWebhookEventos, solicitudesEliminacion, whatsappConversaciones, whatsappMensajes,
   type Colmado,
 } from "@shared/schema";
@@ -76,7 +77,11 @@ whatsappRoutes.post("/api/whatsapp/oauth/callback", requireAuth, async (c) => {
   }
   if (!phoneNumberId) return c.json({ error: "No se pudo obtener el Phone Number ID" }, 400);
 
+  // Quién de Facebook conectó el número: si esa persona pide a Meta borrar sus datos, Meta manda ese identificador.
+  const yo = await http.fetch(graphUrl("me?fields=id"), { headers: { Authorization: `Bearer ${accessToken}` } }).catch(() => null);
+  const metaUsuarioId = String(((await yo?.json().catch(() => null)) as any)?.id ?? "");
   await updateColmadoWhatsappConfig(r.db, r.colmado.id, phoneNumberId, accessToken);
+  if (/^\d{5,30}$/.test(metaUsuarioId)) await r.db.update(colmados).set({ metaUsuarioId }).where(eq(colmados.id, r.colmado.id));
   return c.json({ success: true, phoneNumberId, message: "WhatsApp conectado exitosamente" });
 });
 
@@ -116,9 +121,21 @@ export async function verificarSignedRequest(signedRequest: unknown, appSecret: 
 }
 
 /** Borra conversaciones, mensajes y chats web de ese número en un solo batch. */
-async function borrarDatosDeWhatsapp(db: Db, numero: string): Promise<{ conversaciones: number; mensajes: number }> {
+/**
+ * Meta manda el identificador del usuario de Facebook que usó la app: es quien conectó el WhatsApp de un
+ * negocio con el registro integrado. Se borra esa conexión (token, número y cuenta de Meta). Si además el
+ * identificador fuera un número de teléfono, se borran las conversaciones de ese número (como antes).
+ */
+async function borrarDatosDeWhatsapp(db: Db, numero: string): Promise<{ conversaciones: number; mensajes: number; conexiones: number }> {
+  const conectados = /^\d{5,30}$/.test(numero)
+    ? await db.select({ id: colmados.id }).from(colmados).where(eq(colmados.metaUsuarioId, numero))
+    : [];
+  for (const n of conectados) {
+    await db.update(colmados).set({ whatsappAccessToken: null, whatsappPhoneNumberId: null, metaUsuarioId: null }).where(eq(colmados.id, n.id));
+  }
+  const conexiones = conectados.length;
   const digitos = soloDigitos(numero);
-  if (digitos.length < 7) return { conversaciones: 0, mensajes: 0 };
+  if (digitos.length < 7 || digitos.length > 15) return { conversaciones: 0, mensajes: 0, conexiones };
   const coincide = (columna: any) => sql`replace(replace(replace(replace(${columna}, '+', ''), '-', ''), ' ', ''), '.', '') = ${digitos}`;
   const convs = (await db.select({ id: whatsappConversaciones.id }).from(whatsappConversaciones).where(coincide(whatsappConversaciones.clienteWhatsapp))).map((x) => x.id).slice(0, 90);
   const sesiones = await db.select({ sessionId: chatWebSesiones.sessionId }).from(chatWebSesiones)
@@ -132,7 +149,7 @@ async function borrarDatosDeWhatsapp(db: Db, numero: string): Promise<{ conversa
     ...(convs.length ? [db.delete(whatsappMensajes).where(inArray(whatsappMensajes.conversacionId, convs)), db.delete(whatsappConversaciones).where(inArray(whatsappConversaciones.id, convs))] : []),
   ];
   if (sentencias.length) await db.batch(sentencias as any);
-  return { conversaciones: convs.length, mensajes: Number(n) };
+  return { conversaciones: convs.length, mensajes: Number(n), conexiones };
 }
 
 whatsappRoutes.post("/api/webhook/data-deletion", async (c) => {

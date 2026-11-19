@@ -26,3 +26,9 @@ INSERT INTO pedidos (colmado_id, cliente_nombre, cliente_whatsapp, cliente_ubica
 INSERT INTO metodos_pago (colmado_id, efectivo, transferencia, tarjeta, bancos) VALUES (1, 1, 1, 1, '[{"nombre":"Banco Popular","numeroCuenta":"812345678","tipoCuenta":"Ahorro","titular":"Colmado El Sol"},{"nombre":"Banreservas","numeroCuenta":"960123456","tipoCuenta":"Corriente","titular":"Juan Pérez"}]');
 INSERT INTO ventas (colmado_id, fecha, total_ventas, pedidos_entregados, pedidos_cancelados) VALUES (1, (unixepoch()-60)*1000, '1390', 3, 0);
 UPDATE pedidos SET vuelto_entregado_at = fecha_creacion + 120000 WHERE vuelto_entregado_al_delivery = 1;
+
+-- Preguntas frecuentes del colmado (lo que el bot contesta).
+INSERT INTO conocimiento_archivos (tipo_negocio, nombre, contenido, colmado_id) VALUES
+  ('colmado', '¿Venden gas?', 'Sí, cambiamos tanques de 25 y 50 libras. El delivery del gas cuesta RD$100.', 1),
+  ('colmado', '¿Fían?', 'Solo a clientes conocidos del barrio, y hay que pagar el viernes.', 1);
+

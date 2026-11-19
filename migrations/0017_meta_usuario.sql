@@ -1,0 +1,1 @@
+ALTER TABLE `colmados` ADD `meta_usuario_id` text;

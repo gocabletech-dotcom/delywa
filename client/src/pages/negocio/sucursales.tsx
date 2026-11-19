@@ -60,6 +60,8 @@ export default function SucursalesPage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
+  // En el celular el formulario de sucursal nueva se abre con un botón (la lista va primero).
+  const [formAbierto, setFormAbierto] = useState(false);
   const [userForm, setUserForm] = useState({ firstName: "", lastName: "", email: "", password: "", role: "admin_pedidos", sucursalIds: [] as number[] });
   const [editingUser, setEditingUser] = useState<(Usuario & { password: string }) | null>(null);
 
@@ -94,6 +96,7 @@ export default function SucursalesPage() {
       queryClient.invalidateQueries({ queryKey: ["user-role"] });
       setForm(emptyForm);
       setEditingId(null);
+      setFormAbierto(false);
       toast({ title: editingId ? "Sucursal actualizada" : "Sucursal creada" });
     },
     onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
@@ -129,6 +132,7 @@ export default function SucursalesPage() {
   const { data: permisosData } = useQuery<{
     usuarios: Usuario[];
     sucursales: Sucursal[];
+    rolesPermitidos?: string[];
   }>({
     queryKey: ["usuarios-sucursales"],
     queryFn: async () => {
@@ -200,6 +204,13 @@ export default function SucursalesPage() {
   });
 
   const sucursales = data?.sucursales || [];
+  // El colmadero solo maneja despachadores, y solo en sus sucursales.
+  const roles = permisosData?.rolesPermitidos ?? ["admin_pedidos", "operador_sucursal"];
+  const esColmadero = !roles.includes("admin_pedidos");
+  const sucursalesUsuarios = soloUsuarios && permisosData ? permisosData.sucursales : sucursales;
+  useEffect(() => {
+    if (esColmadero && userForm.role !== "operador_sucursal") setUserForm((prev) => ({ ...prev, role: "operador_sucursal" }));
+  }, [esColmadero]);
   const sucursalActiva = sucursales.find((sucursal) => sucursal.id === data?.sucursalActivaId) || sucursales[0];
   const esEstadosUnidos = sucursalActiva?.paisCodigo === "US";
   useEffect(() => {
@@ -211,6 +222,7 @@ export default function SucursalesPage() {
 
   const startEdit = (sucursal: Sucursal) => {
     setEditingId(sucursal.id);
+    setTimeout(() => document.getElementById("form-sucursal")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     setForm({
       nombre: sucursal.nombre,
       whatsappNumero: sucursal.whatsappNumero,
@@ -247,8 +259,40 @@ export default function SucursalesPage() {
             <p className="text-sm text-gray-500 mt-1">Cada sucursal tiene su propia tienda, dirección, pedidos y conversaciones.</p>
           </div>}
 
-          {!soloUsuarios && <div className="grid lg:grid-cols-[1fr_1.3fr] gap-6">
-            <Card data-testid="form-sucursal">
+          {!soloUsuarios && <div className="grid lg:grid-cols-[1.3fr_1fr] gap-6 items-start">
+            <div className="space-y-3">
+              {sucursales.map((sucursal) => {
+                const activa = data?.sucursalActivaId === sucursal.id;
+                const habilitada = sucursal.estado === "activo";
+                return (
+                  <Card key={sucursal.id} className={activa ? "border-primary ring-1 ring-primary/20" : ""} data-testid={`sucursal-${sucursal.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold truncate">{sucursal.nombre}</h3>
+                            {activa && <span className="text-[11px] rounded-full bg-primary/10 text-primary px-2 py-0.5">Activa en panel</span>}
+                          </div>
+                          <p className="text-sm text-gray-600 flex items-center gap-1 mt-2"><MapPin size={14} /> {sucursal.direccion}, {sucursal.ciudad || "—"}</p>
+                          <p className="text-sm text-gray-500 flex items-center gap-1 mt-1"><Phone size={14} /> {sucursal.whatsappNumero}</p>
+                          <p className="text-xs text-gray-400 mt-2">Link: /sucursal/{sucursal.slug || sucursal.id}</p>
+                        </div>
+                        {habilitada ? <CheckCircle2 className="text-green-600 shrink-0" size={19} /> : <XCircle className="text-gray-400 shrink-0" size={19} />}
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        {!activa && habilitada && <Button size="sm" onClick={() => selectMutation.mutate(sucursal.id)}>Usar esta sucursal</Button>}
+                        <Button size="sm" variant="outline" onClick={() => startEdit(sucursal)}>Editar</Button>
+                        <Button size="sm" variant="outline" onClick={() => toggleMutation.mutate({ id: sucursal.id, estado: habilitada ? "inactivo" : "activo" })}>
+                          {habilitada ? "Desactivar" : "Activar"}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+            <div className="lg:hidden">{!formAbierto && !editingId && <Button className="w-full h-11" onClick={() => setFormAbierto(true)} data-testid="button-abrir-form-sucursal"><Plus size={16} className="mr-2" />Agregar sucursal</Button>}</div>
+            <Card data-testid="form-sucursal" id="form-sucursal" className={formAbierto || editingId ? "" : "hidden lg:block"}>
               <CardHeader><CardTitle className="text-base">{editingId ? "Editar sucursal" : "Agregar sucursal"}</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {[
@@ -332,7 +376,7 @@ export default function SucursalesPage() {
                   ))
                 )}
                 <div className="flex gap-2 pt-2">
-                  {editingId && <Button type="button" variant="outline" onClick={() => { setEditingId(null); setForm(emptyForm); }}>Cancelar</Button>}
+                  {(editingId || formAbierto) && <Button type="button" variant="outline" onClick={() => { setEditingId(null); setForm(emptyForm); setFormAbierto(false); }}>Cancelar</Button>}
                   <Button className="flex-1" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
                     {editingId ? <Save size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />}
                     {saveMutation.isPending ? "Guardando..." : editingId ? "Guardar cambios" : "Crear sucursal"}
@@ -341,44 +385,13 @@ export default function SucursalesPage() {
               </CardContent>
             </Card>
 
-            <div className="space-y-3">
-              {sucursales.map((sucursal) => {
-                const activa = data?.sucursalActivaId === sucursal.id;
-                const habilitada = sucursal.estado === "activo";
-                return (
-                  <Card key={sucursal.id} className={activa ? "border-primary ring-1 ring-primary/20" : ""} data-testid={`sucursal-${sucursal.id}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold truncate">{sucursal.nombre}</h3>
-                            {activa && <span className="text-[11px] rounded-full bg-primary/10 text-primary px-2 py-0.5">Activa en panel</span>}
-                          </div>
-                          <p className="text-sm text-gray-600 flex items-center gap-1 mt-2"><MapPin size={14} /> {sucursal.direccion}, {sucursal.ciudad || "—"}</p>
-                          <p className="text-sm text-gray-500 flex items-center gap-1 mt-1"><Phone size={14} /> {sucursal.whatsappNumero}</p>
-                          <p className="text-xs text-gray-400 mt-2">Link: /sucursal/{sucursal.slug || sucursal.id}</p>
-                        </div>
-                        {habilitada ? <CheckCircle2 className="text-green-600 shrink-0" size={19} /> : <XCircle className="text-gray-400 shrink-0" size={19} />}
-                      </div>
-                      <div className="flex flex-wrap gap-2 mt-4">
-                        {!activa && habilitada && <Button size="sm" onClick={() => selectMutation.mutate(sucursal.id)}>Usar esta sucursal</Button>}
-                        <Button size="sm" variant="outline" onClick={() => startEdit(sucursal)}>Editar</Button>
-                        <Button size="sm" variant="outline" onClick={() => toggleMutation.mutate({ id: sucursal.id, estado: habilitada ? "inactivo" : "activo" })}>
-                          {habilitada ? "Desactivar" : "Activar"}
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
           </div>}
 
           {soloUsuarios && permisosData && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2"><Users size={18} /> Usuarios del negocio</CardTitle>
-                <p className="text-sm text-gray-500">El administrador general puede revisar y modificar todos los usuarios de su negocio.</p>
+                <p className="text-sm text-gray-500">{esColmadero ? "Los despachadores de tus sucursales. Puedes crearlos y editarlos." : "Puedes revisar y modificar todos los usuarios de tu negocio."}</p>
               </CardHeader>
               <CardContent className="space-y-4">
                 {permisosData.usuarios.length === 0 && <p className="text-sm text-gray-500">Todavía no hay usuarios adicionales.</p>}
@@ -400,7 +413,7 @@ export default function SucursalesPage() {
                             <Button size="sm" variant="outline" onClick={() => setEditingUser({ ...usuario, password: "" })}>Editar</Button>
                           </div>
                           <div className="flex flex-wrap gap-2 mt-3">
-                            {sucursales.filter((sucursal) => selected.includes(sucursal.id)).map((sucursal) => (
+                            {sucursalesUsuarios.filter((sucursal) => selected.includes(sucursal.id)).map((sucursal) => (
                               <span key={sucursal.id} className="text-xs rounded-md px-2 py-1 bg-primary/10 text-primary">{sucursal.nombre}</span>
                             ))}
                           </div>
@@ -412,11 +425,11 @@ export default function SucursalesPage() {
                             <div><Label>Apellido</Label><Input value={editingUser.lastName || ""} onChange={(e) => setEditingUser({ ...editingUser, lastName: e.target.value })} /></div>
                             <div><Label>Correo *</Label><Input type="email" value={editingUser.email || ""} onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })} /></div>
                             <div><Label>Nueva contraseña (opcional)</Label><Input type="password" minLength={10} placeholder="Dejar vacía para conservarla (mínimo 10)" value={editingUser.password} onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })} /></div>
-                            <div><Label>Rol</Label><select disabled={editingUser.role === "colmado_owner"} className="w-full h-10 rounded-md border px-3 text-sm disabled:bg-gray-100" value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}><option value="colmado_owner">Dueño</option><option value="admin_pedidos">Colmadero (encargado)</option><option value="operador_sucursal">Despachador</option><option value="delivery">Repartidor</option></select></div>
+                            <div><Label>Rol</Label><select disabled={editingUser.role === "colmado_owner"} className="w-full h-10 rounded-md border px-3 text-sm disabled:bg-gray-100" value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}>{esColmadero ? <option value="operador_sucursal">Despachador</option> : <><option value="colmado_owner">Dueño</option><option value="admin_pedidos">Colmadero (encargado)</option><option value="operador_sucursal">Despachador</option><option value="delivery">Repartidor</option></>}</select></div>
                           </div>
                           <div>
                             <Label>Sucursales asignadas</Label>
-                            <div className="flex flex-wrap gap-2 mt-2">{sucursales.map((sucursal) => {
+                            <div className="flex flex-wrap gap-2 mt-2">{sucursalesUsuarios.map((sucursal) => {
                               const checked = editingUser.sucursalIds.includes(sucursal.id);
                               return <label key={sucursal.id} className="flex items-center gap-2 text-sm border rounded-md px-2 py-1.5 cursor-pointer"><input type="checkbox" checked={checked} onChange={(event) => setEditingUser({ ...editingUser, sucursalIds: event.target.checked ? [...editingUser.sucursalIds, sucursal.id] : editingUser.sucursalIds.filter((id) => id !== sucursal.id) })} />{sucursal.nombre}</label>;
                             })}</div>
@@ -436,7 +449,7 @@ export default function SucursalesPage() {
           {soloUsuarios && <Card id="usuarios" data-testid="form-usuario">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2"><UserPlus size={18} /> Agregar un usuario</CardTitle>
-              <p className="text-sm text-gray-500">Crea colmaderos o despachadores y elige las sucursales que pueden manejar.</p>
+              <p className="text-sm text-gray-500">{esColmadero ? "Crea despachadores para tus sucursales." : "Crea colmaderos o despachadores y elige las sucursales que pueden manejar."}</p>
             </CardHeader>
             <CardContent>
               <form className="space-y-4" onSubmit={submitUserForm}>
@@ -447,12 +460,12 @@ export default function SucursalesPage() {
                 <div><Label>Contraseña temporal * (mínimo 10 caracteres)</Label><Input name="password" required type="password" minLength={10} autoComplete="new-password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} /></div>
                 <div><Label>Tipo de rol</Label>
                   <select name="role" className="w-full h-10 rounded-md border px-3 text-sm" value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
-                    <option value="admin_pedidos">Colmadero (encargado)</option>
+                    {!esColmadero && <option value="admin_pedidos">Colmadero (encargado)</option>}
                     <option value="operador_sucursal">Despachador</option>
                   </select>
                   <p className="text-xs text-slate-600 mt-1.5 leading-relaxed" data-testid="descripcion-rol">
                     {userForm.role === "admin_pedidos"
-                      ? "Colmadero: maneja el negocio casi como el dueño. Pedidos, repartidores, caja y cuadres, empleados y nómina, reportes y configuración. No crea usuarios ni sucursales."
+                      ? "Colmadero: maneja el negocio casi como el dueño. Pedidos, repartidores, caja y cuadres, empleados y nómina, reportes y configuración. Puede crear despachadores en sus sucursales; no crea colmaderos ni sucursales."
                       : "Despachador: atiende a los clientes. Pedidos, chats, clientes y asignar repartidores. No ve caja, cuadres, nómina ni configuración, y no crea usuarios."}
                   </p>
                 </div>
@@ -460,7 +473,7 @@ export default function SucursalesPage() {
               <div>
                 <Label>Sucursales asignadas</Label>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {sucursales.map((sucursal) => {
+                  {sucursalesUsuarios.map((sucursal) => {
                     const checked = userForm.sucursalIds.includes(sucursal.id);
                     return <label key={sucursal.id} className="flex items-center gap-2 text-sm border rounded-md px-2 py-1.5 cursor-pointer">
                       <input type="checkbox" checked={checked} onChange={() => setUserForm({

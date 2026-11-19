@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { secreto } from "../columns";
 import { sqliteTable, text, integer, numeric, unique, index, primaryKey } from "drizzle-orm/sqlite-core";
 
 // Sesiones del servidor (cookie firmada -> fila en D1).
@@ -23,6 +24,12 @@ export const users = sqliteTable("users", {
   password: text("password"),
   /** Cuándo confirmó que el correo es suyo (código de 6 números o enlace de recuperación). Vacío = sin confirmar. */
   emailVerificadoAt: integer("email_verificado_at", { mode: "timestamp_ms" }),
+  // Verificación en dos pasos (solo cuenta de plataforma): secreto de la app de códigos (cifrado),
+  // cuándo se activó, huellas de los códigos de respaldo y el último paso de 30 s usado (no se repite).
+  dosPasosSecreto: secreto("dos_pasos_secreto"),
+  dosPasosActivoAt: integer("dos_pasos_activo_at", { mode: "timestamp_ms" }),
+  dosPasosRespaldo: text("dos_pasos_respaldo", { mode: "json" }).$type<string[]>(),
+  dosPasosUltimoPaso: integer("dos_pasos_ultimo_paso"),
   role: text("role").default("pending"),
   colmadoId: integer("colmado_id"),
   deliveryId: integer("delivery_id"),

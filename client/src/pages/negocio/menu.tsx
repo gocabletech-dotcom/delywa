@@ -353,16 +353,16 @@ export default function MenuPage() {
 
   if (!tieneMenu && colmado) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="max-w-md mx-4">
+      <NegocioLayout title="Menú" activeNav="menu">
+      <main className="flex-1 p-3 sm:p-6 overflow-auto flex items-start justify-center">
+        <Card className="max-w-md w-full mt-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UtensilsCrossed className="w-5 h-5" />
               Menú no disponible
             </CardTitle>
             <CardDescription>
-              Tu tipo de negocio ({colmado.tipoNegocio}) no tiene la opción de menú habilitada.
-              Solo los negocios tipo cafetería, restaurant, fast food, farmacia y pizzería pueden gestionar un menú.
+              Los colmados no usan menú: tus clientes piden escribiendo en el chat, como por WhatsApp, y tú confirmas precios y productos en Pedidos.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -372,7 +372,8 @@ export default function MenuPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </main>
+      </NegocioLayout>
     );
   }
 

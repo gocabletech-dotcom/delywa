@@ -1,4 +1,5 @@
 import { normalizeBusinessColor } from "@/lib/temaNegocio";
+import { PreguntasFrecuentes } from "@/components/negocio/PreguntasFrecuentes";
 import { prepararLogo } from "@/lib/imagen";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -138,7 +139,7 @@ type MetodosPago = {
   fechaModificacion: string;
 };
 
-type Seccion = "datos" | "imagen" | "ubicacion" | "horario" | "delivery" | "pagos" | "chat" | "mensajes" | "bot" | "canales";
+type Seccion = "datos" | "imagen" | "ubicacion" | "horario" | "delivery" | "pagos" | "chat" | "preguntas" | "mensajes" | "bot" | "canales";
 
 export default function SettingsPage() {
   const { user, isLoading: authLoading, isAuthenticated, logout } = useAuth();
@@ -430,12 +431,13 @@ export default function SettingsPage() {
     ] },
     { nombre: "Chat y bot", items: [
       { clave: "chat", titulo: "Chat de mi página", palabras: "link qr enlace pedidos web" },
+      { clave: "preguntas", titulo: "Preguntas frecuentes", palabras: "preguntas respuestas bot conocimiento faq dudas" },
       { clave: "mensajes", titulo: "Mensajes al cliente", palabras: "bienvenida confirmacion compartir texto" },
       { clave: "bot", titulo: "Personalizar el bot", palabras: "prompt instrucciones respuestas" },
       { clave: "canales", titulo: "Canales activos", palabras: "whatsapp meta evo tecnologias", oculto: !colmado?.tecnologiasHabilitadas },
     ] },
   ];
-  const SIN_GUARDAR: Seccion[] = ["chat", "canales"];
+  const SIN_GUARDAR: Seccion[] = ["chat", "preguntas", "canales"];
   const ver = (clave: Seccion) => (seccion === clave ? "" : "hidden");
 
   return (
@@ -565,6 +567,10 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           )}
+          </div>
+
+          <div className={ver("preguntas")}>
+            {colmadoId && <PreguntasFrecuentes colmadoId={colmadoId} />}
           </div>
 
           {/* Chat Web - Link para copiar */}

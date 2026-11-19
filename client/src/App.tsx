@@ -49,6 +49,7 @@ const NegocioZipAlertasPage = lazyConReintento(() => import("@/pages/negocio/zip
 const NegocioSucursalesPage = lazyConReintento(() => import("@/pages/negocio/sucursales"));
 const NegocioEmpleadosPage = lazyConReintento(() => import("@/pages/negocio/empleados"));
 const NegocioFacturacionPage = lazyConReintento(() => import("@/pages/negocio/facturacion-electronica"));
+const NegocioReportesPage = lazyConReintento(() => import("@/pages/negocio/reportes"));
 const EmpleadoPortalPage = lazyConReintento(() => import("@/pages/empleado-portal"));
 const LoginPage = lazyConReintento(() => import("@/pages/login"));
 const PrimerAccesoPage = lazyConReintento(() => import("@/pages/primer-acceso"));
@@ -118,7 +119,7 @@ function Router() {
       <Route path="/negocio/deliveries" component={NegocioDeliveriesPage} />
       <Route path="/negocio/ventas" component={NegocioVentasPage} />
       <Route path="/negocio/facturacion-electronica" component={NegocioFacturacionPage} />
-      <Route path="/negocio/reportes" component={NegocioVentasPage} />
+      <Route path="/negocio/reportes" component={NegocioReportesPage} />
       <Route path="/negocio/delivery-dashboard" component={NegocioDeliveryDashboard} />
       <Route path="/negocio/whatsapp-config" component={NegocioWhatsAppConfigPage} />
       <Route path="/negocio/conversaciones" component={NegocioConversacionesPage} />

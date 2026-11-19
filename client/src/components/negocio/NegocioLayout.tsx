@@ -281,7 +281,7 @@ export default function NegocioLayout({
           {esAdmin && navLink("/negocio/settings", "settings", Settings, "Configuración")}
           {esAdmin && navLink("/negocio/whatsapp-config", "whatsapp-config", Smartphone, "WhatsApp")}
           {esDueno && navLink("/negocio/sucursales", "sucursales", Building2, "Sucursales")}
-          {esDueno && navLink("/negocio/usuarios", "usuarios", UserCog, "Usuarios y permisos")}
+          {esAdmin && navLink("/negocio/usuarios", "usuarios", UserCog, esDueno ? "Usuarios y permisos" : "Despachadores")}
           {navLink("/negocio/manual", "manual", BookOpen, "Manual de uso")}
         </nav>
 
@@ -416,7 +416,7 @@ export default function NegocioLayout({
                 {esAdmin && otrasCard("/negocio/settings", "settings", Settings, "Configuración")}
                 {esAdmin && otrasCard("/negocio/whatsapp-config", "whatsapp-config", Smartphone, "WhatsApp")}
                 {esDueno && otrasCard("/negocio/sucursales", "sucursales", Building2, "Sucursales")}
-                {esDueno && otrasCard("/negocio/usuarios", "usuarios", UserCog, "Usuarios")}
+                {esAdmin && otrasCard("/negocio/usuarios", "usuarios", UserCog, esDueno ? "Usuarios" : "Despachadores")}
                 {otrasCard("/negocio/manual", "manual", BookOpen, "Manual")}
               </div>
               <CambiarClave className="w-full flex items-center justify-center gap-2.5 min-h-[48px] rounded-2xl bg-white border border-slate-200 text-slate-800 font-semibold text-sm mb-2" />

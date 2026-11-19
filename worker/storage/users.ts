@@ -4,11 +4,12 @@ import type { Db } from "../db";
 import { hashPassword } from "../lib/password";
 import { getAllColmadoIds, getSucursalesByOwner } from "./colmados";
 
-export type PublicUser = Omit<User, "password">;
+export type PublicUser = Omit<User, "password" | "dosPasosSecreto" | "dosPasosRespaldo" | "dosPasosUltimoPaso">;
 
 export function toPublicUser(user: User): PublicUser {
-  const { password: _password, ...rest } = user;
-  return rest;
+  // Ni la contraseña ni nada de la verificación en dos pasos sale del servidor.
+  const { password: _password, dosPasosSecreto: _s, dosPasosRespaldo: _r, dosPasosUltimoPaso: _u, ...rest } = user;
+  return rest as PublicUser;
 }
 
 function newUserId(prefix: string): string {

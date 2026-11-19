@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Copy, Check, MessageCircle, ExternalLink, Smartphone, Settings, ArrowRight, ArrowLeft } from "lucide-react";
-import { Link } from "wouter";
+import NegocioLayout from "@/components/negocio/NegocioLayout";
 import { useToast } from "@/hooks/use-toast";
 
 interface Colmado {
@@ -20,13 +20,16 @@ export default function ChatConfigPage() {
   const { toast } = useToast();
   const [copied, setCopied] = useState<string | null>(null);
 
-  const { data: user } = useQuery({
-    queryKey: ["/api/auth/me"],
+  // Antes leía /api/auth/me y /api/colmado/mine, que no existen: el enlace salía vacío.
+  const { data: rol } = useQuery({
+    queryKey: ["user-role"],
+    queryFn: async () => { const r = await fetch("/api/user/role"); return r.ok ? r.json() : null; },
   });
-
+  const colmadoId = rol?.colmadoId as number | undefined;
   const { data: colmado } = useQuery<Colmado>({
-    queryKey: ["/api/colmado/mine"],
-    enabled: !!user,
+    queryKey: ["colmado", colmadoId],
+    queryFn: async () => (await fetch(`/api/colmados/${colmadoId}`)).json(),
+    enabled: !!colmadoId,
   });
 
   const baseUrl = window.location.origin;
@@ -52,30 +55,12 @@ Te atendemos al instante. ¡Gracias por preferirnos!`
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-primary text-white sticky top-0 z-40 px-4 py-3">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          <Link href="/negocio/dashboard">
-            <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10" data-testid="button-volver-panel">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Volver al Panel
-            </Button>
-          </Link>
-          <div className="flex-1">
-            <h1 className="font-bold text-white font-heading">Configurar Chat Web</h1>
-          </div>
-        </div>
-      </header>
-      <div className="p-4 md:p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-            Configurar Chat Web
-          </h1>
-          <p className="text-gray-600">
-            Configura tu WhatsApp Business para que los clientes usen tu chat web sin restricciones
-          </p>
-        </div>
+    <NegocioLayout title="Mensaje de WhatsApp Business" activeNav="settings">
+      <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">
+      <div className="max-w-3xl mx-auto space-y-4">
+        <p className="text-[15px] text-slate-600">
+          Si tienes WhatsApp Business, pon este mensaje de bienvenida: quien te escriba recibe el enlace de tu chat y pide ahí, sin las limitaciones de WhatsApp.
+        </p>
 
         {/* Link del chat */}
         <Card data-testid="card-chat-link">
@@ -234,8 +219,8 @@ Te atendemos al instante. ¡Gracias por preferirnos!`
           </CardContent>
         </Card>
       </div>
-      </div>
-    </div>
+      </main>
+    </NegocioLayout>
   );
 }
 

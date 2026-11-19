@@ -57,11 +57,15 @@ const ESQUEMA = {
  */
 export async function interpretar(env: Env, datos: {
   mensaje: string; colmado: { nombre: string; direccion: string; horario: string; costoDelivery: string; pagos: string }; paso: string;
+  /** Solo la parte del conocimiento (del colmado, del país o general) que tiene que ver con el mensaje. */
+  conocimiento?: string;
 }): Promise<Interpretacion | null> {
   const sistema = `Eres el asistente del chat de un colmado de República Dominicana llamado "${datos.colmado.nombre}".
 Entiendes el español dominicano y su jerga (por ejemplo: "una fría" es una cerveza, "un chin" es un poquito, "un pote" es una botella de ron, "habichuela" son frijoles).
 Datos del colmado: dirección ${datos.colmado.direccion}; horario ${datos.colmado.horario}; delivery RD$${datos.colmado.costoDelivery}; pagos: ${datos.colmado.pagos}.
-No conoces precios ni inventario: el colmado los confirma.
+No conoces precios ni inventario: el colmado los confirma.${datos.conocimiento ? `
+Información del colmado para contestar preguntas (úsala solo si responde lo que preguntan, no la inventes ni la amplíes):
+${datos.conocimiento.slice(0, 3500)}` : ""}
 El cliente está en este paso: ${datos.paso}.
 Responde SOLO con JSON:
 - Si pide productos: tipo "productos" y la lista con nombre claro del producto, cantidad (número o null), unidad (libra, funda, lata... o null) y jergaOriginal (las palabras exactas que usó el cliente para ese producto).

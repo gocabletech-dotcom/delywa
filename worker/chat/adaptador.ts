@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { conocimientoRelevante } from "../lib/conocimiento";
 import { llaveOpenAI } from "../lib/integraciones";
 import { avisarNegocio } from "../lib/tiempo-real";
 import { aprenderJerga, buscarJerga, incrementarUsoJerga } from "../lib/jerga";
@@ -37,7 +38,9 @@ import { getPlantillaZip } from "../routes/plataforma";
 
 type Contexto = { env: Env; db: Db; origen: string; manejadores: Map<string, Manejador>; pendientes: Promise<unknown>[]; demoraMs?: [number, number]; colmadoId?: number;
   /** DELYWA: el cliente escribe desde el chat de la página, no por WhatsApp (ver routes/chat-colmado.ts). */
-  canalWeb?: { sessionId: string; telefono: string } };
+  canalWeb?: { sessionId: string; telefono: string };
+  /** DELYWA: texto que escribió el cliente; sirve para mandarle a la IA solo el conocimiento que tiene que ver. */
+  mensaje?: string };
 type Manejador = (req: any, res: any) => any;
 const contexto = new AsyncLocalStorage<Contexto>();
 
@@ -84,6 +87,15 @@ class Respuesta {
 
 export type Resultado = { status: number; body: unknown };
 
+/** Texto del cliente dentro de un aviso de Meta o de Evolution (si lo hay). */
+function textoDelAviso(body: any): string | undefined {
+  const meta = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  const evo = body?.data?.message;
+  const texto = meta?.text?.body ?? meta?.button?.text ?? meta?.interactive?.button_reply?.title
+    ?? evo?.conversation ?? evo?.extendedTextMessage?.text ?? body?.message;
+  return typeof texto === "string" ? texto.slice(0, 1000) : undefined;
+}
+
 /** Ejecuta un manejador del motor con el contexto de la petición y devuelve su respuesta. */
 export async function ejecutar(
   base: Pick<Contexto, "env" | "db" | "origen" | "demoraMs"> & { pendientes?: Promise<unknown>[] }, manejadores: Map<string, Manejador>, ruta: string, req: { body?: any; params?: any; query?: any; session?: any },
@@ -92,7 +104,7 @@ export async function ejecutar(
   if (!manejador) return { status: 404, body: { error: "Ruta no encontrada" } };
   const res = new Respuesta();
   const pendientes = base.pendientes ?? [];
-  const actual: Contexto = { ...base, manejadores, pendientes };
+  const actual: Contexto = { ...base, manejadores, pendientes, mensaje: textoDelAviso(req.body) };
   await contexto.run(actual, () => manejador({ body: req.body ?? {}, params: req.params ?? {}, query: req.query ?? {}, headers: {}, session: req.session ?? {} }, res));
   // Trabajo en segundo plano de la petición principal (avisos al negocio): se termina antes de responder.
   if (!base.pendientes) {
@@ -214,8 +226,14 @@ export const storage = {
     const [m] = await ctx().db.select().from(mensajesSistema).where(and(eq(mensajesSistema.clave, clave), eq(mensajesSistema.activo, true)));
     return m;
   },
-  getConocimientoByTipo: (tipoNegocio: string) =>
-    ctx().db.select().from(conocimientoArchivos).where(eq(conocimientoArchivos.tipoNegocio, tipoNegocio)).orderBy(conocimientoArchivos.fechaCreacion),
+  // DELYWA: conocimiento por niveles (plataforma, país y negocio) y solo la parte que tiene que ver con
+  // lo que escribió el cliente (lib/conocimiento.ts). Antes se mandaba entero en cada mensaje.
+  async getConocimientoByTipo(tipoNegocio: string) {
+    const { db, colmadoId, mensaje } = ctx();
+    const colmado = colmadoId ? await getColmado(db, colmadoId) : undefined;
+    if (colmado) return conocimientoRelevante(db, colmado, mensaje);
+    return conocimientoRelevante(db, { id: 0, tipoNegocio, paisId: null, negocioPrincipalId: null }, mensaje);
+  },
 
   // Pedidos
   getPedidoById: (id: number) => getPedidoById(ctx().db, Number(id)),

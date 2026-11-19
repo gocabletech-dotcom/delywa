@@ -17,6 +17,9 @@ export interface SessionData {
   lastActivity?: number;
   /** Cuándo se inició la sesión (la de plataforma dura como máximo 12 horas). */
   loginAt?: number;
+  /** Contraseña correcta, falta el código de la verificación en dos pasos (5 minutos). */
+  dosPasosUserId?: string;
+  dosPasosDesde?: number;
   portalDeliveryId?: number;
   portalColmadoId?: number;
   portalSessionCreatedAt?: number;

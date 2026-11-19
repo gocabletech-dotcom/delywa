@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { botIntenciones, conocimientoArchivos, mensajesSistema } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
@@ -94,7 +94,8 @@ plataformaRoutes.delete("/api/admin/bot-intenciones/:id", async (c) => {
 
 plataformaRoutes.get("/api/admin/conocimiento/:tipoNegocio", async (c) => {
   return c.json(await getDb(c.env.DB).select().from(conocimientoArchivos)
-    .where(eq(conocimientoArchivos.tipoNegocio, c.req.param("tipoNegocio"))).orderBy(conocimientoArchivos.fechaCreacion, conocimientoArchivos.id));
+    // Las preguntas propias de cada negocio no salen aquí: las maneja cada negocio.
+    .where(and(eq(conocimientoArchivos.tipoNegocio, c.req.param("tipoNegocio")), isNull(conocimientoArchivos.colmadoId))).orderBy(conocimientoArchivos.fechaCreacion, conocimientoArchivos.id));
 });
 
 plataformaRoutes.post("/api/admin/conocimiento", async (c) => {

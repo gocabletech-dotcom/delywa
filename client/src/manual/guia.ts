@@ -6,7 +6,7 @@
 export type Icono =
   | "map" | "home" | "package" | "check" | "chef" | "truck" | "undo" | "history" | "chat" | "bike" | "phone"
   | "clipboard" | "money" | "chart" | "users" | "contact" | "gear" | "link" | "whatsapp" | "building" | "key"
-  | "login" | "route" | "pause" | "store" | "cart" | "pin" | "card" | "eye";
+  | "login" | "route" | "pause" | "store" | "cart" | "pin" | "card" | "eye" | "receipt" | "lock" | "help";
 
 export interface Modulo {
   id: string;
@@ -52,9 +52,9 @@ export const GUIA: Record<ClaveManual, Manual> = {
       ["El día a día", ["inicio", "pedidos", "confirmar", "preparar", "asignar", "devuelta", "transferencia", "retorno", "historial"]],
       ["Chats", ["chats", "chat-abierto"]],
       ["Reparto", ["repartidores", "cuadres", "confirmar-cuadre"]],
-      ["Dinero", ["ventas", "reportes"]],
+      ["Dinero", ["ventas", "reportes", "factura"]],
       ["Mi negocio", ["clientes", "empleados"]],
-      ["Ajustes", ["configuracion", "chat-pagina", "whatsapp", "sucursales", "usuarios"]],
+      ["Ajustes", ["configuracion", "chat-pagina", "preguntas", "whatsapp", "sucursales", "usuarios", "mi-clave"]],
     ],
     modulos: [
       {
@@ -73,8 +73,9 @@ export const GUIA: Record<ClaveManual, Manual> = {
           "Lo que más usas está arriba: Inicio, Pedidos y Chats.",
           "En el celular usa el menú de abajo: Inicio, Pedidos, Chats, Reparto y Más (ahí están las demás opciones).",
           "Mi negocio: Repartidores, Clientes y Empleados.",
-          "Dinero: Ventas, Cuadres y Reportes.",
+          "Dinero: Ventas, Cuadres, Reportes y Factura electrónica.",
           "Ajustes: Configuración, WhatsApp, Sucursales y Usuarios y permisos.",
+          "Al final del menú está «Mi contraseña», para cambiar la tuya.",
           "El Manual de uso está al final del menú; desde cada tema puedes abrir la pantalla que explica.",
         ],
         tips: [
@@ -334,15 +335,45 @@ export const GUIA: Record<ClaveManual, Manual> = {
           ['[data-testid="estado-caja"]', "Si la caja de hoy ya se cuadró."],
           ['[data-testid="cuadrar-caja-btn"]', "Cuadrar la caja de hoy al cerrar."],
           ['[data-testid="stat-total-mes"]', "El resumen del mes: total, entregados y cancelados."],
+          ['[data-testid="link-reportes"]', "Los reportes: por periodo y por sucursal."],
         ],
-        pasos: ["Al cerrar, abre Ventas.", "Revisa las ventas de hoy.", "Pulsa «Cuadrar la caja de hoy»."],
-        tips: ["Solo el Dueño y el Colmadero ven Ventas."],
+        pasos: ["Al cerrar, abre Ventas.", "Revisa las ventas de hoy.", "Pulsa «Cuadrar la caja de hoy».", "Abajo ves los últimos 30 días, día por día."],
+        tips: ["Solo el Dueño y el Colmadero ven Ventas.", "Para comparar periodos o sucursales, toca «Ver reportes por periodo y por sucursal»."],
       },
       {
         id: "reportes", icono: "chart", titulo: "Reportes", ruta: "reportes", cap: "reportes",
-        que: "Ventas, pedidos entregados y cancelados de cada sucursal, en una sola tabla.",
-        spots: [["main table", "Cada fila es una sucursal: lo vendido, entregados y cancelados."]],
-        tips: ["Para ver el detalle de una sucursal, cámbiate a ella desde el menú y abre Ventas o Pedidos."],
+        que: "Cuánto vendiste en un periodo, día por día, y cuánto vendió cada sucursal. Solo cuenta lo entregado.",
+        spots: [
+          ['[data-testid="periodos-reporte"]', "Elige el periodo: hoy, los últimos 7 días, este mes o el mes pasado."],
+          ['[data-testid="kpi-vendido"]', "Lo vendido en el periodo."],
+          ['[data-testid="kpi-ticket"]', "Promedio por pedido: lo vendido dividido entre los pedidos entregados."],
+          ['[data-testid="grafica-ventas-dia"]', "Ventas por día de la sucursal en la que estás. Pasa el dedo o el ratón por una barra para ver el monto."],
+        ],
+        pasos: ["Abre Reportes.", "Elige el periodo arriba.", "Mira lo vendido y el promedio por pedido.", "Baja hasta «Por sucursal» para comparar tus sucursales: lo vendido, entregados, cancelados y qué parte del total es de cada una."],
+        tips: ["La gráfica es de la sucursal activa: para ver otra, cámbiate a ella desde el menú.", "Solo el Dueño y el Colmadero ven Reportes."],
+      },
+      {
+        id: "factura", icono: "receipt", titulo: "Factura electrónica (DGII)", ruta: "facturacion-electronica", cap: "factura",
+        que: "La guía para que la DGII autorice a tu negocio como emisor de facturas electrónicas (e-CF). Son 10 pasos en 4 etapas; los que se hacen en la DGII los marcas aquí cuando los terminas.",
+        spots: [
+          ['[data-testid="fe-porcentaje"]', "Cuánto llevas: el porcentaje y cuántos pasos están listos."],
+          ['[data-testid="fe-paso-datos"]', "Datos fiscales: RNC o cédula, razón social, dirección y tipo de contribuyente. Se revisa que el número sea válido."],
+          ['[data-testid="fe-paso-certificado"]', "El certificado digital de la persona que firma. Solo el dueño lo sube; se guarda cifrado."],
+          ['[data-testid="fe-paso-ofv"]', "Los pasos que se hacen en la DGII: ábrelo, sigue las instrucciones y márcalo con «Ya lo hice»."],
+        ],
+        pasos: [
+          "Abre Dinero → Factura electrónica.",
+          "Llena tus datos fiscales y guárdalos.",
+          "Saca el certificado digital (Cámara de Comercio, AVANSI u OGTIC) y súbelo con su contraseña.",
+          "Haz en la Oficina Virtual de la DGII los pasos que dice cada tarjeta, y márcalos con «Ya lo hice».",
+          "Cuando la DGII te autorice, pon la fecha y anota tus secuencias.",
+        ],
+        tips: [
+          "Cada tarjeta trae un enlace a la página de la DGII donde se hace ese paso.",
+          "Solo el Dueño y el Colmadero ven esta pantalla. El certificado solo lo sube el Dueño.",
+          "Ante cualquier duda fiscal, consulta a tu contador.",
+        ],
+        faq: [["¿Delywa ya emite las facturas?", "Todavía no. Esta guía te deja listo para la DGII; la emisión se activa cuando Delywa conecte el proveedor certificado."]],
       },
       {
         id: "clientes", icono: "users", titulo: "Clientes", ruta: "clientes", cap: "clientes",
@@ -357,17 +388,20 @@ export const GUIA: Record<ClaveManual, Manual> = {
         id: "empleados", icono: "contact", titulo: "Empleados, asistencia y nómina", ruta: "empleados", cap: "empleados",
         que: "Tu personal del colmado: cada empleado marca su entrada y salida con un código, y Delywa calcula la nómina.",
         spots: [
+          ['[data-testid="enlace-asistencia"]', "El enlace de asistencia de tu negocio. Cópialo y pásaselo a tus empleados: ahí marcan entrada y salida con su código."],
           ['[data-testid="tabs-empleados"]', "Tres partes: Empleados, Asistencia y Nómina."],
           ['[data-testid="button-nuevo-empleado"]', "Nuevo empleado: nombre, puesto, cómo se le paga (por hora o salario) y su código."],
           ['[data-testid^="empleado-"]', "Cada empleado: puesto, teléfono, pago y su código de acceso."],
         ],
         pasos: [
           "Pulsa «Nuevo empleado» y llena sus datos.",
-          "Dale su código: con él marca entrada y salida en el portal del empleado.",
+          "Dale su código y el enlace de asistencia (botón «Copiar enlace», arriba).",
+          "El empleado abre el enlace, escribe su código y marca entrada o salida.",
           "En Asistencia ves sus horas y puedes corregir una marca.",
           "En Nómina calculas el periodo, la cierras y la marcas pagada.",
         ],
-        tips: ["La nómina usa las reglas de tu país (feriados y horas extra) y la hora local."],
+        tips: ["La nómina usa las reglas de tu país (feriados y horas extra) y la hora local.", "El código de un empleado solo sirve en el enlace de tu negocio."],
+        faq: [["Mi empleado dice que su enlace ya no sirve", "Desde noviembre de 2026 cada negocio tiene su propio enlace de asistencia. Cópialo en Empleados y mándaselo; su código es el mismo."]],
       },
       {
         id: "configuracion", icono: "gear", titulo: "Configuración del negocio", ruta: "settings", cap: "configuracion",
@@ -403,6 +437,28 @@ export const GUIA: Record<ClaveManual, Manual> = {
         tips: ["Comparte con tus clientes el Manual del cliente: delywa.com/manual?solo=cliente"],
       },
       {
+        id: "preguntas", icono: "help", titulo: "Preguntas frecuentes del bot", ruta: "settings", cap: "preguntas",
+        que: "Lo que el bot contesta de tu colmado cuando un cliente pregunta algo: si venden gas, si fían, hasta dónde llega el delivery. El bot solo usa la respuesta que tiene que ver con lo que preguntaron.",
+        spots: [
+          ['[data-testid="input-pf-pregunta"]', "La pregunta, como la escribiría un cliente."],
+          ['[data-testid="input-pf-respuesta"]', "La respuesta corta que quieres que dé el bot."],
+          ['[data-testid="button-pf-guardar"]', "Agregar la pregunta."],
+          ['[data-testid="preguntas-frecuentes"]', "Tus preguntas: edítalas o bórralas con los botones de cada una."],
+        ],
+        pasos: [
+          "Abre Configuración → Preguntas frecuentes.",
+          "Escribe la pregunta y la respuesta.",
+          "Pulsa «Agregar pregunta».",
+          "Prueba: abre tu chat y hazle esa pregunta al bot.",
+        ],
+        tips: [
+          "Empieza por lo que más te preguntan: horario especial, gas, hielo, fiado, sectores del delivery.",
+          "No pongas precios que cambian seguido: el bot nunca da precios, los confirmas tú en el pedido.",
+          "Valen para todas tus sucursales. Máximo 30 preguntas.",
+        ],
+        faq: [["¿El bot inventa respuestas?", "No. Si la pregunta no está en tu lista ni en la información general de Delywa, el bot le dice al cliente que el colmado le contesta, y te llega en Chats."]],
+      },
+      {
         id: "whatsapp", icono: "whatsapp", titulo: "WhatsApp", ruta: "whatsapp-config", cap: "whatsapp",
         que: "Si la plataforma te habilitó WhatsApp, aquí conectas tu número y los avisos (confirmación, en camino, entregado) salen solos por WhatsApp.",
         spots: [["main", "La conexión de tu número. Si no está habilitada, los avisos se envían con un botón que abre WhatsApp con el mensaje listo."]],
@@ -412,7 +468,7 @@ export const GUIA: Record<ClaveManual, Manual> = {
         id: "sucursales", icono: "building", titulo: "Sucursales", ruta: "sucursales", cap: "sucursales",
         que: "Si tienes más de un colmado, crea sus sucursales. Cada una tiene sus pedidos, repartidores y chat, y hereda tu configuración.",
         spots: [
-          ['[data-testid="form-sucursal"]', "Datos de la sucursal nueva: nombre, WhatsApp y dirección."],
+          ['[data-testid="form-sucursal"], [data-testid="button-abrir-form-sucursal"]', "Agregar una sucursal nueva: nombre, WhatsApp y dirección."],
           ['[data-testid^="sucursal-"]', "Tus sucursales: edítalas o desactívalas."],
         ],
         tips: ["Solo el Dueño crea sucursales."],
@@ -426,9 +482,21 @@ export const GUIA: Record<ClaveManual, Manual> = {
         ],
         pasos: ["Llena los datos de la persona.", "Elige el rol.", "Marca sus sucursales.", "Pulsa «Crear usuario» y dale su correo y contraseña."],
         tips: [
-          "Colmadero: pedidos, repartidores, cuadres, ventas, empleados, nómina, reportes y la configuración del día a día. No crea usuarios ni sucursales.",
+          "Colmadero: pedidos, repartidores, cuadres, ventas, empleados, nómina, reportes y la configuración del día a día. Puede crear despachadores en sus sucursales; no crea colmaderos ni sucursales.",
           "Despachador: pedidos, chats, clientes, asignar repartidores y ventas de hoy. No ve nómina, cuadres ni configuración.",
         ],
+      },
+      {
+        id: "mi-clave", icono: "lock", titulo: "Mi contraseña", ruta: "dashboard", cap: "mi-clave",
+        que: "Cada persona cambia su propia contraseña. Al cambiarla se cierra su sesión en los demás teléfonos y computadoras.",
+        spots: [
+          ['[data-testid="input-clave-actual"]', "Tu contraseña de ahora."],
+          ['[data-testid="input-clave-nueva"]', "La nueva: 10 letras o más, que no uses en otro sitio."],
+          ['[data-testid="button-guardar-clave"]', "Cambiar contraseña."],
+          ['[data-testid="button-cerrar-otras"]', "Cierra tu sesión en los demás equipos, sin cambiar la contraseña."],
+        ],
+        pasos: ["Abre «Mi contraseña» al final del menú (en el celular: Más).", "Escribe la actual y la nueva dos veces.", "Pulsa «Cambiar contraseña»."],
+        tips: ["Si dejaste la sesión abierta en un equipo que no es tuyo, usa «Cerrar sesión en los demás equipos».", "Cuando el dueño le cambia la contraseña a un empleado, ese empleado tiene que volver a entrar en todos sus equipos."],
       },
     ],
   },

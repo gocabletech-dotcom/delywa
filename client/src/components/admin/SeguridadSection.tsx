@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Database, Download, History, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { pedirJSON } from "./IntegracionesSection";
+import { DosPasosCard } from "./DosPasosCard";
 
 // Plataforma → Seguridad: bitácora (quién hizo qué), errores del sistema y respaldos diarios.
 
@@ -30,6 +31,7 @@ export function SeguridadSection() {
         <h2 className="text-2xl font-bold text-gray-900">Seguridad</h2>
         <p className="text-gray-500 text-sm">Quién hizo qué, los errores del servidor y los respaldos diarios de la base de datos.</p>
       </div>
+      <DosPasosCard />
       <div className="flex flex-wrap gap-2">
         {pestanas.map((p) => (
           <Button key={p.id} variant={pestana === p.id ? "default" : "outline"} onClick={() => setPestana(p.id)} className={pestana === p.id ? "bg-emerald-600 hover:bg-emerald-700" : ""}>

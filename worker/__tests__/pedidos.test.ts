@@ -369,7 +369,8 @@ describe("roles: colmadero (encargado) y despachador", () => {
     expect(despues.whatsappNumero).toBe(antes.whatsappNumero);
     // Otro negocio: nada.
     expect((await colmadero.request("PATCH", `/api/colmados/${otro.id}`, { horaCierre: "20:00" })).status).toBe(403);
-    expect((await colmadero.request("POST", "/api/negocio/usuarios", { email: "y@delywa.test", password: "clave-larga-123", firstName: "Y", role: "operador_sucursal" })).status).toBe(403);
+    // Desde 2026-11-18 el colmadero crea despachadores, pero no colmaderos.
+    expect((await colmadero.request("POST", "/api/negocio/usuarios", { email: "y@delywa.test", password: "clave-larga-123", firstName: "Y", role: "admin_pedidos" })).status).toBe(403);
     expect((await colmadero.request("PATCH", `/api/colmados/${cafe.id}/ventas/cuadrar`, {})).status).toBe(200);
   });
 });

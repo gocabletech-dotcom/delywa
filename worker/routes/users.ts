@@ -4,34 +4,67 @@ import { getDb } from "../db";
 import { requireAdmin, requireAuth } from "../lib/auth";
 import { claveDebil } from "../lib/claves";
 import { cerrarSesionesDe } from "../lib/cuenta";
-import { getSucursalesByOwner } from "../storage/colmados";
+import { getColmado, getSucursalesByOwner } from "../storage/colmados";
+import type { Db } from "../db";
+import type { Colmado, User } from "@shared/schema";
 import {
-  createUser, deleteUser, getAllUsers, getStaffForOwner, getUserByEmail, getUserById, getUserSucursalIds,
+  createUser, deleteUser, getAccessibleColmadoIds, getAllUsers, getStaffForOwner, getUserByEmail, getUserById, getUserSucursalIds,
   isUniqueViolation, normalizeEmail, setUserSucursalIds, toPublicUser, updateUser, updateUserRole,
 } from "../storage/users";
 
 export const userRoutes = new Hono<AppEnv>();
 
-// ---------- Usuarios del negocio (los gestiona el dueño) ----------
+// ---------- Usuarios del negocio ----------
+// El dueño gestiona colmaderos y despachadores de todo su negocio. El colmadero (decisión del
+// 2026-11-18) solo crea y edita despachadores, y solo en las sucursales que él tiene asignadas.
+
+type Gestor = { user: User; esDueno: boolean; sucursales: Colmado[]; ids: Set<number>; roles: string[] };
+
+async function gestorDeUsuarios(db: Db, user: User): Promise<Gestor | null> {
+  if (user.role === "colmado_owner" && user.colmadoId) {
+    const sucursales = await getSucursalesByOwner(db, user.id);
+    return { user, esDueno: true, sucursales, ids: new Set(sucursales.map((s) => s.id)), roles: ["admin_pedidos", "operador_sucursal"] };
+  }
+  if (user.role === "admin_pedidos" && user.colmadoId) {
+    const ids = await getAccessibleColmadoIds(db, user);
+    const sucursales = (await Promise.all(ids.map((id) => getColmado(db, id)))).filter((s): s is Colmado => Boolean(s));
+    return { user, esDueno: false, sucursales, ids: new Set(sucursales.map((s) => s.id)), roles: ["operador_sucursal"] };
+  }
+  return null;
+}
+
+/** ¿Este gestor puede tocar a este usuario? El colmadero solo a despachadores de sus sucursales. */
+async function puedeGestionar(db: Db, g: Gestor, target: User | undefined): Promise<boolean> {
+  if (!target || target.role === "platform_admin") return false;
+  if (target.role === "colmado_owner" && !(g.esDueno && target.id === g.user.id)) return false;
+  if (!g.esDueno && target.role !== "operador_sucursal") return false;
+  const ramas = await getUserSucursalIds(db, target.id);
+  // Un usuario sin sucursal asignada no pertenece a ningún negocio.
+  return Boolean((target.colmadoId && g.ids.has(target.colmadoId)) || ramas.some((id) => g.ids.has(id)));
+}
 
 userRoutes.get("/api/negocio/usuarios-sucursales", requireAuth, async (c) => {
-  const owner = c.var.user;
-  if (owner.role !== "colmado_owner") return c.json({ error: "Solo el dueño puede gestionar permisos" }, 403);
   const db = getDb(c.env.DB);
+  const g = await gestorDeUsuarios(db, c.var.user);
+  if (!g) return c.json({ error: "Solo el dueño o el colmadero pueden gestionar usuarios" }, 403);
+  const todos = await getStaffForOwner(db, c.var.user);
   return c.json({
-    usuarios: await getStaffForOwner(db, owner),
-    sucursales: await getSucursalesByOwner(db, owner.id),
+    usuarios: g.esDueno ? todos : todos.filter((u) => u.role === "operador_sucursal"),
+    sucursales: g.sucursales,
+    rolesPermitidos: g.roles,
   });
 });
 
 userRoutes.post("/api/negocio/usuarios", requireAuth, async (c) => {
   const owner = c.var.user;
-  if (owner.role !== "colmado_owner" || !owner.colmadoId) {
-    return c.json({ error: "Solo el administrador del negocio puede crear usuarios" }, 403);
-  }
+  const g = await gestorDeUsuarios(getDb(c.env.DB), owner);
+  if (!g) return c.json({ error: "Solo el dueño o el colmadero pueden crear usuarios" }, 403);
   const body = (await c.req.json().catch(() => null)) || {};
   const { email, password, firstName, lastName, role, sucursalIds } = body;
-  const rolesValidos = ["admin_pedidos", "operador_sucursal"];
+  if (!g.roles.includes(role) && ["admin_pedidos", "operador_sucursal"].includes(role)) {
+    return c.json({ error: "El colmadero solo puede crear despachadores" }, 403);
+  }
+  const rolesValidos = g.roles;
   if (
     typeof email !== "string" || !email.trim() || typeof password !== "string" ||
     typeof firstName !== "string" || !firstName.trim() || !rolesValidos.includes(role)
@@ -40,7 +73,7 @@ userRoutes.post("/api/negocio/usuarios", requireAuth, async (c) => {
   }
   { const debil = await claveDebil(password); if (debil) return c.json({ error: debil }, 400); }
   const db = getDb(c.env.DB);
-  const ownedIds = new Set((await getSucursalesByOwner(db, owner.id)).map((branch) => branch.id));
+  const ownedIds = g.ids;
   const selectedIds: number[] = Array.isArray(sucursalIds)
     ? [...new Set(sucursalIds.map(Number).filter((id: number) => ownedIds.has(id)))]
     : [];
@@ -65,23 +98,17 @@ userRoutes.post("/api/negocio/usuarios", requireAuth, async (c) => {
 
 userRoutes.patch("/api/negocio/usuarios/:userId", requireAuth, async (c) => {
   const owner = c.var.user;
-  if (owner.role !== "colmado_owner") {
-    return c.json({ error: "Solo el administrador del negocio puede modificar usuarios" }, 403);
-  }
   const db = getDb(c.env.DB);
+  const g = await gestorDeUsuarios(db, owner);
+  if (!g) return c.json({ error: "Solo el dueño o el colmadero pueden modificar usuarios" }, 403);
   const target = await getUserById(db, c.req.param("userId"));
-  const ownedIds = new Set((await getSucursalesByOwner(db, owner.id)).map((s) => s.id));
-  const targetBranchIds = target ? await getUserSucursalIds(db, target.id) : [];
-  const fueraDelNegocio = !target ||
-    (target.role === "colmado_owner" && target.id !== owner.id) ||
-    target.role === "platform_admin" ||
-    // Un usuario sin sucursal asignada no pertenece a ningún negocio.
-    !((target.colmadoId && ownedIds.has(target.colmadoId)) || targetBranchIds.some((id) => ownedIds.has(id)));
-  if (fueraDelNegocio || !target) return c.json({ error: "Usuario no encontrado en tu negocio" }, 404);
+  const ownedIds = g.ids;
+  if (!target || !(await puedeGestionar(db, g, target))) return c.json({ error: "Usuario no encontrado en tu negocio" }, 404);
 
   const body = (await c.req.json().catch(() => null)) || {};
   const { email, firstName, lastName, password, role, sucursalIds } = body;
-  const rolesValidos = ["colmado_owner", "admin_pedidos", "operador_sucursal", "delivery"];
+  // El colmadero no puede ascender a un despachador.
+  const rolesValidos = g.esDueno ? ["colmado_owner", "admin_pedidos", "operador_sucursal", "delivery"] : ["operador_sucursal"];
   if (typeof email !== "string" || !email.trim() || typeof firstName !== "string" || !firstName.trim() || !rolesValidos.includes(role)) {
     return c.json({ error: "Nombre, correo y rol válido son obligatorios" }, 400);
   }
@@ -122,16 +149,12 @@ userRoutes.patch("/api/negocio/usuarios/:userId", requireAuth, async (c) => {
 });
 
 userRoutes.put("/api/negocio/usuarios-sucursales/:userId", requireAuth, async (c) => {
-  const owner = c.var.user;
-  if (owner.role !== "colmado_owner") return c.json({ error: "Solo el dueño puede gestionar permisos" }, 403);
   const db = getDb(c.env.DB);
+  const g = await gestorDeUsuarios(db, c.var.user);
+  if (!g) return c.json({ error: "Solo el dueño o el colmadero pueden gestionar permisos" }, 403);
   const target = await getUserById(db, c.req.param("userId"));
-  const ownedIds = new Set((await getSucursalesByOwner(db, owner.id)).map((s) => s.id));
-  const targetBranchIds = target ? await getUserSucursalIds(db, target.id) : [];
-  if (
-    !target || target.role === "colmado_owner" || target.role === "platform_admin" ||
-    !((target.colmadoId && ownedIds.has(target.colmadoId)) || targetBranchIds.some((id) => ownedIds.has(id)))
-  ) {
+  const ownedIds = g.ids;
+  if (!target || target.role === "colmado_owner" || !(await puedeGestionar(db, g, target))) {
     return c.json({ error: "Empleado o repartidor no encontrado" }, 404);
   }
   const body = (await c.req.json().catch(() => null)) || {};

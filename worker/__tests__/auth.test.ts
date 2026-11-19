@@ -203,6 +203,42 @@ describe("roles y sucursales", () => {
     expect((await e.request("GET", "/api/auth/user")).status).toBe(401);
   });
 
+  it("el colmadero crea y edita despachadores, solo en sus sucursales", async () => {
+    const principal = await nuevoColmado("Colmado D", "18090000011");
+    const suya = await nuevoColmado("Colmado D2", "18090000012", { negocioPrincipalId: principal.id });
+    const otraSucursal = await nuevoColmado("Colmado D3", "18090000013", { negocioPrincipalId: principal.id });
+    const dueno = await createUser(t.db, { idPrefix: "owner", email: "d@delywa.test", password: "duenoD-clave-123", firstName: "Dora", role: "colmado_owner", colmadoId: principal.id });
+    await t.db.update(colmados).set({ ownerUserId: dueno.id }).where(eq(colmados.id, principal.id));
+    const jefe = await createUser(t.db, { idPrefix: "staff", email: "jefe@delywa.test", password: "colmadero-clave-123", firstName: "Juan", role: "admin_pedidos", colmadoId: suya.id });
+    const otroJefe = await createUser(t.db, { idPrefix: "staff", email: "otrojefe@delywa.test", password: "colmadero-clave-456", firstName: "Otto", role: "admin_pedidos", colmadoId: suya.id });
+    const { setUserSucursalIds } = await import("../storage/users");
+    await setUserSucursalIds(t.db, jefe.id, [suya.id]);
+    await setUserSucursalIds(t.db, otroJefe.id, [suya.id]);
+
+    const j = t.client();
+    await j.request("POST", "/api/auth/login", { username: "jefe@delywa.test", password: "colmadero-clave-123" });
+    const vista = await j.request("GET", "/api/negocio/usuarios-sucursales");
+    expect(vista.status).toBe(200);
+    expect(vista.json.rolesPermitidos).toEqual(["operador_sucursal"]);
+    expect(vista.json.sucursales.map((s: any) => s.id)).toEqual([suya.id]);
+    // No ve al dueño ni a otros colmaderos.
+    expect(vista.json.usuarios.every((u: any) => u.role === "operador_sucursal")).toBe(true);
+
+    const despachador = { email: "desp@delywa.test", password: "despachador-clave-1", firstName: "Dani", role: "operador_sucursal" };
+    expect((await j.request("POST", "/api/negocio/usuarios", { ...despachador, role: "admin_pedidos", sucursalIds: [suya.id] })).status).toBe(403);
+    expect((await j.request("POST", "/api/negocio/usuarios", { ...despachador, sucursalIds: [otraSucursal.id] })).status).toBe(400);
+    const creado = await j.request("POST", "/api/negocio/usuarios", { ...despachador, sucursalIds: [suya.id] });
+    expect(creado.status).toBe(201);
+    // No puede ascenderlo ni moverlo a una sucursal que no es suya.
+    const base = { email: "desp@delywa.test", firstName: "Dani", sucursalIds: [suya.id] };
+    expect((await j.request("PATCH", `/api/negocio/usuarios/${creado.json.id}`, { ...base, role: "admin_pedidos" })).status).toBe(400);
+    expect((await j.request("PATCH", `/api/negocio/usuarios/${creado.json.id}`, { ...base, role: "operador_sucursal", sucursalIds: [otraSucursal.id] })).status).toBe(400);
+    expect((await j.request("PATCH", `/api/negocio/usuarios/${creado.json.id}`, { ...base, role: "operador_sucursal", firstName: "Daniela" })).status).toBe(200);
+    // No toca a otro colmadero ni al dueño.
+    expect((await j.request("PATCH", `/api/negocio/usuarios/${otroJefe.id}`, { email: "otrojefe@delywa.test", firstName: "Otto", role: "operador_sucursal", sucursalIds: [suya.id] })).status).toBe(404);
+    expect((await j.request("PATCH", `/api/negocio/usuarios/${dueno.id}`, { email: "d@delywa.test", firstName: "Dora", role: "colmado_owner", sucursalIds: [suya.id] })).status).toBe(404);
+  });
+
   it("cierra la sesión inactiva más de una hora si el negocio está cerrado", async () => {
     const cerrado = await nuevoColmado("Colmado C", "18090000004", { estaAbiertoManual: false });
     await createUser(t.db, { idPrefix: "owner", email: "c@delywa.test", password: "duenoC123", firstName: "Caro", role: "colmado_owner", colmadoId: cerrado.id });

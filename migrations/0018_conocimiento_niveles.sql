@@ -1,0 +1,2 @@
+ALTER TABLE `conocimiento_archivos` ADD `pais_id` integer REFERENCES paises(id) ON DELETE cascade;--> statement-breakpoint
+ALTER TABLE `conocimiento_archivos` ADD `colmado_id` integer REFERENCES colmados(id) ON DELETE cascade;

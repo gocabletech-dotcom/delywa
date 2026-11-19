@@ -7,6 +7,7 @@ import {
   Home, KeyRound, Lightbulb, Link2, ListChecks, LogIn, Map as MapIcon, MapPin, MessageCircle, Package, PauseCircle, Phone,
   Play, Route, Search, Settings, ShoppingCart, Smartphone, Store, Truck, Undo2, Users, BarChart3, HelpCircle, ZoomIn, ZoomOut,
   type LucideIcon,
+  Receipt, Lock, MessageCircleQuestion,
 } from "lucide-react";
 import { GUIA, type ClaveManual, type Icono, type Manual, type Modulo } from "@/manual/guia";
 import capturasJson from "@/manual/capturas.json";
@@ -20,6 +21,7 @@ const ICONOS: Record<Icono, LucideIcon> = {
   chat: MessageCircle, bike: Bike, phone: Phone, clipboard: ClipboardList, money: DollarSign, chart: BarChart3, users: Users,
   contact: Contact, gear: Settings, link: Link2, whatsapp: Smartphone, building: Building2, key: KeyRound, login: LogIn,
   route: Route, pause: PauseCircle, store: Store, cart: ShoppingCart, pin: MapPin, card: CreditCard, eye: Eye,
+  receipt: Receipt, lock: Lock, help: MessageCircleQuestion,
 };
 const Ic = ({ n, className = "w-5 h-5" }: { n: Icono; className?: string }) => {
   const C = ICONOS[n] ?? HelpCircle;

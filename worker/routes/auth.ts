@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
+import { codigosDeRespaldo, enlaceApp, nuevoSecreto, usarRespaldo, verificarCodigo } from "../lib/dos-pasos";
 import { eq } from "drizzle-orm";
-import { configuracionSistema } from "@shared/schema";
+import { configuracionSistema, users, type User } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { mensajeNegocioBloqueado, negocioBloqueado, requireAuth } from "../lib/auth";
@@ -82,6 +83,20 @@ authRoutes.post("/api/auth/login", async (c) => {
   // La contraseña es correcta, pero el negocio todavía no está aprobado (o se rechazó): no entra.
   const bloqueo = await negocioBloqueado(db, user);
   if (bloqueo) return c.json({ error: mensajeNegocioBloqueado(bloqueo), negocioEstado: bloqueo }, 403);
+  // Con la verificación en dos pasos activa, la contraseña sola no abre la sesión: falta el código.
+  if (user.dosPasosActivoAt) {
+    const session = c.var.session;
+    session.regenerate();
+    session.data = { dosPasosUserId: user.id, dosPasosDesde: Date.now() };
+    session.touch();
+    return c.json({ requiereDosPasos: true, message: "Escribe el código de 6 números de tu app de verificación." });
+  }
+  return completarEntrada(c, db, user);
+});
+
+/** Abre la sesión de alguien que ya pasó todas las verificaciones. */
+async function completarEntrada(c: Context<AppEnv>, db: ReturnType<typeof getDb>, user: User) {
+  const ip = c.req.header("CF-Connecting-IP") ?? "sin-ip";
   const session = c.var.session;
   session.regenerate();
   session.data = {
@@ -100,8 +115,94 @@ authRoutes.post("/api/auth/login", async (c) => {
     success: true,
     role: user.role,
     colmadoId: user.colmadoId,
-    message: `Bienvenido ${user.firstName || username}`,
+    message: `Bienvenido ${user.firstName || user.email}`,
   });
+}
+
+// ---------- Verificación en dos pasos (solo cuenta de plataforma) ----------
+
+/** Paso 2 del login: el código de la app o uno de respaldo. 5 minutos y 5 intentos para escribirlo. */
+authRoutes.post("/api/auth/dos-pasos/verificar", async (c) => {
+  const db = getDb(c.env.DB);
+  const session = c.var.session;
+  const userId = session.data.dosPasosUserId;
+  const desde = Number(session.data.dosPasosDesde) || 0;
+  if (!userId || Date.now() - desde > 5 * 60 * 1000) {
+    return c.json({ error: "Pasó demasiado tiempo. Escribe otra vez tu correo y contraseña.", reason: "dos_pasos_vencido" }, 401);
+  }
+  if (!(await permitirEvento(db, `dospasos:${userId}`, 5, 10 * 60 * 1000))) {
+    session.destroy();
+    return c.json({ error: "Demasiados códigos equivocados. Espera 10 minutos y entra otra vez.", reason: "dos_pasos_vencido" }, 429);
+  }
+  const user = await getUserById(db, userId);
+  if (!user?.dosPasosActivoAt || !user.dosPasosSecreto) { session.destroy(); return c.json({ error: "No autenticado" }, 401); }
+  const body = await c.req.json().catch(() => null);
+  const codigo = typeof body?.codigo === "string" ? body.codigo.trim() : "";
+  const paso = verificarCodigo(user.dosPasosSecreto, codigo, user.dosPasosUltimoPaso ?? null);
+  if (paso !== null) {
+    await db.update(users).set({ dosPasosUltimoPaso: paso }).where(eq(users.id, user.id));
+    return completarEntrada(c, db, user);
+  }
+  const restantes = usarRespaldo(user.dosPasosRespaldo, codigo);
+  if (restantes) {
+    await db.update(users).set({ dosPasosRespaldo: restantes }).where(eq(users.id, user.id));
+    await anotar(db, { userId: user.id, usuario: user.email, rol: user.role, accion: `Entró con un código de respaldo (le quedan ${restantes.length})`, ip: c.req.header("CF-Connecting-IP") ?? null });
+    return completarEntrada(c, db, user);
+  }
+  await anotar(db, { userId: user.id, usuario: user.email, rol: user.role, accion: "Código de verificación equivocado", ip: c.req.header("CF-Connecting-IP") ?? null });
+  return c.json({ error: "Ese código no es correcto. Mira la app y escribe el código que sale ahora." }, 400);
+});
+
+const soloPlataforma = (c: Context<AppEnv>) => c.var.user.role === "platform_admin";
+
+authRoutes.get("/api/auth/dos-pasos", requireAuth, (c) => c.json({
+  disponible: soloPlataforma(c),
+  activo: Boolean(c.var.user.dosPasosActivoAt),
+  activoDesde: c.var.user.dosPasosActivoAt ?? null,
+  respaldosRestantes: c.var.user.dosPasosRespaldo?.length ?? 0,
+}));
+
+/** Paso 1 para activarla: un secreto nuevo para escanear. Todavía no queda activa. */
+authRoutes.post("/api/auth/dos-pasos/iniciar", requireAuth, async (c) => {
+  if (!soloPlataforma(c)) return c.json({ error: "La verificación en dos pasos es solo para la cuenta de plataforma." }, 403);
+  if (c.var.user.dosPasosActivoAt) return c.json({ error: "Ya está activa." }, 400);
+  const db = getDb(c.env.DB);
+  const secreto = nuevoSecreto();
+  await db.update(users).set({ dosPasosSecreto: secreto, dosPasosUltimoPaso: null }).where(eq(users.id, c.var.user.id));
+  return c.json({ secreto, enlace: enlaceApp(secreto, c.var.user.email ?? "plataforma") });
+});
+
+/** Paso 2 para activarla: el primer código de la app. Devuelve los códigos de respaldo (una sola vez). */
+authRoutes.post("/api/auth/dos-pasos/activar", requireAuth, async (c) => {
+  if (!soloPlataforma(c)) return c.json({ error: "La verificación en dos pasos es solo para la cuenta de plataforma." }, 403);
+  const db = getDb(c.env.DB);
+  const user = c.var.user;
+  if (user.dosPasosActivoAt) return c.json({ error: "Ya está activa." }, 400);
+  if (!user.dosPasosSecreto) return c.json({ error: "Primero pulsa «Activar» para ver el código QR." }, 400);
+  const body = await c.req.json().catch(() => null);
+  const paso = verificarCodigo(user.dosPasosSecreto, String(body?.codigo ?? ""), null);
+  if (paso === null) return c.json({ error: "Ese código no es correcto. Escribe el que sale ahora en la app." }, 400);
+  const { codigos, huellas } = codigosDeRespaldo();
+  await db.update(users).set({ dosPasosActivoAt: new Date(), dosPasosUltimoPaso: paso, dosPasosRespaldo: huellas }).where(eq(users.id, user.id));
+  await anotar(db, { userId: user.id, usuario: user.email, rol: user.role, accion: "Activó la verificación en dos pasos", ip: c.req.header("CF-Connecting-IP") ?? null });
+  return c.json({ ok: true, codigosRespaldo: codigos });
+});
+
+/** Apagarla pide la contraseña y un código (de la app o de respaldo). */
+authRoutes.post("/api/auth/dos-pasos/desactivar", requireAuth, async (c) => {
+  const db = getDb(c.env.DB);
+  const user = c.var.user;
+  if (!user.dosPasosActivoAt || !user.dosPasosSecreto) return c.json({ error: "No está activa." }, 400);
+  if (!(await permitirEvento(db, `dospasos-off:${user.id}`, 5, 60 * 60 * 1000))) return c.json({ error: "Demasiados intentos. Espera una hora." }, 429);
+  const body = await c.req.json().catch(() => null);
+  const clave = typeof body?.password === "string" ? body.password : "";
+  const codigo = typeof body?.codigo === "string" ? body.codigo : "";
+  if (!user.password || !(await verifyPassword(clave, user.password))) return c.json({ error: "La contraseña no es correcta." }, 400);
+  const valido = verificarCodigo(user.dosPasosSecreto, codigo, user.dosPasosUltimoPaso ?? null) !== null || usarRespaldo(user.dosPasosRespaldo, codigo) !== null;
+  if (!valido) return c.json({ error: "Ese código no es correcto." }, 400);
+  await db.update(users).set({ dosPasosActivoAt: null, dosPasosSecreto: null, dosPasosRespaldo: null, dosPasosUltimoPaso: null }).where(eq(users.id, user.id));
+  await anotar(db, { userId: user.id, usuario: user.email, rol: user.role, accion: "Apagó la verificación en dos pasos", ip: c.req.header("CF-Connecting-IP") ?? null });
+  return c.json({ ok: true });
 });
 
 // ---------- ¿Olvidaste tu contraseña? ----------

@@ -155,6 +155,8 @@ export const colmados = sqliteTable("colmados", {
   estado: text("estado").notNull().default("activo"),
   ownerUserId: text("owner_user_id"),
   whatsappPhoneNumberId: text("whatsapp_phone_number_id"),
+  /** Usuario de Facebook (identificador de la app) que conectó el WhatsApp del negocio. Meta pide borrar por este dato. */
+  metaUsuarioId: text("meta_usuario_id"),
   whatsappAccessToken: secreto("whatsapp_access_token"),
   fechaSuscripcion: integer("fecha_suscripcion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
   tipoNegocio: text("tipo_negocio").notNull().default("colmado"),
@@ -1002,9 +1004,13 @@ export type InsertChatWebMensaje = z.infer<typeof insertChatWebMensajeSchema>;
 
 // ============ DATOS DE CONOCIMIENTO (por tipo de negocio) ============
 
+// Conocimiento del bot en tres niveles: toda la plataforma (sin país ni negocio), un país, o un negocio
+// (sus preguntas frecuentes). Al bot solo le llega la parte que tiene que ver con lo que escribió el cliente.
 export const conocimientoArchivos = sqliteTable("conocimiento_archivos", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   tipoNegocio: text("tipo_negocio").notNull(),
+  paisId: integer("pais_id").references(() => paises.id, { onDelete: "cascade" }),
+  colmadoId: integer("colmado_id").references(() => colmados.id, { onDelete: "cascade" }),
   nombre: text("nombre").notNull(),
   contenido: text("contenido").notNull(),
   fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),

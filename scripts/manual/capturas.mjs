@@ -287,7 +287,8 @@ try {
     ["repartidores", "/negocio/deliveries", '[data-testid^="delivery-card-"]'],
     ["cuadres", "/negocio/cuadres", '[data-testid="filter-cuadre-pendiente"]'],
     ["ventas", "/negocio/ventas", '[data-testid="ventas-hoy-total"]'],
-    ["reportes", "/negocio/reportes", "main table"],
+    ["reportes", "/negocio/reportes", '[data-testid="kpi-vendido"]'],
+    ["factura", "/negocio/facturacion-electronica", '[data-testid="fe-porcentaje"]'],
     ["clientes", "/negocio/clientes", '[data-testid^="cliente-"]'],
     ["empleados", "/negocio/empleados", "main"],
     ["whatsapp", "/negocio/whatsapp-config", "main"],
@@ -296,7 +297,12 @@ try {
     ["configuracion", "/negocio/settings", '[data-testid="seccion-datos"]'],
   ]) {
     await ir(neg, ruta, sel);
-    await ambas(neg, cap);
+    // Algunas pantallas se preparan antes de la foto para que se vea lo que explica el tema.
+    const prep = cap === "usuarios" ? (page) => verAlCentro(page, '[data-testid="descripcion-rol"]')
+      : cap === "factura" ? (page) => page.evaluate(() => { const b = document.querySelector('[data-testid="fe-paso-datos"] button[aria-expanded="true"]'); if (b) b.click(); })
+      : null;
+    if (prep) { await prep(neg); await espera(600); }
+    await ambas(neg, cap, prep ? async (page) => { await prep(page); await espera(600); } : undefined);
     if (cap === "cuadres") {
       await neg.evaluate(() => document.querySelector('[data-testid^="ver-cuadre-"]')?.click());
       await neg.waitForSelector('[data-testid^="input-monto-recibido-"]', { visible: true, timeout: 8000 }).catch(() => {});
@@ -304,6 +310,19 @@ try {
       await neg.keyboard.press("Escape");
     }
   }
+  // Preguntas frecuentes del bot (Configuración).
+  await neg.evaluate(() => document.querySelector('[data-testid="seccion-preguntas"]')?.click());
+  await espera(1200);
+  await ambas(neg, "preguntas", async (page) => {
+    await page.select('[data-testid="select-seccion-config"]', "preguntas").catch(() => {});
+    await espera(900);
+  });
+  // Mi contraseña (se abre desde el menú).
+  await ir(neg, "/negocio/dashboard", '[data-testid="button-mi-clave"]');
+  await neg.evaluate(() => [...document.querySelectorAll('[data-testid="button-mi-clave"]')].find((b) => b.offsetParent)?.click());
+  await neg.waitForSelector('[data-testid="input-clave-actual"]', { visible: true, timeout: 8000 }).catch(() => {});
+  await ambas(neg, "mi-clave");
+  await ir(neg, "/negocio/settings", '[data-testid="seccion-datos"]');
   await neg.evaluate(() => document.querySelector('[data-testid="seccion-chat"]')?.click());
   await espera(800);
   await ambas(neg, "chat-pagina", async (page) => {

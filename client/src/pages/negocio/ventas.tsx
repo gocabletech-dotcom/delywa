@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign,
@@ -19,8 +18,6 @@ import { useAuth } from "@/hooks/use-auth";
 import NegocioLayout from "@/components/negocio/NegocioLayout";
 
 export default function VentasPage() {
-  const [location] = useLocation();
-  const soloReportes = location === "/negocio/reportes";
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { isLoading: authLoading, isAuthenticated, logout } = useAuth();
@@ -67,15 +64,6 @@ export default function VentasPage() {
   });
 
   type ReporteSucursal = { sucursalId: number; sucursal: string; totalVentas: string; pedidosEntregados: number; pedidosCancelados: number };
-  const { data: reporteConsolidado } = useQuery<{ reportes: ReporteSucursal[] }>({
-    queryKey: ["reporte-consolidado"],
-    queryFn: async () => {
-      const res = await fetch("/api/negocio/reportes");
-      if (!res.ok) throw new Error("Error al cargar reporte consolidado");
-      return res.json();
-    },
-    enabled: isAuthenticated && puedeReporteConsolidado,
-  });
 
   const { data: colmadoData } = useQuery<{
     id: number;
@@ -151,10 +139,10 @@ export default function VentasPage() {
   );
 
   return (
-    <NegocioLayout title={soloReportes ? "Reportes" : "Ventas"} activeNav={soloReportes ? "reportes" : "ventas"} headerRight={headerRight}>
+    <NegocioLayout title="Ventas" activeNav="ventas" headerRight={headerRight}>
       <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">
         {/* Ventas de hoy: misma tarjeta blanca que el resto del portal */}
-        {!soloReportes && (
+        {(
           <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 mb-3 sm:mb-4" aria-label="Ventas de hoy">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -186,7 +174,7 @@ export default function VentasPage() {
         )}
 
         {/* Resumen del mes */}
-        {!soloReportes && (
+        {(
           <section className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4 mb-4 sm:mb-6" aria-label="Resumen del mes">
             <div className="col-span-2 sm:col-span-1 rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:p-5" data-testid="stat-total-mes">
               <p className="text-xs sm:text-sm text-slate-500">Vendido este mes</p>
@@ -204,41 +192,17 @@ export default function VentasPage() {
         )}
 
         {puedeReporteConsolidado && (
-          <Card className="border-none shadow-sm mb-4 sm:mb-6">
-            <CardHeader>
-              <CardTitle className="text-lg font-heading flex items-center gap-2">
-                <BarChart3 size={20} /> Reporte consolidado por sucursal
-              </CardTitle>
-              <p className="text-sm text-gray-500">Este resumen es de consulta. Selecciona una sucursal para realizar acciones operativas.</p>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead><tr className="border-b">
-                    <th className="text-left py-2 px-2 text-sm font-medium text-gray-500">Sucursal</th>
-                    <th className="text-right py-2 px-2 text-sm font-medium text-gray-500">Ventas</th>
-                    <th className="text-center py-2 px-2 text-sm font-medium text-gray-500">Entregados</th>
-                    <th className="text-center py-2 px-2 text-sm font-medium text-gray-500">Cancelados</th>
-                  </tr></thead>
-                  <tbody>{reporteConsolidado?.reportes.map((reporte) => (
-                    <tr key={reporte.sucursalId} className="border-b">
-                      <td className="py-2 px-2 font-medium">{reporte.sucursal}</td>
-                      <td className="py-2 px-2 text-right font-bold text-primary">{moneda}{parseFloat(reporte.totalVentas || "0").toLocaleString()}</td>
-                      <td className="py-2 px-2 text-center">{reporte.pedidosEntregados}</td>
-                      <td className="py-2 px-2 text-center">{reporte.pedidosCancelados}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+          <a href="/negocio/reportes" className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 mb-4 sm:mb-6 hover:bg-slate-50" data-testid="link-reportes">
+            <span className="flex items-center gap-2 text-[15px] font-semibold text-slate-800"><BarChart3 size={18} className="text-primary" /> Ver reportes por periodo y por sucursal</span>
+            <span aria-hidden="true" className="text-slate-400">›</span>
+          </a>
         )}
 
         {/* Historial de Ventas */}
-        {!soloReportes && <Card className="border-none shadow-sm">
+        <Card className="border-none shadow-sm border border-slate-200">
           <CardHeader>
             <CardTitle className="text-lg font-heading flex items-center gap-2">
-              <Calendar size={20} /> Historial de Ventas
+              <Calendar size={20} /> Últimos 30 días
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -252,55 +216,22 @@ export default function VentasPage() {
                 <p>No hay historial de ventas aún</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm font-medium text-gray-500">Fecha</th>
-                      <th className="text-right py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm font-medium text-gray-500">Total</th>
-                      <th className="text-center py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm font-medium text-gray-500">Entregados</th>
-                      <th className="text-center py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm font-medium text-gray-500 hidden sm:table-cell">Cancelados</th>
-                      <th className="text-center py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm font-medium text-gray-500 hidden sm:table-cell">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historialVentas.map((venta, index) => (
-                      <tr key={venta.fecha || index} className="border-b hover:bg-gray-50" data-testid={`venta-row-${index}`}>
-                        <td className="py-2 sm:py-3 px-2 sm:px-4">
-                          <span className="font-medium text-xs sm:text-sm">
-                            {new Date(venta.fecha + "T12:00:00").toLocaleDateString("es-DO", {
-                              weekday: "short",
-                              day: "numeric",
-                              month: "short",
-                            })}
-                          </span>
-                        </td>
-                        <td className="py-2 sm:py-3 px-2 sm:px-4 text-right font-bold text-primary text-xs sm:text-sm">
-                          {moneda}{parseFloat(venta.totalVentas || "0").toLocaleString()}
-                        </td>
-                        <td className="py-2 sm:py-3 px-2 sm:px-4 text-center">
-                          <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200 text-xs">
-                            {venta.pedidosEntregados || 0}
-                          </Badge>
-                        </td>
-                        <td className="py-2 sm:py-3 px-2 sm:px-4 text-center hidden sm:table-cell">
-                          <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">
-                            {venta.pedidosCancelados || 0}
-                          </Badge>
-                        </td>
-                        <td className="py-2 sm:py-3 px-2 sm:px-4 text-center hidden sm:table-cell">
-                          <Badge variant="outline" className="text-blue-600 border-blue-300 text-xs">
-                            Calculado
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="divide-y divide-slate-100" data-testid="lista-historial-ventas">
+                {historialVentas.map((venta, index) => (
+                  <li key={venta.fecha || index} className="flex items-center justify-between gap-3 py-3" data-testid={`venta-row-${index}`}>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900 capitalize">
+                        {new Date(venta.fecha + "T12:00:00").toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "short" })}
+                      </p>
+                      <p className="text-xs text-slate-500">{venta.pedidosEntregados || 0} entregados · {venta.pedidosCancelados || 0} cancelados</p>
+                    </div>
+                    <span className="font-bold text-slate-900 tabular-nums">{moneda}{parseFloat(venta.totalVentas || "0").toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
             )}
           </CardContent>
-        </Card>}
+        </Card>
       </main>
     </NegocioLayout>
   );
