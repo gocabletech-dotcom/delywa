@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { enlaceChat } from "@shared/subdominio";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ export default function ChatConfigPage() {
   });
 
   const baseUrl = window.location.origin;
-  const chatLink = colmado ? `${baseUrl}/pedir/${colmado.slug || colmado.id}` : "";
+  const chatLink = colmado ? (colmado.slug ? enlaceChat(colmado.slug, baseUrl) : `${baseUrl}/pedir/${colmado.id}`) : "";
   
   const mensajeAutorespuesta = colmado 
     ? `¡Hola! 👋 Gracias por escribirnos a ${colmado.nombre}.

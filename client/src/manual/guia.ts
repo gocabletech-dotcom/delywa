@@ -639,7 +639,7 @@ export const GUIA: Record<ClaveManual, Manual> = {
     icono: "cart",
     color: "#0F766E",
     intro: "Cómo pedirle al colmado por su chat: escribes como en WhatsApp, mandas tu ubicación, eliges cómo pagar y el colmado te confirma el total.",
-    url: "delywa.com/pedir/tu-colmado",
+    url: "tucolmado.delywa.com",
     empieza: ["entrar", "pedir", "ubicacion", "pagar", "seguimiento"],
     grupos: [["Pedir", ["entrar", "pedir", "ubicacion", "pagar"]], ["Después", ["seguimiento"]]],
     modulos: [

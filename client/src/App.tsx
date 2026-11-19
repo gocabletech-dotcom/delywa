@@ -58,6 +58,7 @@ const RecuperarPage = lazyConReintento(() => import("@/pages/recuperar"));
 const DeletionStatusPage = lazyConReintento(() => import("@/pages/deletion-status"));
 const DataDeletionPage = lazyConReintento(() => import("@/pages/data-deletion"));
 const ContactPage = lazyConReintento(() => import("@/pages/contact"));
+import { DOMINIO_BASE, subdominioDelHost } from "@shared/subdominio";
 const PedirPage = lazyConReintento(() => import("@/pages/pedir"));
 const MenuGraficoPage = lazyConReintento(() => import("@/pages/menu-grafico"));
 const RepartidorPage = lazyConReintento(() => import("@/pages/repartidor"));
@@ -74,7 +75,20 @@ function Cargando() {
   );
 }
 
+/** En colmadolasombrita.delywa.com solo vive el chat del colmado; lo demás va a delywa.com. */
+function RouterSubdominio({ sub }: { sub: string }) {
+  const ruta = window.location.pathname;
+  if (ruta === "/" || ruta === "/pedir" || ruta.startsWith("/pedir/")) {
+    return <Suspense fallback={<Cargando />}><PedirPage codigoFijo={sub} /></Suspense>;
+  }
+  const principal = window.location.hostname.endsWith(".localhost") ? `${window.location.protocol}//localhost${window.location.port ? `:${window.location.port}` : ""}` : `https://${DOMINIO_BASE}`;
+  window.location.replace(`${principal}${ruta}${window.location.search}${window.location.hash}`);
+  return <Cargando />;
+}
+
 function Router() {
+  const sub = typeof window !== "undefined" ? subdominioDelHost(window.location.hostname) : null;
+  if (sub) return <RouterSubdominio sub={sub} />;
   return (
     <Suspense fallback={<Cargando />}>
     <Switch>
@@ -90,7 +104,7 @@ function Router() {
       <Route path="/primer-acceso" component={PrimerAccesoPage} />
       
       {/* Chat Web Público (sin restricciones de Meta) */}
-      <Route path="/pedir/:codigo" component={PedirPage} />
+      <Route path="/pedir/:codigo">{() => <PedirPage />}</Route>
       <Route path="/sucursal/:slug" component={SucursalPage} />
       
       {/* Portal Web Repartidores */}

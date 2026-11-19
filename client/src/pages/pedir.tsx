@@ -22,6 +22,8 @@ const ESTADOS: Record<string, string> = {
   entregado: "Entregado ✅", cancelado: "Cancelado", retorno: "Devuelto",
 };
 
+/** delywa.com (o localhost con su puerto, al probar en la computadora). */
+const paginaPrincipal = () => window.location.hostname.endsWith(".localhost") ? `${window.location.protocol}//localhost${window.location.port ? `:${window.location.port}` : ""}/` : "https://delywa.com/";
 const claveLocal = (codigo: string) => `delywa-chat:${codigo}`;
 function leerGuardado(codigo: string): Guardado | null {
   try { return JSON.parse(localStorage.getItem(claveLocal(codigo)) || "null"); } catch { return null; }
@@ -38,8 +40,10 @@ function Texto({ t }: { t: string }) {
   ))}</>;
 }
 
-export default function PedirPage() {
-  const { codigo = "" } = useParams<{ codigo: string }>();
+export default function PedirPage({ codigoFijo }: { codigoFijo?: string } = {}) {
+  const params = useParams<{ codigo: string }>();
+  // En el subdominio (colmadolasombrita.delywa.com) el colmado sale de la dirección.
+  const codigo = codigoFijo ?? params.codigo ?? "";
   const [info, setInfo] = useState<Info | null>(null);
   const [noExiste, setNoExiste] = useState(false);
   const [sesion, setSesion] = useState<Guardado | null>(() => leerGuardado(codigo));
@@ -65,8 +69,12 @@ export default function PedirPage() {
   useEffect(() => {
     fetch(`/api/chat-colmado/${encodeURIComponent(codigo)}/info`)
       .then(async (r) => { if (!r.ok) throw new Error(); setInfo(await r.json()); })
-      .catch(() => setNoExiste(true));
-  }, [codigo]);
+      .catch(() => {
+        // Subdominio que no es de ningún colmado: a la página principal.
+        if (codigoFijo) { window.location.replace(paginaPrincipal()); return; }
+        setNoExiste(true);
+      });
+  }, [codigo, codigoFijo]);
 
   /** 10 minutos sin actividad: vuelve a la pantalla de nombre y teléfono. */
   const cerrarPorInactividad = useCallback(() => {

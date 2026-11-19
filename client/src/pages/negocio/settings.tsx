@@ -1,4 +1,5 @@
 import { normalizeBusinessColor } from "@/lib/temaNegocio";
+import { enlaceChat } from "@shared/subdominio";
 import { PreguntasFrecuentes } from "@/components/negocio/PreguntasFrecuentes";
 import { prepararLogo } from "@/lib/imagen";
 import { useState, useEffect, useRef } from "react";
@@ -593,7 +594,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-2">
                   <Input
                     readOnly
-                    value={`${window.location.origin}/pedir/${colmado?.slug || "..."}`}
+                    value={colmado?.slug ? enlaceChat(colmado.slug, window.location.origin) : "..."}
                     className="bg-gray-50 font-mono text-sm border-green-200"
                     data-testid="input-chat-web-link"
                   />
@@ -601,7 +602,7 @@ export default function SettingsPage() {
                     type="button"
                     className="bg-green-600 hover:bg-green-700 text-white"
                     onClick={() => {
-                      const link = `${window.location.origin}/pedir/${colmado?.slug}`;
+                      const link = enlaceChat(colmado?.slug, window.location.origin);
                       navigator.clipboard.writeText(link);
                       toast({
                         title: "Link copiado",
@@ -617,7 +618,7 @@ export default function SettingsPage() {
                     type="button"
                     variant="outline"
                     className="border-green-300"
-                    onClick={() => window.open(`/pedir/${colmado?.slug}`, "_blank")}
+                    onClick={() => window.open(enlaceChat(colmado?.slug, window.location.origin), "_blank")}
                     data-testid="button-preview-chat"
                   >
                     <ExternalLink className="w-4 h-4" />
@@ -626,7 +627,7 @@ export default function SettingsPage() {
 
                 {/* QR Code */}
                 {colmado?.slug && (() => {
-                  const link = `${window.location.origin}/pedir/${colmado.slug}`;
+                  const link = enlaceChat(colmado.slug, window.location.origin);
                   return (
                     <div className="mt-4 flex flex-col items-center gap-3 pt-4 border-t border-green-100">
                       <p className="text-xs font-medium text-green-800 self-start">Código QR de tu tienda:</p>

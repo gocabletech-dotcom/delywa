@@ -1,4 +1,5 @@
-import { and, desc, eq, not, or } from "drizzle-orm";
+import { and, desc, eq, not, or, sql } from "drizzle-orm";
+import { SUBDOMINIOS_RESERVADOS, subdominioDeSlug } from "@shared/subdominio";
 import {
   colmados, paises, users, menuPlantillas, menuPlantillaItems, menuProductos,
   type Colmado, type Pais, type TecnologiasHabilitadas,
@@ -95,10 +96,13 @@ export function generateSlug(nombre: string): string {
 }
 
 export async function ensureUniqueSlug(db: Db, baseSlug: string, excludeId?: number): Promise<string> {
-  const base = baseSlug || "negocio";
+  // El slug sin guiones es el subdominio (colmadolasombrita.delywa.com): también tiene que ser único y no reservado.
+  let base = (baseSlug || "negocio").slice(0, 60).replace(/-+$/g, "");
+  if (SUBDOMINIOS_RESERVADOS.has(subdominioDeSlug(base))) base = `${base}-colmado`;
   let slug = base;
   for (let counter = 1; ; counter++) {
-    const where = excludeId ? and(eq(colmados.slug, slug), not(eq(colmados.id, excludeId))) : eq(colmados.slug, slug);
+    const mismo = or(eq(colmados.slug, slug), eq(sql`replace(${colmados.slug}, '-', '')`, subdominioDeSlug(slug)));
+    const where = excludeId ? and(mismo, not(eq(colmados.id, excludeId))) : mismo;
     const [existing] = await db.select({ id: colmados.id }).from(colmados).where(where).limit(1);
     if (!existing) return slug;
     slug = `${base}-${counter}`;

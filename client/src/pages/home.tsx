@@ -244,7 +244,7 @@ export default function Home() {
           <h2 style={TITULO} className="mt-2 font-bold text-[34px] md:text-[50px] leading-[1.08]">Pide como siempre le ha pedido al colmado</h2>
           <p className="mt-4 text-[#4A524E]">Escribe "una fría", "50 pesos de ajo" o manda una nota de voz. El bot lo anota tal cual, sin cambiarle las palabras. Si algo no entiende, te pasa el mensaje a ti.</p>
           <p className="mt-4 text-[#4A524E]">Comparte tu enlace en tu estado de WhatsApp, en Instagram o con un letrero en el mostrador:</p>
-          <p className="mt-2.5 inline-block px-4 py-2.5 rounded-[14px] bg-[#FFF4E4] font-extrabold break-all">delywa.com/pedir/tu-colmado</p>
+          <p className="mt-2.5 inline-block px-4 py-2.5 rounded-[14px] bg-[#FFF4E4] font-extrabold break-all">tucolmado.delywa.com</p>
         </div>
       </section>
 

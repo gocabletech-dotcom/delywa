@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { enlaceChat } from "@shared/subdominio";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { QRCodeCanvas } from "qrcode.react";
@@ -385,7 +386,7 @@ export default function ConversacionesPage() {
   };
 
   const chatWebUrl = colmadoData?.slug
-    ? `${window.location.origin}/pedir/${colmadoData.slug}`
+    ? enlaceChat(colmadoData.slug, window.location.origin)
     : null;
 
   const handleCopyLink = useCallback(() => {

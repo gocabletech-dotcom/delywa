@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
+import { subdominioDeSlug } from "@shared/subdominio";
 import { clienteAparatos, colmados, type Colmado } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
@@ -21,6 +22,12 @@ export const menuGraficoRoutes = new Hono<AppEnv>();
 export async function getColmadoByCodigo(db: Db, codigo: string): Promise<Colmado | undefined> {
   const [porSlug] = await db.select().from(colmados).where(eq(colmados.slug, codigo.toLowerCase()));
   if (porSlug) return porSlug;
+  // Subdominio: colmadolasombrita.delywa.com → slug sin guiones.
+  const compacto = subdominioDeSlug(codigo);
+  if (compacto && compacto === codigo.toLowerCase()) {
+    const [porSub] = await db.select().from(colmados).where(eq(sql`replace(${colmados.slug}, '-', '')`, compacto)).orderBy(asc(colmados.id)).limit(1);
+    if (porSub) return porSub;
+  }
   const legado = codigo.match(/^COLMADO(\d+)$/i);
   if (legado) {
     const c = await getColmado(db, Number(legado[1]));
