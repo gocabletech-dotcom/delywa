@@ -10,7 +10,7 @@ import { requireAuth, requireBusinessAccess } from "../lib/auth";
 import { ADMINISTRADORES, esRepartidorDelPedido, nombreUsuario, puedeOperar } from "../lib/permisos";
 import { cerrarConversacionDelPedido, escapeHtml, notificarCliente, urlPublica, whatsappDisponible } from "../lib/mensajeria";
 import { needsSavedAddress } from "../lib/deliveryAddress";
-import { cambiarEstadoPedido, conDireccionUtil, coordenadasDelPedido } from "../lib/pedido-servicio";
+import { cambiarEstadoPedido, conDireccionUtil, coordenadasDelPedido, fuentesDeDireccion } from "../lib/pedido-servicio";
 import { calcularMetricasDistanciaPedido, parseCoordinatePair, type CoordinatePair } from "../lib/orderDistance";
 import { calcularEtaSencilla, extraerCoordenadas, geocodificarDireccion } from "../lib/routeOptimizer";
 import { soloDigitos } from "../lib/telefono";
@@ -71,17 +71,16 @@ pedidoRoutes.get("/api/colmados/:id/pedidos", requireAuth, requireBusinessAccess
     if (recientes) return getPedidosRecientes(db, colmadoId, new Date(inicioDiaLocal(zona).getTime() - 24 * 3600_000));
     return getPedidosByColmado(db, colmadoId);
   };
-  const [lista, colmado, clientes, conversaciones] = await Promise.all([
+  const [lista, colmado, direcciones] = await Promise.all([
     pedir(),
     colmadoPrevio ? Promise.resolve(colmadoPrevio) : getColmado(db, colmadoId),
-    getClientesByColmado(db, colmadoId),
-    db.select().from(whatsappConversaciones).where(eq(whatsappConversaciones.colmadoId, colmadoId)),
+    fuentesDeDireccion(db, colmadoId),
   ]);
   const raiz = colmado ? colmado.negocioPrincipalId || colmado.id : colmadoId;
   const accesibles = await Promise.all((await getAccessibleColmadoIds(db, c.var.user)).map((id) => getColmado(db, id)));
   const sucursales = accesibles.filter((s): s is Colmado => !!s && (s.negocioPrincipalId || s.id) === raiz);
-  const clientePorTel = new Map(clientes.map((x) => [soloDigitos(x.whatsappNumero), x]));
-  const convPorTel = new Map(conversaciones.map((x) => [soloDigitos(x.clienteWhatsapp), x]));
+  const clientePorTel = direcciones.clientes;
+  const convPorTel = direcciones.conversaciones;
 
   // Como mucho se geocodifica una dirección por carga para no frenar el panel.
   let geocodeIntentado = false;
@@ -195,13 +194,10 @@ pedidoRoutes.post("/api/pedidos/:id/fusionar/:otroId", requireAuth, async (c) =>
   if (!(await puedeOperar(db, c.var.user, a.colmadoId))) return c.json({ error: "Sin permiso" }, 403);
   if (a.colmadoId !== b.colmadoId) return c.json({ error: "Los pedidos pertenecen a distintos negocios" }, 400);
 
-  const [clientes, conversaciones] = await Promise.all([
-    getClientesByColmado(db, a.colmadoId),
-    db.select().from(whatsappConversaciones).where(eq(whatsappConversaciones.colmadoId, a.colmadoId)),
-  ]);
+  const direcciones = await fuentesDeDireccion(db, a.colmadoId);
   const fuentes = (p: Pedido) => ({
-    cliente: clientes.find((x) => soloDigitos(x.whatsappNumero) === soloDigitos(p.clienteWhatsapp)),
-    conversacion: conversaciones.find((x) => soloDigitos(x.clienteWhatsapp) === soloDigitos(p.clienteWhatsapp)),
+    cliente: direcciones.clientes.get(soloDigitos(p.clienteWhatsapp)),
+    conversacion: direcciones.conversaciones.get(soloDigitos(p.clienteWhatsapp)),
   });
   const pa = conDireccionUtil(a, fuentes(a));
   const pb = conDireccionUtil(b, fuentes(b));

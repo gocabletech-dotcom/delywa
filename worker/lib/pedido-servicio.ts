@@ -1,6 +1,6 @@
 import { enlaceSeguimiento } from "./seguimiento";
 import { eq } from "drizzle-orm";
-import { whatsappConversaciones, type Colmado, type Pedido } from "@shared/schema";
+import { clientes, whatsappConversaciones, type Colmado, type Pedido } from "@shared/schema";
 import { transferenciaSinAprobar } from "./transferencia";
 import { cerrarParadasDelPedido } from "../storage/deliveries";
 import type { Env } from "../env";
@@ -11,7 +11,6 @@ import { geocodificarDireccion } from "./routeOptimizer";
 import { soloDigitos } from "./telefono";
 import { cerrarConversacionDelPedido, notificarCliente, urlPublica } from "./mensajeria";
 import { enrichColmadoWithMoneda, getColmado, getColmadoTimezone } from "../storage/colmados";
-import { getClientesByColmado } from "../storage/conversaciones";
 import {
   claimTransicionEstado, getDeliveryById, getPedidoById, registrarEnVentas, updatePedidoCoordenadas, updatePedidoEstado,
 } from "../storage/pedidos";
@@ -36,18 +35,26 @@ export function conDireccionUtil<T extends Pedido>(pedido: T, fuentes: { cliente
   return { ...pedido, clienteUbicacion: d.direccion, clienteLatitud: d.latitud, clienteLongitud: d.longitud };
 }
 
+/** Direcciones guardadas de los clientes de un negocio, por teléfono. Solo las 4 columnas que hacen falta:
+ *  la conversación completa trae el historial del bot y pesaba mucho en cada carga del panel. */
+export async function fuentesDeDireccion(db: Db, colmadoId: number) {
+  const [cli, conv] = await Promise.all([
+    db.select({ tel: clientes.whatsappNumero, direccionTexto: clientes.direccionTexto, latitud: clientes.latitud, longitud: clientes.longitud })
+      .from(clientes).where(eq(clientes.colmadoId, colmadoId)),
+    db.select({ tel: whatsappConversaciones.clienteWhatsapp, direccionTexto: whatsappConversaciones.direccionTexto, latitud: whatsappConversaciones.latitud, longitud: whatsappConversaciones.longitud })
+      .from(whatsappConversaciones).where(eq(whatsappConversaciones.colmadoId, colmadoId)),
+  ]);
+  return {
+    clientes: new Map<string, Fuente>(cli.map((x) => [soloDigitos(x.tel), x])),
+    conversaciones: new Map<string, Fuente>(conv.map((x) => [soloDigitos(x.tel), x])),
+  };
+}
+
 /** Completa la dirección de varios pedidos con dos consultas por negocio, no dos por pedido. */
 export async function enriquecerDirecciones<T extends Pedido>(db: Db, lista: T[]): Promise<T[]> {
   const porNegocio = new Map<number, { clientes: Map<string, Fuente>; conversaciones: Map<string, Fuente> }>();
   for (const colmadoId of new Set(lista.map((p) => p.colmadoId))) {
-    const [clientes, conversaciones] = await Promise.all([
-      getClientesByColmado(db, colmadoId),
-      db.select().from(whatsappConversaciones).where(eq(whatsappConversaciones.colmadoId, colmadoId)),
-    ]);
-    porNegocio.set(colmadoId, {
-      clientes: new Map(clientes.map((x) => [soloDigitos(x.whatsappNumero), x])),
-      conversaciones: new Map(conversaciones.map((x) => [soloDigitos(x.clienteWhatsapp), x])),
-    });
+    porNegocio.set(colmadoId, await fuentesDeDireccion(db, colmadoId));
   }
   return lista.map((p) => {
     const tel = soloDigitos(p.clienteWhatsapp);

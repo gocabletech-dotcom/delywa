@@ -20,6 +20,10 @@ export function consultaAfectada(query: Pick<Query, "queryKey">, temas: Tema[]):
   return temas.some((t) => t !== "todo" && PATRONES[t].test(clave));
 }
 
+/** Espera para juntar avisos seguidos y tiempo mínimo entre dos recargas. */
+export const RECARGA_JUNTAR_MS = 300;
+export const RECARGA_MINIMA_MS = 3_000;
+
 export function useTiempoReal(colmadoId: number | null | undefined) {
   const queryClient = useQueryClient();
 
@@ -32,7 +36,23 @@ export function useTiempoReal(colmadoId: number | null | undefined) {
     let cerrado = false;
     let fallosSeguidos = 0;
 
-    const recargar = (temas: Tema[]) => queryClient.invalidateQueries({ predicate: (q) => consultaAfectada(q, temas) });
+    // Los avisos se juntan: como mucho una recarga cada RECARGA_MINIMA_MS. Así, si algo avisara en ciclo
+    // (como pasó el 13-nov con las distancias), el panel no puede saturar la base de datos.
+    let pendientes = new Set<Tema>();
+    let ultima = 0;
+    let temporizador: ReturnType<typeof setTimeout> | undefined;
+    const vaciar = () => {
+      temporizador = undefined;
+      ultima = Date.now();
+      const temas = [...pendientes];
+      pendientes = new Set();
+      void queryClient.invalidateQueries({ predicate: (q) => consultaAfectada(q, temas) });
+    };
+    const recargar = (temas: Tema[]) => {
+      temas.forEach((t) => pendientes.add(t));
+      if (temporizador) return;
+      temporizador = setTimeout(vaciar, Math.max(RECARGA_JUNTAR_MS, ultima + RECARGA_MINIMA_MS - Date.now()));
+    };
 
     const conectar = () => {
       const protocolo = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -69,6 +89,7 @@ export function useTiempoReal(colmadoId: number | null | undefined) {
       cerrado = true;
       clearInterval(ping);
       clearTimeout(reintento);
+      clearTimeout(temporizador);
       ws?.close(1000);
     };
   }, [colmadoId, queryClient]);
