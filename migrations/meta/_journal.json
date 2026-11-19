@@ -141,6 +141,13 @@
       "when": 1795049166355,
       "tag": "0019_dos_pasos",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1795053016773,
+      "tag": "0020_asistente_pagina",
+      "breakpoints": true
     }
   ]
 }

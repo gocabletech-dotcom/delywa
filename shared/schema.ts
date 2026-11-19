@@ -986,6 +986,37 @@ export const botNoEntendidos = sqliteTable("bot_no_entendidos", {
   fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (t) => [index("bot_no_entendidos_fecha_idx").on(t.fecha)]);
 
+// Asistente del chat de la página principal (como el de FoodPOS). Las conversaciones se guardan 90 días.
+const ahoraMs = sql`(cast(unixepoch('subsec') * 1000 as integer))`;
+export const asistenteConversaciones = sqliteTable("asistente_conversaciones", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  token: text("token").notNull().unique(),
+  mensajes: integer("mensajes").notNull().default(0),
+  soporte: integer("soporte", { mode: "boolean" }).notNull().default(false),
+  convirtio: integer("convirtio", { mode: "boolean" }).notNull().default(false),
+  creado: integer("creado", { mode: "timestamp_ms" }).default(ahoraMs).notNull(),
+  visto: integer("visto", { mode: "timestamp_ms" }),
+}, (t) => [index("asistente_conv_creado_idx").on(t.creado)]);
+
+export const asistenteMensajes = sqliteTable("asistente_mensajes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  convId: integer("conv_id").notNull().references(() => asistenteConversaciones.id, { onDelete: "cascade" }),
+  rol: text("rol").notNull(), // persona | asistente
+  texto: text("texto").notNull(),
+  tema: text("tema"), // null = no supo contestar
+  creado: integer("creado", { mode: "timestamp_ms" }).default(ahoraMs).notNull(),
+}, (t) => [index("asistente_msj_conv_idx").on(t.convId), index("asistente_msj_creado_idx").on(t.creado)]);
+
+/** Respuestas que la plataforma le enseña al asistente. */
+export const asistenteRespuestas = sqliteTable("asistente_respuestas", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  pregunta: text("pregunta").notNull(),
+  respuesta: text("respuesta").notNull(),
+  activo: integer("activo", { mode: "boolean" }).notNull().default(true),
+  usos: integer("usos").notNull().default(0),
+  creado: integer("creado", { mode: "timestamp_ms" }).default(ahoraMs).notNull(),
+});
+
 export const insertChatWebSesionSchema = createInsertSchema(chatWebSesiones).omit({
   id: true,
   fechaCreacion: true,

@@ -1,6 +1,6 @@
 import { and, eq, gt, lt, sql } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
-import { avisosEnviados, bitacora, botNoEntendidos, errores, users } from "@shared/schema";
+import { avisosEnviados, bitacora, asistenteConversaciones, botNoEntendidos, errores, users } from "@shared/schema";
 import type { AppEnv, Env } from "../env";
 import { getDb, type Db } from "../db";
 import { correoListo, enviarCorreo, escHtml, plantillaCorreo } from "./correo";
@@ -115,5 +115,7 @@ export async function limpiarSeguridad(env: Env): Promise<void> {
     db.delete(bitacora).where(lt(bitacora.fecha, new Date(Date.now() - 180 * dia))),
     db.delete(avisosEnviados).where(and(lt(avisosEnviados.fecha, new Date(Date.now() - 120 * dia)))),
     db.delete(botNoEntendidos).where(lt(botNoEntendidos.fecha, new Date(Date.now() - 60 * dia))),
+    // Conversaciones del asistente de la página: 90 días (sus mensajes se borran en cascada).
+    db.delete(asistenteConversaciones).where(lt(asistenteConversaciones.creado, new Date(Date.now() - 90 * dia))),
   ]);
 }

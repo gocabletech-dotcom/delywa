@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Loader2, Store, Users, Package, DollarSign, Settings, LogOut, MessageSquare, Save, X, Plus, Edit, ChevronDown, ChevronRight, MapPin, Phone, Trash2, Building2, Percent, Crown, Image, Video, Download, Tag, FileText, LayoutGrid, BookOpen, Sparkles, Check, AlertCircle, Ban, Play, Truck, Brain, Globe, KeyRound, ShieldCheck, Receipt } from "lucide-react";
 import { SeguridadSection } from "@/components/admin/SeguridadSection";
+import { AsistentePaginaSection } from "@/components/admin/AsistentePaginaSection";
 import { IntegracionesSection } from "@/components/admin/IntegracionesSection";
 import { SolicitudesNegocioSection } from "@/components/admin/SolicitudesNegocioSection";
 import { FacturacionElectronicaSection } from "@/components/admin/FacturacionElectronicaSection";
@@ -200,7 +201,7 @@ function whatsappPlaceholder(pais: { codigo: string; prefijoCelular: string } | 
   return `Ej: ${prefix}${getPhoneExample(pais.codigo)}`;
 }
 
-type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones" | "solicitudes" | "seguridad" | "facturacion";
+type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones" | "solicitudes" | "seguridad" | "facturacion" | "asistente-pagina";
 
 const tiposNegocioLocal = [
   { value: "colmado", label: "Colmado" },
@@ -3361,6 +3362,7 @@ export default function PlatformAdminPage() {
     { id: "paises" as SectionType, label: "Países", icon: Globe },
     { id: "planes" as SectionType, label: "Planes", icon: Crown },
     { id: "solicitudes" as SectionType, label: "Solicitudes", icon: Check },
+    { id: "asistente-pagina" as SectionType, label: "Asistente de la página", icon: MessageSquare },
     { id: "negocios" as SectionType, label: "Negocios", icon: Store },
     { id: "facturacion" as SectionType, label: "Factura electrónica", icon: Receipt },
     { id: "integraciones" as SectionType, label: "Integraciones", icon: KeyRound },
@@ -3469,6 +3471,7 @@ export default function PlatformAdminPage() {
               {activeSection === "solicitudes" && <SolicitudesNegocioSection />}
               {activeSection === "facturacion" && <FacturacionElectronicaSection />}
               {activeSection === "seguridad" && <SeguridadSection />}
+              {activeSection === "asistente-pagina" && <AsistentePaginaSection />}
             </>
           )}
         </main>

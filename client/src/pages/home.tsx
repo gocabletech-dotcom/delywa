@@ -4,6 +4,7 @@ import { ArrowRight, Check, Menu, X } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { RegistroNegocioForm } from "@/components/RegistroNegocioForm";
 import ComoPide from "@/components/landing/ComoPide";
+import AsistentePagina from "@/components/landing/AsistentePagina";
 import { CasaCliente, ColmadoDentro, ColmadoFrente, DeliveryMotor, IconoMoto } from "@/components/landing/Ilustraciones";
 
 // Página principal de delywa.com. Diseño aprobado por el dueño (2026-11-14): fondo claro y cálido,
@@ -290,6 +291,7 @@ export default function Home() {
           </span>
         </div>
       </footer>
+      <AsistentePagina />
     </div>
   );
 }
