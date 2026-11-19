@@ -35,8 +35,9 @@ export const PASOS_CERTIFICACION: DefinicionPaso[] = [
     titulo: "Datos fiscales del negocio",
     explicacion: "Los datos tal como están registrados en la DGII. Se usan en cada factura electrónica.",
     instrucciones: [
-      "Escribe el RNC (9 números) o la cédula (11 números) con que el negocio está inscrito en la DGII.",
-      "Escribe la razón social exactamente como aparece en la DGII y la dirección fiscal.",
+      "Escribe el RNC (9 números) o la cédula (11 números) con que el negocio está inscrito en la DGII y toca «Verificar con la DGII».",
+      "Si está activo, la razón social se llena sola, como en la DGII. Si sale suspendido, en cese o dado de baja, primero regulariza tu situación en la DGII.",
+      "Escribe la dirección fiscal.",
       "Elige el tipo de contribuyente. Si no lo sabes, entra a la Oficina Virtual (OFV) o pregúntale a tu contador.",
     ],
   },

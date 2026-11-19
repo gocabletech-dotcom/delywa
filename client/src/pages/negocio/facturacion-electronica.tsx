@@ -16,6 +16,8 @@ type Vista = {
   colmadoId: number;
   datos: Record<string, string>;
   identificacion: "ok" | "revisar" | "largo" | null;
+  dgii: { estado: string; estadoTexto: string | null; actividad: string | null; regimen: string | null; padronFecha: string | null; consultadoAt: string | null; mensaje: string; bloquea: boolean } | null;
+  verificacion?: { resultado: string; mensaje: string };
   certificado: { estado: string; entidad: string; titular: string; vence: string; subido: boolean; diasParaVencer: number | null };
   pasos: Record<ClavePaso, { estado: Estado; fecha?: string | null; nota?: string | null }>;
   avance: { listos: number; total: number; porcentaje: number; siguiente: ClavePaso | null };
@@ -73,10 +75,10 @@ export default function FacturacionElectronicaPage() {
       const nueva = await pedir(url, metodo, cuerpo);
       qc.setQueryData(["fe-certificacion", colmadoId], nueva);
       toast({ title: aviso });
-      return true;
+      return nueva;
     } catch (e) {
       toast({ title: "No se pudo guardar", description: e instanceof Error ? e.message : "", variant: "destructive" });
-      return false;
+      return null;
     }
   };
 
@@ -112,6 +114,12 @@ export default function FacturacionElectronicaPage() {
                 ) : (
                   <p className="mt-4 flex items-center gap-2 text-green-800 font-semibold"><ShieldCheck className="w-5 h-5" /> Tu negocio está autorizado y tiene secuencias. Ya puede emitir facturas electrónicas.</p>
                 )}
+                {v.dgii?.bloquea && (
+                  <div className="mt-4 flex gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-[15px] text-red-900" role="alert" data-testid="fe-aviso-dgii">
+                    <AlertTriangle className="w-5 h-5 shrink-0 text-red-700" aria-hidden="true" />
+                    <div><b>Tu {v.datos.rnc.length === 11 ? "cédula" : "RNC"} no está activo en la DGII{v.dgii.estadoTexto ? ` (${v.dgii.estadoTexto})` : ""}.</b> {v.dgii.mensaje}</div>
+                  </div>
+                )}
                 {v.plazo.obligado && !v.autorizadoAt && (
                   <div className="mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="note">
                     <AlertTriangle className="w-5 h-5 shrink-0 text-amber-700" aria-hidden="true" />
@@ -142,7 +150,7 @@ export default function FacturacionElectronicaPage() {
 
 type PropsPaso = {
   def: DefinicionPaso; n: number; v: Vista; abierto: boolean; alternar: () => void; base: string; esDueno: boolean;
-  guardar: (url: string, metodo: string, cuerpo?: unknown, aviso?: string) => Promise<boolean>;
+  guardar: (url: string, metodo: string, cuerpo?: unknown, aviso?: string) => Promise<Vista | null>;
 };
 
 function Paso({ def, n, v, abierto, alternar, base, guardar, esDueno }: PropsPaso) {
@@ -204,21 +212,58 @@ function Campo({ id, etiqueta, children, ayuda }: { id: string; etiqueta: string
 function FormDatos({ v, base, guardar }: { v: Vista; base: string; guardar: PropsPaso["guardar"] }) {
   const [d, setD] = useState(v.datos);
   const [ocupado, setOcupado] = useState(false);
+  const [verificando, setVerificando] = useState(false);
+  const [aviso, setAviso] = useState<{ resultado: string; mensaje: string } | null>(null);
   const cambia = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setD({ ...d, [k]: e.target.value });
   const revision = d.rnc ? revisarIdentificacion(d.rnc) : null;
+  const soloNumeros = (x: string) => x.replace(/\D/g, "");
+  const mismoRnc = soloNumeros(d.rnc) === soloNumeros(v.datos.rnc);
+  // Verificado en la DGII (y es el mismo número): la razón social es la de la DGII.
+  const razonFija = mismoRnc && !!v.dgii && v.dgii.estado !== "no_existe";
+  const despues = (nueva: Vista | null) => {
+    if (!nueva) return;
+    setD((x) => ({ ...x, rnc: nueva.datos.rnc, razonSocial: nueva.datos.razonSocial, nombreComercial: nueva.datos.nombreComercial || x.nombreComercial }));
+    if (nueva.verificacion) setAviso(nueva.verificacion);
+  };
+  const verificar = async () => {
+    setVerificando(true); setAviso(null);
+    despues(await guardar(`${base}/verificar-rnc`, "POST", { rnc: d.rnc }, "Consulta hecha en la DGII"));
+    setVerificando(false);
+  };
+  const estado = aviso?.resultado ?? (mismoRnc ? v.dgii?.estado : undefined);
+  const mensaje = aviso?.mensaje ?? (mismoRnc ? v.dgii?.mensaje : undefined);
+  const colorAviso = estado === "activo" ? "border-green-200 bg-green-50 text-green-900" : estado === "no_disponible" ? "border-slate-200 bg-slate-50 text-slate-800" : "border-red-200 bg-red-50 text-red-900";
   return (
-    <form className="grid gap-3 sm:grid-cols-2" onSubmit={async (e) => { e.preventDefault(); setOcupado(true); await guardar(`${base}/datos`, "PUT", { ...v.datos, ...d }, "Datos fiscales guardados"); setOcupado(false); }}>
-      <Campo id="fe-rnc" etiqueta="RNC o cédula" ayuda={revision === "revisar" ? <span className="text-amber-700">El número no pasa la verificación de la DGII. Revísalo.</span> : revision === "largo" ? "El RNC tiene 9 números y la cédula 11." : "Solo los números; puedes escribirlo con guiones."}>
-        <input id="fe-rnc" className={campo} inputMode="numeric" value={d.rnc} onChange={cambia("rnc")} placeholder="1-01-23456-7" data-testid="fe-input-rnc" />
-      </Campo>
+    <form className="grid gap-3 sm:grid-cols-2" onSubmit={async (e) => { e.preventDefault(); setOcupado(true); setAviso(null); despues(await guardar(`${base}/datos`, "PUT", { ...v.datos, ...d }, "Datos fiscales guardados")); setOcupado(false); }}>
+      <div className="sm:col-span-2">
+        <Campo id="fe-rnc" etiqueta="RNC o cédula" ayuda={revision === "revisar" ? <span className="text-amber-700">El número no pasa la verificación de la DGII. Revísalo.</span> : revision === "largo" ? "El RNC tiene 9 números y la cédula 11." : "Escríbelo y toca «Verificar con la DGII»: miramos si está activo y llenamos la razón social."}>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input id="fe-rnc" className={`${campo} sm:max-w-xs`} inputMode="numeric" value={d.rnc} onChange={(e) => { cambia("rnc")(e); setAviso(null); }} placeholder="1-01-23456-7" data-testid="fe-input-rnc" />
+            <button type="button" onClick={verificar} disabled={verificando || (revision !== "ok" && revision !== "revisar")} className={`${boton} border border-[#17804F] text-[#17804F] hover:bg-[#E7F2EC]`} data-testid="fe-verificar-rnc">
+              {verificando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}Verificar con la DGII
+            </button>
+          </div>
+        </Campo>
+        {estado && mensaje && (
+          <div className={`mt-2 flex gap-2.5 rounded-xl border p-3 text-[15px] ${colorAviso}`} role={estado === "activo" ? "status" : "alert"} data-testid="fe-resultado-dgii">
+            {estado === "activo" ? <CheckCircle2 className="w-5 h-5 shrink-0 text-green-700" /> : <AlertTriangle className="w-5 h-5 shrink-0" />}
+            <div>
+              {estado === "activo" && <b>✓ Activo en la DGII. </b>}
+              {estado !== "activo" && v.dgii?.estadoTexto && mismoRnc && <b>Estado en la DGII: {v.dgii.estadoTexto}. </b>}
+              {estado === "activo" ? "Llenamos la razón social tal como aparece en la DGII." : mensaje}
+              {estado === "activo" && mismoRnc && v.dgii?.actividad && <div className="text-sm mt-0.5">Actividad: {v.dgii.actividad}{v.dgii.padronFecha ? ` · padrón del ${fechaBonita(v.dgii.padronFecha)}` : ""}</div>}
+            </div>
+          </div>
+        )}
+      </div>
       <Campo id="fe-tipo" etiqueta="Tipo de contribuyente">
         <select id="fe-tipo" className={campo} value={d.tipoContribuyente} onChange={cambia("tipoContribuyente")} data-testid="fe-select-tipo">
           <option value="">Elige uno</option>
           {Object.entries(TIPOS_CONTRIBUYENTE).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
         </select>
       </Campo>
-      <Campo id="fe-razon" etiqueta="Razón social (como en la DGII)">
-        <input id="fe-razon" className={campo} value={d.razonSocial} onChange={cambia("razonSocial")} data-testid="fe-input-razon" />
+      <Campo id="fe-razon" etiqueta="Razón social (como en la DGII)" ayuda={razonFija ? "Tomada de la DGII. Si está mal, corrígela en la DGII." : undefined}>
+        <input id="fe-razon" className={`${campo} ${razonFija ? "bg-slate-50 text-slate-700" : ""}`} value={d.razonSocial} onChange={cambia("razonSocial")} readOnly={razonFija} data-testid="fe-input-razon" />
       </Campo>
       <Campo id="fe-comercial" etiqueta="Nombre comercial (opcional)">
         <input id="fe-comercial" className={campo} value={d.nombreComercial} onChange={cambia("nombreComercial")} />

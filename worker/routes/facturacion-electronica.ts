@@ -11,6 +11,8 @@ import { requireAdmin, requireAuth, requireBusinessAccess } from "../lib/auth";
 import { ADMINISTRADORES } from "../lib/permisos";
 import { cifrar, SinClaveMaestra } from "../lib/integraciones";
 import { anotar } from "../lib/seguridad";
+import { permitirEvento } from "../lib/rate-limit";
+import { BLOQUEA_SEGUIR, consultarPadron, mensajePadron, REVISAR_CADA_MS, type ConsultaPadron } from "../lib/padron-dgii";
 import {
   CLAVE_PROVEEDOR, CertificadoInvalido, diasParaVencer, estadoPasos, leerCertificacion, leerP12, leerProveedor,
   negocioPrincipalId, obligado, resumenAvance,
@@ -36,6 +38,11 @@ async function vista(db: ReturnType<typeof getDb>, colmadoId: number, f: FeCerti
       repNombre: f?.repNombre ?? "", repCedula: f?.repCedula ?? "", repCargo: f?.repCargo ?? "", repCorreo: f?.repCorreo ?? "",
     },
     identificacion: f?.rnc ? revisarIdentificacion(f.rnc) : null,
+    dgii: f?.dgiiEstado ? {
+      estado: f.dgiiEstado, estadoTexto: f.dgiiEstadoTexto ?? null, actividad: f.dgiiActividad ?? null, regimen: f.dgiiRegimen ?? null,
+      padronFecha: f.dgiiPadronFecha ?? null, consultadoAt: f.dgiiConsultadoAt ?? null,
+      mensaje: mensajePadron(f.dgiiEstado as any, f.dgiiEstadoTexto), bloquea: BLOQUEA_SEGUIR.has(f.dgiiEstado),
+    } : null,
     certificado: {
       estado: f?.certEstado ?? "no_tiene", entidad: f?.certEntidad ?? "", titular: f?.certTitular ?? "", vence: f?.certVence ?? "",
       subido: Boolean(f?.certArchivo), subidoAt: f?.certSubidoAt ?? null, diasParaVencer: dias,
@@ -56,6 +63,27 @@ async function guardar(db: ReturnType<typeof getDb>, colmadoId: number, cambios:
   await db.insert(feCertificacion).values({ colmadoId, ...valores }).onConflictDoUpdate({ target: feCertificacion.colmadoId, set: valores });
 }
 
+/** Consulta el padrón de la DGII y guarda el estado. Si lo encuentra, la razón social queda como en la DGII. */
+async function verificarConDgii(db: ReturnType<typeof getDb>, colmadoId: number, rnc: string, quien: string): Promise<ConsultaPadron> {
+  const r = await consultarPadron(rnc);
+  if (r.resultado === "no_disponible" || r.resultado === "invalido") return r;
+  const actual = await leerCertificacion(db, colmadoId);
+  const cambios: Partial<typeof feCertificacion.$inferInsert> = {
+    dgiiEstado: r.resultado, dgiiEstadoTexto: r.datos?.estadoTexto ?? null, dgiiActividad: r.datos?.actividad || null,
+    dgiiRegimen: r.datos?.regimen || null, dgiiPadronFecha: r.padronFecha ?? null, dgiiConsultadoAt: new Date(),
+  };
+  if (r.datos?.razonSocial) cambios.razonSocial = r.datos.razonSocial.slice(0, 200);
+  if (r.datos?.nombreComercial && !actual?.nombreComercial) cambios.nombreComercial = r.datos.nombreComercial.slice(0, 200);
+  await guardar(db, colmadoId, cambios, quien);
+  return r;
+}
+
+/** Si la DGII dice que el RNC no está activo, no se sigue con la guía. */
+function bloqueoDgii(f: FeCertificacion | undefined) {
+  if (!f?.dgiiEstado || !BLOQUEA_SEGUIR.has(f.dgiiEstado)) return null;
+  return { error: mensajePadron(f.dgiiEstado as any, f.dgiiEstadoTexto), dgii: f.dgiiEstado };
+}
+
 // ---------- Negocio (dueño y colmadero) ----------
 
 const rutaNegocio = "/api/colmados/:id/facturacion-electronica";
@@ -74,7 +102,32 @@ facturacionElectronicaRoutes.get(rutaNegocio, async (c) => {
   const db = getDb(c.env.DB);
   const id = await negocioPrincipalId(db, Number(c.req.param("id")));
   if (!id) return c.json({ error: "Negocio no encontrado" }, 404);
-  return c.json(await vista(db, id, await leerCertificacion(db, id)));
+  const f = await leerCertificacion(db, id);
+  // Se vuelve a consultar la DGII cada semana, por si suspendió o activó el RNC después.
+  const vieja = !f?.dgiiConsultadoAt || Date.now() - new Date(f.dgiiConsultadoAt).getTime() > REVISAR_CADA_MS;
+  if (f?.rnc && f.dgiiEstado && vieja && (await permitirEvento(db, `padron:${id}`, 15, 10 * 60_000))) {
+    await verificarConDgii(db, id, f.rnc, c.var.user.id);
+    return c.json(await vista(db, id, await leerCertificacion(db, id)));
+  }
+  return c.json(await vista(db, id, f));
+});
+
+/** «Verificar con la DGII»: consulta el padrón con el RNC o la cédula y llena la razón social. */
+facturacionElectronicaRoutes.post(`${rutaNegocio}/verificar-rnc`, async (c) => {
+  const db = getDb(c.env.DB);
+  const id = await negocioPrincipalId(db, Number(c.req.param("id")));
+  if (!id) return c.json({ error: "Negocio no encontrado" }, 404);
+  const b = (await c.req.json().catch(() => null)) || {};
+  const actual = await leerCertificacion(db, id);
+  const rnc = soloDigitos(b.rnc) || actual?.rnc || "";
+  if (rnc.length !== 9 && rnc.length !== 11) return c.json({ error: "El RNC tiene 9 números y la cédula 11. Revisa el número.", campo: "rnc" }, 400);
+  if (!(await permitirEvento(db, `padron:${id}`, 15, 10 * 60_000))) return c.json({ error: "Muchas consultas seguidas. Espera unos minutos y vuelve a intentar." }, 429);
+  if (rnc !== actual?.rnc) {
+    await guardar(db, id, { rnc, dgiiEstado: null, dgiiEstadoTexto: null, dgiiActividad: null, dgiiRegimen: null, dgiiPadronFecha: null, dgiiConsultadoAt: null }, c.var.user.id);
+  }
+  const r = await verificarConDgii(db, id, rnc, c.var.user.id);
+  await anotar(db, { userId: c.var.user.id, usuario: c.var.user.email, rol: c.var.user.role, colmadoId: id, accion: "Verificó su RNC o cédula con la DGII", detalle: `${rnc} · ${r.datos?.estadoTexto || r.resultado}`, ip: c.req.header("CF-Connecting-IP") ?? null });
+  return c.json({ ...(await vista(db, id, await leerCertificacion(db, id))), verificacion: { resultado: r.resultado, mensaje: mensajePadron(r.resultado, r.datos?.estadoTexto) } });
 });
 
 /** Datos fiscales y del firmante. */
@@ -93,12 +146,23 @@ facturacionElectronicaRoutes.put(`${rutaNegocio}/datos`, async (c) => {
     const v = texto(b[campo], 200);
     if (v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return c.json({ error: "Ese correo no es válido.", campo }, 400);
   }
+  const antes = await leerCertificacion(db, id);
+  const cambioRnc = (rnc || null) !== (antes?.rnc ?? null);
+  // Con el RNC verificado, la razón social es la de la DGII y no se cambia a mano.
+  const razonDgii = !cambioRnc && antes?.dgiiEstado && antes.dgiiEstado !== "no_existe" ? antes.razonSocial : null;
   await guardar(db, id, {
-    rnc: rnc || null, razonSocial: texto(b.razonSocial) || null, nombreComercial: texto(b.nombreComercial) || null,
+    ...(cambioRnc ? { dgiiEstado: null, dgiiEstadoTexto: null, dgiiActividad: null, dgiiRegimen: null, dgiiPadronFecha: null, dgiiConsultadoAt: null } : {}),
+    rnc: rnc || null, razonSocial: razonDgii || texto(b.razonSocial) || null, nombreComercial: texto(b.nombreComercial) || null,
     direccionFiscal: texto(b.direccionFiscal, 300) || null, tipoContribuyente: tipo || null, correoFiscal: texto(b.correoFiscal) || null,
     repNombre: texto(b.repNombre) || null, repCedula: repCedula || null, repCargo: texto(b.repCargo, 100) || null, repCorreo: texto(b.repCorreo) || null,
   }, c.var.user.id);
-  return c.json(await vista(db, id, await leerCertificacion(db, id)));
+  // RNC nuevo o nunca verificado: se consulta la DGII al guardar.
+  let verificacion: { resultado: string; mensaje: string } | undefined;
+  if (rnc && (cambioRnc || !antes?.dgiiEstado) && (await permitirEvento(db, `padron:${id}`, 15, 10 * 60_000))) {
+    const r = await verificarConDgii(db, id, rnc, c.var.user.id);
+    verificacion = { resultado: r.resultado, mensaje: mensajePadron(r.resultado, r.datos?.estadoTexto) };
+  }
+  return c.json({ ...(await vista(db, id, await leerCertificacion(db, id))), verificacion });
 });
 
 /** Estado del certificado (sin subir el archivo todavía) o subida del .p12 con su contraseña. */
@@ -106,6 +170,8 @@ facturacionElectronicaRoutes.put(`${rutaNegocio}/certificado`, async (c) => {
   const db = getDb(c.env.DB);
   const id = await negocioPrincipalId(db, Number(c.req.param("id")));
   if (!id) return c.json({ error: "Negocio no encontrado" }, 404);
+  const bloqueo = bloqueoDgii(await leerCertificacion(db, id));
+  if (bloqueo) return c.json(bloqueo, 409);
   const b = (await c.req.json().catch(() => null)) || {};
   const estado = texto(b.estado, 20);
   const entidad = texto(b.entidad, 30);
@@ -167,6 +233,8 @@ facturacionElectronicaRoutes.put(`${rutaNegocio}/pasos/:paso`, async (c) => {
   if (!id) return c.json({ error: "Negocio no encontrado" }, 404);
   const paso = c.req.param("paso") as ClavePaso;
   if (!PASOS_MANUALES.has(paso)) return c.json({ error: "Ese paso se completa solo con los datos." }, 400);
+  const bloqueo = bloqueoDgii(await leerCertificacion(db, id));
+  if (bloqueo) return c.json(bloqueo, 409);
   const b = (await c.req.json().catch(() => null)) || {};
   const estado = texto(b.estado, 20) as PasoCertificacion["estado"];
   if (!["pendiente", "en_curso", "listo"].includes(estado)) return c.json({ error: "Estado no válido." }, 400);
@@ -185,6 +253,8 @@ facturacionElectronicaRoutes.put(`${rutaNegocio}/secuencias`, async (c) => {
   const id = await negocioPrincipalId(db, Number(c.req.param("id")));
   if (!id) return c.json({ error: "Negocio no encontrado" }, 404);
   const b = (await c.req.json().catch(() => null)) || {};
+  const bloqueo = bloqueoDgii(await leerCertificacion(db, id));
+  if (bloqueo) return c.json(bloqueo, 409);
   if (!Array.isArray(b.secuencias) || b.secuencias.length > 20) return c.json({ error: "Lista de secuencias no válida." }, 400);
   const lista: SecuenciaENcf[] = [];
   for (const s of b.secuencias) {
@@ -221,6 +291,7 @@ facturacionElectronicaRoutes.get("/api/admin/facturacion-electronica/negocios", 
     return {
       colmadoId: n.id, nombre: n.nombre, estadoNegocio: n.estado, duenoCorreo,
       rnc: f?.rnc ?? null, razonSocial: f?.razonSocial ?? null, tipoContribuyente: f?.tipoContribuyente ?? null,
+      dgiiEstado: f?.dgiiEstado ?? null, dgiiEstadoTexto: f?.dgiiEstadoTexto ?? null,
       certificado: { estado: f?.certEstado ?? "no_tiene", subido: Boolean(f?.certArchivo), vence: f?.certVence ?? null, diasParaVencer: diasParaVencer(f?.certVence) },
       avance: resumenAvance(pasos), pasos, autorizadoAt: f?.autorizadoAt ?? null, actualizadoAt: f?.actualizadoAt ?? null,
     };

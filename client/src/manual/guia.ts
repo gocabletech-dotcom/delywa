@@ -357,13 +357,14 @@ export const GUIA: Record<ClaveManual, Manual> = {
         que: "La guía para que la DGII autorice a tu negocio como emisor de facturas electrónicas (e-CF). Son 10 pasos en 4 etapas; los que se hacen en la DGII los marcas aquí cuando los terminas.",
         spots: [
           ['[data-testid="fe-porcentaje"]', "Cuánto llevas: el porcentaje y cuántos pasos están listos."],
-          ['[data-testid="fe-paso-datos"]', "Datos fiscales: RNC o cédula, razón social, dirección y tipo de contribuyente. Se revisa que el número sea válido."],
+          ['[data-testid="fe-paso-datos"]', "Datos fiscales: escribe el RNC o la cédula y toca «Verificar con la DGII». Si está activo, la razón social se llena sola, como en la DGII."],
           ['[data-testid="fe-paso-certificado"]', "El certificado digital de la persona que firma. Solo el dueño lo sube; se guarda cifrado."],
           ['[data-testid="fe-paso-ofv"]', "Los pasos que se hacen en la DGII: ábrelo, sigue las instrucciones y márcalo con «Ya lo hice»."],
         ],
         pasos: [
           "Abre Dinero → Factura electrónica.",
-          "Llena tus datos fiscales y guárdalos.",
+          "Escribe tu RNC o cédula y toca «Verificar con la DGII».",
+          "Si sale activo, completa la dirección y el tipo de contribuyente y guarda.",
           "Saca el certificado digital (Cámara de Comercio, AVANSI u OGTIC) y súbelo con su contraseña.",
           "Haz en la Oficina Virtual de la DGII los pasos que dice cada tarjeta, y márcalos con «Ya lo hice».",
           "Cuando la DGII te autorice, pon la fecha y anota tus secuencias.",
@@ -373,7 +374,10 @@ export const GUIA: Record<ClaveManual, Manual> = {
           "Solo el Dueño y el Colmadero ven esta pantalla. El certificado solo lo sube el Dueño.",
           "Ante cualquier duda fiscal, consulta a tu contador.",
         ],
-        faq: [["¿Delywa ya emite las facturas?", "Todavía no. Esta guía te deja listo para la DGII; la emisión se activa cuando Delywa conecte el proveedor certificado."]],
+        faq: [
+          ["¿Qué hago si dice que mi RNC está suspendido?", "Ve a la DGII (oficina o Oficina Virtual) y normaliza la suspensión: ponte al día con declaraciones y pagos. Cuando la DGII lo active, vuelve y toca «Verificar con la DGII». La lista de la DGII puede tardar uno o dos días en actualizarse."],
+          ["¿Puedo cambiar la razón social?", "No: se toma tal cual de la DGII, que es como debe salir en la factura. Si está mal, corrígela en la DGII y vuelve a verificar."],
+          ["¿Delywa ya emite las facturas?", "Todavía no. Esta guía te deja listo para la DGII; la emisión se activa cuando Delywa conecte el proveedor certificado."]],
       },
       {
         id: "clientes", icono: "users", titulo: "Clientes", ruta: "clientes", cap: "clientes",

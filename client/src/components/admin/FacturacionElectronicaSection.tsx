@@ -9,7 +9,7 @@ import { PASOS_CERTIFICACION, PROVEEDOR_VACIO, TIPOS_CONTRIBUYENTE, type Proveed
 
 type FilaNegocio = {
   colmadoId: number; nombre: string; estadoNegocio: string; duenoCorreo: string | null;
-  rnc: string | null; razonSocial: string | null; tipoContribuyente: string | null;
+  rnc: string | null; razonSocial: string | null; tipoContribuyente: string | null; dgiiEstado?: string | null; dgiiEstadoTexto?: string | null;
   certificado: { estado: string; subido: boolean; vence: string | null; diasParaVencer: number | null };
   avance: { listos: number; total: number; porcentaje: number; siguiente: string | null };
   autorizadoAt: string | null; actualizadoAt: string | null;
@@ -101,7 +101,7 @@ export function FacturacionElectronicaSection() {
                       <p className="font-medium text-slate-900">{n.nombre}</p>
                       <p className="text-xs text-slate-500">{n.razonSocial || n.duenoCorreo || ""}</p>
                     </td>
-                    <td className="py-2.5 pr-3 font-mono text-xs">{n.rnc || "—"}</td>
+                    <td className="py-2.5 pr-3 font-mono text-xs">{n.rnc || "—"}{n.dgiiEstado && <span className={`ml-1.5 inline-block rounded-full px-2 py-0.5 font-sans font-semibold ${n.dgiiEstado === "activo" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>{n.dgiiEstado === "activo" ? "Activo DGII" : n.dgiiEstadoTexto || "No activo"}</span>}</td>
                     <td className="py-2.5 pr-3">{n.tipoContribuyente ? TIPOS_CONTRIBUYENTE[n.tipoContribuyente] : "—"}</td>
                     <td className="py-2.5 pr-3">
                       {n.certificado.subido ? (

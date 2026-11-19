@@ -34,7 +34,8 @@ export function estadoPasos(f: FeCertificacion | undefined): Record<ClavePaso, P
   for (const p of PASOS_CERTIFICACION) {
     const g = guardados[p.clave] ?? { estado: "pendiente" };
     if (p.clave === "datos") {
-      const completo = Boolean(f?.rnc && f.razonSocial && f.direccionFiscal && f.tipoContribuyente);
+      // Listo solo si la DGII dice que el RNC o la cédula está activo.
+      const completo = Boolean(f?.rnc && f.razonSocial && f.direccionFiscal && f.tipoContribuyente && f.dgiiEstado === "activo");
       const empezado = Boolean(f?.rnc || f?.razonSocial || f?.direccionFiscal);
       r.datos = { estado: completo ? "listo" : empezado ? "en_curso" : "pendiente" };
     } else if (p.clave === "certificado") {

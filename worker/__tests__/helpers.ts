@@ -7,6 +7,7 @@ import type { Env } from "../env";
 import { getDb } from "../db";
 import { filtraciones } from "../lib/claves";
 import { servicioCorreo } from "../lib/correo";
+import { servicioPadron } from "../lib/padron-dgii";
 import { LOGIN } from "../lib/rate-limit";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -33,6 +34,8 @@ export async function createTestApp() {
     correosEnviados.push(JSON.parse(String(init?.body ?? "{}")));
     return new Response(JSON.stringify({ id: "correo-prueba" }), { status: 200 });
   };
+  // Nunca se consulta el padrón real de la DGII: sin respuesta simulada, el servicio "no está disponible".
+  servicioPadron.fetch = async () => new Response("{}", { status: 503 });
   // Sin la espera creciente del login, para que las pruebas no tarden.
   LOGIN.esperaPorFalloMs = 0; LOGIN.esperaBaseMs = 0;
   // Nunca se consulta el servicio real de contraseñas filtradas: "mango-filtrado-2024" simula una.

@@ -148,6 +148,13 @@
       "when": 1795053016773,
       "tag": "0020_asistente_pagina",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1795096760454,
+      "tag": "0021_padron_dgii",
+      "breakpoints": true
     }
   ]
 }

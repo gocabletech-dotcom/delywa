@@ -1155,6 +1155,13 @@ export const feCertificacion = sqliteTable("fe_certificacion", {
   direccionFiscal: text("direccion_fiscal"),
   tipoContribuyente: text("tipo_contribuyente"), // pequeno, micro, no_clasificado, mediano, grande_local, grande_nacional, no_se
   correoFiscal: text("correo_fiscal"),
+  // Cómo aparece en el padrón de la DGII (consulta en rnc.urbanstockpos.com). Estado: activo, suspendido, cese, baja, no_existe.
+  dgiiEstado: text("dgii_estado"),
+  dgiiEstadoTexto: text("dgii_estado_texto"), // tal cual lo dice la DGII (ACTIVO, SUSPENDIDO…)
+  dgiiActividad: text("dgii_actividad"),
+  dgiiRegimen: text("dgii_regimen"),
+  dgiiPadronFecha: text("dgii_padron_fecha"), // fecha del padrón consultado, AAAA-MM-DD
+  dgiiConsultadoAt: integer("dgii_consultado_at", { mode: "timestamp_ms" }),
   // Persona que firma (dueña del certificado digital)
   repNombre: text("rep_nombre"),
   repCedula: text("rep_cedula"),

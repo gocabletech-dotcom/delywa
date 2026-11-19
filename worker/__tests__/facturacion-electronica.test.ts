@@ -9,6 +9,27 @@ import { cedulaValida, encfValido, rncValido, revisarIdentificacion } from "@sha
 import { createTestApp } from "./helpers";
 import { createUser, setUserSucursalIds } from "../storage/users";
 import { leerP12 } from "../lib/certificacion";
+import { clasificarEstado, consultarPadron, servicioPadron } from "../lib/padron-dgii";
+
+/** Padrón de la DGII simulado (datos inventados): número → estado. */
+const PADRON: Record<string, { razonSocial: string; estado: string; nombreComercial?: string }> = {
+  "401506254": { razonSocial: "COLMADO FISCAL SRL", estado: "ACTIVO", nombreComercial: "COLMADO FISCAL" },
+  "130222509": { razonSocial: "NEGOCIO SUSPENDIDO SRL", estado: "SUSPENDIDO" },
+  "00100000009": { razonSocial: "JUANA PEREZ DE PRUEBA", estado: "CESE TEMPORAL" },
+};
+let consultasPadron = 0;
+function padronFalso() {
+  servicioPadron.fetch = async (url: string) => {
+    consultasPadron++;
+    const n = url.split("/").pop()!;
+    const r = PADRON[n];
+    if (!r) return new Response(JSON.stringify({ ok: false, found: false }), { status: 404 });
+    return new Response(JSON.stringify({ ok: true, found: true, data: {
+      rnc: n, formattedRnc: n, tipoDocumento: n.length === 9 ? "RNC" : "CEDULA", razonSocial: r.razonSocial, nombreComercial: r.nombreComercial ?? null,
+      actividadEconomica: "VENTA AL POR MENOR EN COLMADOS", fechaInicio: "01/01/2020", estado: r.estado, isActive: r.estado === "ACTIVO", regimenPago: "NORMAL",
+    }, meta: { padronFecha: "2026-11-18" } }), { status: 200 });
+  };
+}
 
 let t: Awaited<ReturnType<typeof createTestApp>>;
 type Client = ReturnType<Awaited<ReturnType<typeof createTestApp>>["client"]>;
@@ -39,6 +60,7 @@ async function login(email: string, password: string) {
 
 beforeAll(async () => {
   t = await createTestApp();
+  padronFalso();
   (t.env as any).DELYWA_CLAVE_MAESTRA = "clave-maestra-de-prueba";
   [negocio] = await t.db.insert(colmados).values({ nombre: "Colmado Fiscal", slug: "colmado-fiscal", whatsappNumero: "18093330101", direccion: "Calle 1", planId: 1 }).returning();
   [sucursal] = await t.db.insert(colmados).values({ nombre: "Colmado Fiscal 2", slug: "colmado-fiscal-2", whatsappNumero: "18093330102", direccion: "Calle 2", planId: 1, negocioPrincipalId: negocio.id }).returning();
@@ -105,10 +127,62 @@ describe("datos fiscales", () => {
     expect(r.status).toBe(200);
     expect(r.json.datos).toMatchObject({ rnc: "401506254", repCedula: "00100000009" });
     expect(r.json.identificacion).toBe("ok");
+    // Al guardar se consultó la DGII: activo, con la razón social como en la DGII.
+    expect(r.json.verificacion.resultado).toBe("activo");
+    expect(r.json.datos).toMatchObject({ razonSocial: "COLMADO FISCAL SRL", nombreComercial: "COLMADO FISCAL" });
+    expect(r.json.dgii).toMatchObject({ estado: "activo", actividad: "VENTA AL POR MENOR EN COLMADOS", bloquea: false });
     expect(r.json.pasos.datos.estado).toBe("listo");
+    // Verificado, la razón social no se cambia a mano.
+    const r2 = await dueno.request("PUT", `${ruta()}/datos`, { ...r.json.datos, razonSocial: "Otro nombre" });
+    expect(r2.json.datos.razonSocial).toBe("COLMADO FISCAL SRL");
     expect(r.json.plazo.desde).toBe("2026-11-15");
     // Desde la sucursal se ve la misma guía (la del negocio principal).
     expect((await colmadero.request("GET", ruta(sucursal.id))).json).toMatchObject({ colmadoId: negocio.id, datos: { rnc: "401506254" } });
+  });
+});
+
+describe("padrón de la DGII", () => {
+  it("clasifica los estados y no llama al servicio con números inválidos", async () => {
+    expect(clasificarEstado("ACTIVO", true)).toBe("activo");
+    expect(clasificarEstado("SUSPENDIDO", false)).toBe("suspendido");
+    expect(clasificarEstado("CESE TEMPORAL", false)).toBe("cese");
+    expect(clasificarEstado("DADO DE BAJA", false)).toBe("baja");
+    const antes = consultasPadron;
+    expect((await consultarPadron("123")).resultado).toBe("invalido");
+    expect(consultasPadron).toBe(antes);
+    expect((await consultarPadron("999999999")).resultado).toBe("no_existe");
+  });
+
+  it("suspendido o en cese: avisa que pase por la DGII y no deja seguir; activo de nuevo, sigue", async () => {
+    const v = await ajeno.request("POST", `${ruta(otro.id)}/verificar-rnc`, { rnc: "130-22250-9" });
+    expect(v.status).toBe(200);
+    expect(v.json.verificacion.resultado).toBe("suspendido");
+    expect(v.json.verificacion.mensaje).toContain("normaliza la suspensión");
+    expect(v.json.datos.razonSocial).toBe("NEGOCIO SUSPENDIDO SRL");
+    expect(v.json.dgii.bloquea).toBe(true);
+    const paso = await ajeno.request("PUT", `${ruta(otro.id)}/pasos/ofv`, { estado: "listo" });
+    expect(paso.status).toBe(409);
+    expect(paso.json.dgii).toBe("suspendido");
+    expect((await ajeno.request("PUT", `${ruta(otro.id)}/secuencias`, { secuencias: [] })).status).toBe(409);
+    // Cédula en cese temporal.
+    const cese = await ajeno.request("POST", `${ruta(otro.id)}/verificar-rnc`, { rnc: "001-0000000-9" });
+    expect(cese.json.verificacion.resultado).toBe("cese");
+    // No existe.
+    expect((await ajeno.request("POST", `${ruta(otro.id)}/verificar-rnc`, { rnc: "999999999" })).json.verificacion.resultado).toBe("no_existe");
+    // La DGII lo activó: se verifica de nuevo y ya deja seguir.
+    PADRON["999999999"] = { razonSocial: "YA ACTIVO SRL", estado: "ACTIVO" };
+    const ok = await ajeno.request("POST", `${ruta(otro.id)}/verificar-rnc`, {});
+    expect(ok.json.verificacion.resultado).toBe("activo");
+    expect((await ajeno.request("PUT", `${ruta(otro.id)}/pasos/ofv`, { estado: "en_curso" })).status).toBe(200);
+    await ajeno.request("PUT", `${ruta(otro.id)}/pasos/ofv`, { estado: "pendiente" });
+    // Si el servicio no responde, se guarda igual y avisa que se intente más tarde.
+    const guardado = servicioPadron.fetch;
+    servicioPadron.fetch = async () => { throw new Error("sin red"); };
+    const caido = await ajeno.request("PUT", `${ruta(otro.id)}/datos`, { rnc: "401506254" });
+    expect(caido.status).toBe(200);
+    expect(caido.json.verificacion.resultado).toBe("no_disponible");
+    expect(caido.json.dgii).toBeNull();
+    servicioPadron.fetch = guardado;
   });
 });
 
