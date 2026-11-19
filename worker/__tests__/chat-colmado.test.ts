@@ -247,6 +247,29 @@ describe("la IA de Cloudflare solo cuando no entiende", () => {
   });
 });
 
+describe("mis pedidos", () => {
+  it("muestra el pedido de ahora y los anteriores de este mismo teléfono; otro aparato no los ve", async () => {
+    const tel = "8095558800", A2 = "d".repeat(32), OTRO = "e".repeat(32);
+    const primera = await abrir(tel, "Lola", A2);
+    const [viejo] = await t.db.insert(pedidos).values({ colmadoId: colmado.id, clienteNombre: "Lola", clienteWhatsapp: "+18095558800", clienteUbicacion: "Calle 1",
+      productos: JSON.stringify([{ nombre: "Arroz", cantidad: 2, unidad: "libras" }]), total: "90", montoPago: "100", metodoPago: "efectivo", estado: "entregado" } as any).returning();
+    await t.db.update(chatWebSesiones).set({ pedidoId: viejo.id, fechaCreacion: new Date(Date.now() - 3 * 86_400_000) }).where(eq(chatWebSesiones.sessionId, primera));
+    const hoy = await abrir(tel, "Lola", A2);
+    expect(hoy).not.toBe(primera);
+    const [nuevo] = await t.db.insert(pedidos).values({ colmadoId: colmado.id, clienteNombre: "Lola", clienteWhatsapp: "+18095558800", clienteUbicacion: "Calle 1",
+      productos: JSON.stringify([{ nombre: "Pan", cantidad: 3 }]), total: "60", montoPago: "0", metodoPago: "transferencia", estado: "en_camino" } as any).returning();
+    await t.db.update(chatWebSesiones).set({ pedidoId: nuevo.id }).where(eq(chatWebSesiones.sessionId, hoy));
+    const r = await c().request("GET", `/api/chat-colmado/sesion/${hoy}/pedidos`);
+    expect(r.status).toBe(200);
+    expect(r.json.pedidos.map((p: any) => p.id)).toEqual([nuevo.id, viejo.id]);
+    expect(r.json.pedidos[0]).toMatchObject({ estado: "en_camino", actual: true, pagoAprobado: false, productos: [{ nombre: "Pan", cantidad: 3 }] });
+    // Desde otro aparato con el mismo número no se ven los pedidos anteriores.
+    const ajeno = await abrir(tel, "Lola", OTRO);
+    expect((await c().request("GET", `/api/chat-colmado/sesion/${ajeno}/pedidos`)).json.pedidos).toEqual([]);
+    expect((await c().request("GET", `/api/chat-colmado/sesion/chat_${"0".repeat(32)}/pedidos`)).status).toBe(404);
+  });
+});
+
 describe("seguridad del chat", () => {
   it("el comprobante se pega al pedido de la sesión", async () => {
     const id = await abrir("8095556666", "Ana");

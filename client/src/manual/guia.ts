@@ -698,10 +698,15 @@ export const GUIA: Record<ClaveManual, Manual> = {
         id: "seguimiento", icono: "eye", titulo: "Confirmación y seguimiento", cap: "c-seguimiento",
         que: "El colmado revisa tu pedido y te manda los precios y el total. Después te avisa cuando va en camino, cuando está llegando y cuando se entregó.",
         spots: [
-          ['[data-testid="estado-pedido"]', "El estado de tu pedido, siempre a la vista."],
+          ['[data-testid="estado-pedido"]', "El estado de tu pedido, siempre a la vista. Tócalo («Ver cómo va») para ver los pasos."],
           ['[data-testid="lista-mensajes"]', "Aquí te llegan el resumen, la confirmación con el total y los avisos de en camino y entregado."],
         ],
-        tips: ["Otro día, el saludo te ofrece «Repetir mi último pedido».", "Para cancelar, escribe «cancelar» antes de que salga."],
+        tips: [
+          "Arriba a la derecha, «Mis pedidos»: el pedido de ahora con sus pasos (enviado, confirmado, preparando, en camino, entregado) y los anteriores. «Volver al chat» te regresa a la conversación.",
+          "Otro día, el saludo te ofrece «Repetir mi último pedido».",
+          "Para cancelar, escribe «cancelar» antes de que salga.",
+        ],
+        faq: [["¿Por qué no veo mis pedidos de antes?", "Por seguridad, «Mis pedidos» muestra solo los que hiciste desde este mismo teléfono."]],
       },
     ],
   },

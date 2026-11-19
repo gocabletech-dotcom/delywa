@@ -4,6 +4,7 @@ import { useParams } from "wouter";
 import { Loader2, Square } from "lucide-react";
 import { Avatar, Burbuja, IOS, IPhone, IconoIOS, SeparadorFecha, fondoWhatsApp, horaCorta, textoFecha } from "@/components/whatsapp/ios";
 import { TextoWhatsApp } from "@/components/whatsapp/ios";
+import MisPedidos from "@/components/whatsapp/MisPedidos";
 import { FotoIlegible, prepararFoto } from "@/lib/imagen";
 import { businessTheme } from "@/lib/temaNegocio";
 
@@ -46,6 +47,8 @@ export default function PedirPage({ codigoFijo }: { codigoFijo?: string } = {}) 
   const [sesion, setSesion] = useState<Guardado | null>(() => leerGuardado(codigo));
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [pedido, setPedido] = useState<Pedido>(null);
+  // «Mis pedidos» dentro del mismo teléfono: null = el chat; abrir = el pedido que se abre directo.
+  const [misPedidos, setMisPedidos] = useState<{ abrir: number | null } | null>(null);
   const [texto, setTexto] = useState("");
   const [esperando, setEsperando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -251,6 +254,12 @@ export default function PedirPage({ codigoFijo }: { codigoFijo?: string } = {}) 
           {esperando ? "escribiendo…" : info.estaAbierto ? "en línea" : info.mensajeCerrado || "cerrado ahora"}
         </p>
       </div>
+      {sesion && (
+        <button type="button" onClick={() => setMisPedidos({ abrir: null })} className="flex flex-col items-center justify-center min-w-[52px] h-11 px-1 rounded-lg active:bg-black/5" aria-label="Mis pedidos" data-testid="button-mis-pedidos">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={IOS.azul} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></svg>
+          <span className="text-[10.5px] leading-none mt-0.5" style={{ color: IOS.azul }}>Mis pedidos</span>
+        </button>
+      )}
     </header>
   );
 
@@ -282,10 +291,14 @@ export default function PedirPage({ codigoFijo }: { codigoFijo?: string } = {}) 
     <div className="flex-1 min-h-0 flex flex-col" style={tema}>
       {cabecera}
       {pedido && (
-        <div className="shrink-0 bg-white/95 border-b border-[#E5E5EA] px-4 py-2 text-[13.5px] flex justify-between items-center" data-testid="estado-pedido">
-          <span className="flex items-center gap-1.5">📌 Pedido #{pedido.id}: <b>{ESTADOS[pedido.estado] ?? pedido.estado}</b></span>
-          {pedido.total && Number(pedido.total) > 0 && <span className="text-[#667781]">RD${Number(pedido.total).toLocaleString("es-DO")}</span>}
-        </div>
+        <button type="button" onClick={() => setMisPedidos({ abrir: pedido.id })} className="shrink-0 w-full text-left bg-white/95 border-b border-[#E5E5EA] px-4 py-2 text-[13.5px] flex justify-between items-center gap-2 active:bg-[#F2F2F7]" data-testid="estado-pedido">
+          <span className="flex items-center gap-1.5 min-w-0 truncate">📌 Pedido #{pedido.id}: <b>{ESTADOS[pedido.estado] ?? pedido.estado}</b></span>
+          <span className="shrink-0 flex items-center gap-1 font-semibold" style={{ color: IOS.azul }}>
+            {pedido.total && Number(pedido.total) > 0 && <span className="font-normal text-[#667781] mr-1">RD${Number(pedido.total).toLocaleString("es-DO")}</span>}
+            Ver cómo va
+            <svg width="7" height="12" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </span>
+        </button>
       )}
       <main className="flex-1 min-h-0 overflow-y-auto py-2" style={fondoWhatsApp} data-testid="lista-mensajes">
         <div className="flex justify-center my-2 px-6">
@@ -388,7 +401,11 @@ export default function PedirPage({ codigoFijo }: { codigoFijo?: string } = {}) 
 
   return (
     <div className="h-[100dvh] w-full flex bg-[#efeae2] md:bg-gradient-to-br md:from-[#dfe7e3] md:to-[#cfd8dc]" style={{ ...businessTheme(colmado?.colorPrimario) }}>
-      <IPhone alto="calc(100dvh - 2rem)">{pantalla}</IPhone>
+      <IPhone alto="calc(100dvh - 2rem)">
+        {sesion && misPedidos
+          ? <MisPedidos sessionId={sesion.sessionId} abrir={misPedidos.abrir} alVolver={() => setMisPedidos(null)} />
+          : pantalla}
+      </IPhone>
     </div>
   );
 }

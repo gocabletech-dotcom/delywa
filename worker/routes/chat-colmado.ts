@@ -1,6 +1,6 @@
 import { avisarNegocio } from "../lib/tiempo-real";
 import { Hono, type Context } from "hono";
-import { and, asc, count, desc, eq, gt, gte, max, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, max, ne } from "drizzle-orm";
 import { toFile } from "openai";
 import { chatWebMensajes, chatWebSesiones, paises, pedidos } from "@shared/schema";
 import type { AppEnv } from "../env";
@@ -140,6 +140,42 @@ chatColmadoRoutes.get("/api/chat-colmado/sesion/:sessionId/mensajes", async (c) 
     pedido = p ?? null;
   }
   return c.json({ mensajes, pedido });
+});
+
+/**
+ * «Mis pedidos»: los pedidos de este cliente en este colmado, solo los hechos desde este mismo aparato
+ * (el teléfono no está verificado: así nadie ve los pedidos de otro escribiendo su número).
+ */
+chatColmadoRoutes.get("/api/chat-colmado/sesion/:sessionId/pedidos", async (c) => {
+  const db = getDb(c.env.DB);
+  const s = await sesionValida(c, db);
+  if (!s) return c.json({ error: "Sesión no encontrada" }, 404);
+  if (s === "inactiva") return inactiva(c);
+  const ids = new Set<number>();
+  if (s.sesion.pedidoId) ids.add(s.sesion.pedidoId);
+  if (s.sesion.aparato) {
+    const filas = await db.select({ pedidoId: chatWebSesiones.pedidoId }).from(chatWebSesiones)
+      .where(and(eq(chatWebSesiones.colmadoId, s.colmado.id), mismoTelefono(chatWebSesiones.clienteWhatsapp, s.sesion.clienteWhatsapp!), eq(chatWebSesiones.aparato, s.sesion.aparato)))
+      .orderBy(desc(chatWebSesiones.id)).limit(60);
+    for (const f of filas) if (f.pedidoId) ids.add(f.pedidoId);
+  }
+  if (!ids.size) return c.json({ pedidos: [] });
+  const lista = await db.select().from(pedidos).where(and(eq(pedidos.colmadoId, s.colmado.id), inArray(pedidos.id, [...ids].slice(0, 60))))
+    .orderBy(desc(pedidos.id)).limit(20);
+  const productosDe = (texto: string) => {
+    try {
+      const l = JSON.parse(texto);
+      if (Array.isArray(l)) return l.slice(0, 30).map((x: any) => ({ nombre: String(x.nombre || x.name || "Producto"), cantidad: Number(x.cantidad) || 1, unidad: x.unidad ?? null, monto: x.monto ?? null }));
+    } catch { /* texto libre */ }
+    return [{ nombre: String(texto || "Productos").slice(0, 200), cantidad: 1, unidad: null, monto: null }];
+  };
+  return c.json({
+    pedidos: lista.map((p) => ({
+      id: p.id, estado: p.estado, total: p.totalConfirmado || p.total, metodoPago: p.metodoPago, tipoEntrega: p.tipoEntrega,
+      fecha: p.fechaCreacion, productos: productosDe(p.productos), pagoAprobado: Boolean(p.comprobanteConfirmado),
+      motivoRetorno: p.motivoRetorno ?? null, actual: p.id === s.sesion.pedidoId,
+    })),
+  });
 });
 
 const dormir = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
