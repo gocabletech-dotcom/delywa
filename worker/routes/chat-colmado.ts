@@ -6,7 +6,7 @@ import { chatWebMensajes, chatWebSesiones, paises, pedidos } from "@shared/schem
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { permitirEvento } from "../lib/rate-limit";
-import { soloDigitos } from "../lib/telefono";
+import { mismoTelefono, soloDigitos } from "../lib/telefono";
 import { ia } from "../chat/adaptador";
 import { anotarNotaDeVoz, atenderChat, type Entrada } from "../bot/motor";
 import { iaDisponible, transcribir } from "../bot/ia";
@@ -14,7 +14,7 @@ import { inicioDiaLocal } from "../lib/fechas";
 import { getColmado, getColmadoTimezone, getPais } from "../storage/colmados";
 import { addMensaje, getOrCreateCliente, getOrCreateConversacion } from "../storage/conversaciones";
 import { getColmadoByCodigo } from "./menu-grafico";
-import { telefonoConPais } from "./registro";
+import { telefonoInternacional } from "./registro";
 
 // Chat del colmado en la página (delywa.com/pedir/<colmado>): canal propio de DelyWa, sin las reglas de Meta.
 // Lo atiende el bot por pasos de worker/bot/motor.ts (sin IA; la IA de Cloudflare solo cuando no entiende).
@@ -64,7 +64,7 @@ chatColmadoRoutes.post("/api/chat-colmado/:codigo/sesion", async (c) => {
   const body = await cuerpo(c);
   const nombre = typeof body.nombre === "string" ? body.nombre.trim().slice(0, 80) : "";
   const pais = colmado.paisId ? (await db.select().from(paises).where(eq(paises.id, colmado.paisId)))[0] : undefined;
-  const telefono = telefonoConPais(typeof body.telefono === "string" ? body.telefono : "", pais?.prefijoCelular ?? "1809");
+  const telefono = telefonoInternacional(typeof body.telefono === "string" ? body.telefono : "", pais?.prefijoCelular ?? "1809");
   if (!nombre) return c.json({ error: "Escribe tu nombre." }, 400);
   if (!telefono) return c.json({ error: "Escribe tu número de teléfono completo." }, 400);
   if (!(await permitirEvento(db, `chat-sesion:${ipDe(c)}`, 30, 60 * MINUTO))) return demasiados(c);
@@ -76,7 +76,7 @@ chatColmadoRoutes.post("/api/chat-colmado/:codigo/sesion", async (c) => {
   if (aparato) {
     const hoy = inicioDiaLocal(await getColmadoTimezone(db, colmado));
     const [anterior] = await db.select().from(chatWebSesiones)
-      .where(and(eq(chatWebSesiones.colmadoId, colmado.id), eq(chatWebSesiones.clienteWhatsapp, telefono), eq(chatWebSesiones.aparato, aparato), gte(chatWebSesiones.fechaCreacion, hoy)))
+      .where(and(eq(chatWebSesiones.colmadoId, colmado.id), mismoTelefono(chatWebSesiones.clienteWhatsapp, telefono), eq(chatWebSesiones.aparato, aparato), gte(chatWebSesiones.fechaCreacion, hoy)))
       .orderBy(desc(chatWebSesiones.id)).limit(1);
     if (anterior) {
       await db.update(chatWebSesiones).set({ fechaUltimaActividad: new Date() }).where(eq(chatWebSesiones.id, anterior.id));
@@ -155,7 +155,7 @@ function atender(c: Context<AppEnv>, s: SesionAbierta, entrada: Entrada) {
     // ¿Este aparato ya se usó antes con este número? Entonces se le puede recordar su último pedido.
     const aparatoConocido = s.sesion.aparato
       ? (await db.select({ id: chatWebSesiones.id }).from(chatWebSesiones)
-        .where(and(eq(chatWebSesiones.colmadoId, s.colmado.id), eq(chatWebSesiones.clienteWhatsapp, s.sesion.clienteWhatsapp!), eq(chatWebSesiones.aparato, s.sesion.aparato), ne(chatWebSesiones.id, s.sesion.id)))
+        .where(and(eq(chatWebSesiones.colmadoId, s.colmado.id), mismoTelefono(chatWebSesiones.clienteWhatsapp, s.sesion.clienteWhatsapp!), eq(chatWebSesiones.aparato, s.sesion.aparato), ne(chatWebSesiones.id, s.sesion.id)))
         .limit(1)).length > 0
       : false;
     const respuestas = await atenderChat({ env: c.env, db, colmado: s.colmado, sesion: fresca ?? s.sesion, respuestasPrevias: previas, aparatoConocido }, entrada);
@@ -215,6 +215,20 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/ubicacion", async (c
   return c.json({ ok: true, id });
 });
 
+const EXTENSION_AUDIO: Record<string, string> = { "audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/aac": "aac", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav" };
+
+/** Guarda la nota de voz en R2 (audios/<negocio>/…). Solo la oye el personal de ese negocio. */
+async function guardarAudio(env: AppEnv["Bindings"], colmadoId: number, tipo: string, base64: string): Promise<string | null> {
+  const mime = tipo.toLowerCase().split(";")[0];
+  const ext = EXTENSION_AUDIO[mime];
+  if (!ext || !env.UPLOADS) return null;
+  const bytes = Uint8Array.from(atob(base64), (ch) => ch.charCodeAt(0));
+  if (!bytes.byteLength || bytes.byteLength > 3_200_000) return null;
+  const clave = `audios/${colmadoId}/${crypto.randomUUID()}.${ext}`;
+  await env.UPLOADS.put(clave, bytes, { httpMetadata: { contentType: mime, cacheControl: "private, no-store" } });
+  return `/uploads/${clave}`;
+}
+
 /** Nota de voz: se pasa a texto y el bot la atiende como si la hubiera escrito. */
 chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/voz", async (c) => {
   const db = getDb(c.env.DB);
@@ -242,9 +256,21 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/voz", async (c) => {
   } catch (err) {
     console.error("[chat-colmado] No se pudo transcribir:", err instanceof Error ? err.message : err);
   }
-  if (!texto) return c.json({ error: "No pude entender la nota de voz. Intenta de nuevo o escribe tu pedido." }, 422);
+  // El audio original queda para que el colmadero lo escuche al lado de la transcripción.
+  const audioUrl = await guardarAudio(c.env, s.colmado.id, m[1], m[2]).catch((err) => {
+    console.error("[chat-colmado] No se pudo guardar el audio:", err instanceof Error ? err.message : err);
+    return null;
+  });
+  if (!texto) {
+    // Aunque no se entendió, el colmadero la puede escuchar.
+    if (audioUrl && s.sesion.conversacionId) {
+      await addMensaje(db, s.sesion.conversacionId, "user", "🎤 Nota de voz (no se pudo pasar a texto)", { audioUrl });
+      await avisarNegocio(c.env, s.colmado.id, ["conversaciones"]);
+    }
+    return c.json({ error: "No pude entender la nota de voz. Intenta de nuevo o escribe tu pedido." }, 422);
+  }
   const id = await guardarDelCliente(db, s.sesion.sessionId, `🎤 ${texto}`);
-  await atender(c, s, { tipo: "texto", texto });
+  await atender(c, s, { tipo: "texto", texto, audioUrl: audioUrl ?? undefined });
   return c.json({ ok: true, id, texto });
 });
 

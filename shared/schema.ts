@@ -682,6 +682,8 @@ export const whatsappMensajes = sqliteTable("whatsapp_mensajes", {
   conversacionId: integer("conversacion_id").notNull().references(() => whatsappConversaciones.id, { onDelete: "cascade" }),
   rol: text("rol").notNull(),
   contenido: text("contenido").notNull(),
+  /** Nota de voz original del cliente (chat de la página), al lado de su transcripción. Se borra a los 90 días. */
+  audioUrl: text("audio_url"),
   fechaEnvio: integer("fecha_envio", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (t) => [
   index("wa_msg_conversacion_fecha_idx").on(t.conversacionId, t.fechaEnvio),

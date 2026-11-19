@@ -1,0 +1,1 @@
+ALTER TABLE `whatsapp_mensajes` ADD `audio_url` text;

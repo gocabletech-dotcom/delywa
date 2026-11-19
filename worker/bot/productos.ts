@@ -6,7 +6,9 @@ import { normalizar } from "../lib/jerga";
 // Lo que no esté en la lista igual se anota tal cual: el colmado lo verifica.
 
 /** `monto`: cuando el cliente pide por dinero ("10 pesos de ajo"), cuánto quiere gastar en ese producto. */
-export type Item = { nombre: string; cantidad: number; unidad: string | null; conocido: boolean; original: string; monto?: number | null };
+export type Item = { nombre: string; cantidad: number; unidad: string | null; conocido: boolean; original: string; monto?: number | null;
+  /** El cliente no dijo cuánto ("arroz", "aceite"): el bot le pregunta la cantidad o el monto. */
+  sinCantidad?: boolean };
 
 /** Productos típicos del colmado (nombre que ve el colmado → formas en que lo escribe el cliente). */
 export const CATALOGO: Array<[string, string[]]> = [
@@ -309,7 +311,9 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
       const resto = t.replace(frase, " ").trim().split(" ");
       const n = resto.map(leerNumero).find((x) => x !== null && x > 0 && x <= 100);
       const cantidadEnFrase = leerNumero(frase.split(" ")[0]);
-      return { nombre: producto, cantidad: monto ? 1 : n ?? (cantidadEnFrase && cantidadEnFrase >= 1 ? cantidadEnFrase : 1), unidad: null, conocido: true, original, monto };
+      // «la verde», «el pote»: el artículo ya dice que es uno.
+      const sinCantidad = !monto && n == null && !(cantidadEnFrase && cantidadEnFrase >= 1) && !/^(el|la|los|las|un|una|uno)\s/.test(frase);
+      return { nombre: producto, cantidad: monto ? 1 : n ?? (cantidadEnFrase && cantidadEnFrase >= 1 ? cantidadEnFrase : 1), unidad: null, conocido: true, original, monto, ...(sinCantidad ? { sinCantidad } : {}) };
     }
   }
   const palabras = t.split(" ");
@@ -346,7 +350,31 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
     conocido: Boolean(delCatalogo),
     original,
     monto,
+    ...(!monto && cantidad === null && unidad === null ? { sinCantidad: true } : {}),
   };
+}
+
+/**
+ * Respuesta a «¿qué cantidad o monto?»: «15, 25, 30», «2 libras y 50 pesos», «15 25 30».
+ * Devuelve una cantidad por cada parte, en el orden en que las escribió. Un número solo de 5 o más
+ * es dinero (como «15 de arroz» en el colmado); menos de 5 es cantidad.
+ */
+export function leerCantidades(texto: string): Array<{ cantidad: number; unidad: string | null; monto: number | null }> {
+  const t = normalizar(texto).replace(/\s+/g, " ").trim();
+  if (!t) return [];
+  let partes = t.split(/\s*(?:,|;|\n|\s+y\s+)\s*/).map((x) => x.trim()).filter(Boolean);
+  // «15 25 30»: varios números separados solo por espacios.
+  if (partes.length === 1 && /^[\d.,$\s]+$/.test(partes[0]) && partes[0].split(" ").length > 1) partes = partes[0].split(" ");
+  const tieneNumero = (p: string) => /\d/.test(p) || p.split(" ").some((w) => leerNumero(w) !== null);
+  const r: Array<{ cantidad: number; unidad: string | null; monto: number | null }> = [];
+  for (const p of partes) {
+    if (!tieneNumero(p)) return r.length ? r : [];
+    // Se lee como si dijera «<parte> de producto» para usar las mismas reglas del pedido.
+    const item = leerItem(`${p} de producto`, new Map());
+    if (!item) return r;
+    r.push({ cantidad: item.cantidad, unidad: item.unidad, monto: item.monto ?? null });
+  }
+  return r;
 }
 
 /** Un mensaje completo ("dame 2 libras de arroz, un aceite y una fría") → lista de productos. */

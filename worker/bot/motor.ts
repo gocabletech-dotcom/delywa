@@ -1,4 +1,5 @@
 import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { mismoTelefono } from "../lib/telefono";
 import { conocimientoParaPrompt } from "../lib/conocimiento";
 import { botNoEntendidos, botRegistro, chatWebSesiones, clienteDirecciones, clientes, diccionarioJerga, pedidos, type ChatWebSesion, type Colmado } from "@shared/schema";
 import { textoCuentas } from "../lib/transferencia";
@@ -12,7 +13,7 @@ import { addMensaje, getClienteByWhatsapp, updateConversacionPedidoEstado } from
 import { createPedido, ESTADOS_TERMINALES } from "../storage/pedidos";
 import { interpretar } from "./ia";
 import * as I from "./intenciones";
-import { corregirOrtografia, emojiDe, leerPedido, textoItem, type Item } from "./productos";
+import { corregirOrtografia, emojiDe, leerCantidades, leerPedido, textoItem, type Item } from "./productos";
 
 // Bot del chat de la página (delywa.com/pedir/<colmado>). Funciona por pasos y SIN inteligencia artificial:
 //   saludo según la hora → anota el pedido ("¿Algo más?") → "¿Eso es todo?" → ubicación →
@@ -23,11 +24,11 @@ import { corregirOrtografia, emojiDe, leerPedido, textoItem, type Item } from ".
 
 export type Opcion = { texto: string; accion?: "ubicacion" | "comprobante" };
 export type Respuesta = { texto: string; opciones?: Opcion[] };
-export type Entrada = { tipo: "texto"; texto: string } | { tipo: "ubicacion"; latitud: number; longitud: number };
+export type Entrada = { tipo: "texto"; texto: string; audioUrl?: string } | { tipo: "ubicacion"; latitud: number; longitud: number };
 
 /** `emoji`: cuando la IA reconoció el producto ("la de botella verde" → cerveza), su emoji. */
-type Anotado = { nombre: string; cantidad: number; unidad: string | null; monto: number | null; emoji?: string };
-type Nuevo = Pick<Item, "nombre" | "cantidad" | "unidad" | "monto"> & { emoji?: string };
+type Anotado = { nombre: string; cantidad: number; unidad: string | null; monto: number | null; emoji?: string; sinCantidad?: boolean };
+type Nuevo = Pick<Item, "nombre" | "cantidad" | "unidad" | "monto" | "sinCantidad"> & { emoji?: string };
 
 type Contexto = {
   env: Env;
@@ -99,10 +100,12 @@ function sumar(anteriores: Anotado[], nuevos: Nuevo[]): Anotado[] {
   const r = anteriores.map((p) => ({ ...p }));
   for (const n of nuevos) {
     // Lo pedido por dinero ("10 pesos de ajo") se suma en pesos; lo pedido por cantidad, en cantidad.
-    const igual = r.find((p) => normalizar(p.nombre) === normalizar(n.nombre) && (p.unidad ?? null) === (n.unidad ?? null) && Boolean(p.monto) === Boolean(n.monto));
+    // «arroz» sin cantidad cuando ya hay arroz anotado: no se duplica.
+    if (n.sinCantidad && r.some((p) => normalizar(p.nombre) === normalizar(n.nombre))) continue;
+    const igual = r.find((p) => normalizar(p.nombre) === normalizar(n.nombre) && (p.unidad ?? null) === (n.unidad ?? null) && Boolean(p.monto) === Boolean(n.monto) && !p.sinCantidad);
     if (igual && n.monto) igual.monto = (igual.monto ?? 0) + n.monto;
     else if (igual) igual.cantidad += n.cantidad;
-    else r.push({ nombre: n.nombre, cantidad: n.cantidad, unidad: n.unidad ?? null, monto: n.monto ?? null, ...(n.emoji ? { emoji: n.emoji } : {}) });
+    else r.push({ nombre: n.nombre, cantidad: n.cantidad, unidad: n.unidad ?? null, monto: n.monto ?? null, ...(n.emoji ? { emoji: n.emoji } : {}), ...(n.sinCantidad ? { sinCantidad: true } : {}) });
   }
   return r.slice(0, 60);
 }
@@ -139,7 +142,7 @@ function metros(lat1: number, lon1: number, lat2: number, lon2: number): number 
 async function ultimoPedido(c: Contexto): Promise<Nuevo[]> {
   if (!c.sesion.clienteWhatsapp) return [];
   const [p] = await c.db.select({ productos: pedidos.productos }).from(pedidos)
-    .where(and(eq(pedidos.colmadoId, c.colmado.id), eq(pedidos.clienteWhatsapp, c.sesion.clienteWhatsapp), ne(pedidos.estado, "cancelado")))
+    .where(and(eq(pedidos.colmadoId, c.colmado.id), mismoTelefono(pedidos.clienteWhatsapp, c.sesion.clienteWhatsapp), ne(pedidos.estado, "cancelado")))
     .orderBy(desc(pedidos.id)).limit(1);
   if (!p) return [];
   let lista: unknown = p.productos;
@@ -287,8 +290,40 @@ async function responderSustitucion(c: Contexto, pedido: typeof pedidos.$inferSe
 /** Anota productos y responde "¿Algo más?". */
 async function anotar(c: Contexto, nuevos: Nuevo[], prefijo = ""): Promise<Respuesta> {
   const todos = sumar(productosDe(c.sesion), nuevos);
-  await guardarSesion(c, { productosCapturados: todos as any, estadoConversacion: "tomando_pedido" });
+  const faltan = todos.filter((p) => p.sinCantidad);
+  await guardarSesion(c, { productosCapturados: todos as any, estadoConversacion: faltan.length ? "pidiendo_cantidades" : "tomando_pedido" });
+  const conCantidad = nuevos.filter((n) => !n.sinCantidad);
+  const anotado = conCantidad.length ? `Anotado ✍️\n${lista(conCantidad.map((n) => ({ ...n, unidad: n.unidad ?? null, monto: n.monto ?? null })))}\n\n` : "";
+  if (faltan.length) return { texto: `${prefijo}${anotado}${preguntaCantidades(faltan)}` };
   return { texto: `${prefijo}Anotado ✍️\n${lista(nuevos.map((n) => ({ ...n, unidad: n.unidad ?? null, monto: n.monto ?? null })))}\n\n¿Algo más?`, opciones: [{ texto: "Eso es todo" }] };
+}
+
+/** «¿Qué cantidad o monto de arroz, habichuela y aceite?» */
+function preguntaCantidades(faltan: Anotado[]): string {
+  const nombres = faltan.map((p) => p.nombre.toLowerCase());
+  if (nombres.length === 1) return `¿Qué cantidad o monto de *${nombres[0]}*? 🤔\nPor ejemplo: «2 libras», «50 pesos» o «1».`;
+  const juntos = `${nombres.slice(0, -1).join(", ")} y ${nombres.at(-1)}`;
+  const ejemplo = ["2 libras", "50 pesos", "1", "3", "25 pesos"].slice(0, nombres.length).join(", ");
+  return `¿Qué cantidad o monto de *${juntos}*? 🤔\nRespóndeme en el mismo orden, por ejemplo: «${ejemplo}».`;
+}
+
+/** El cliente respondió las cantidades: se ponen en orden a lo que faltaba. */
+async function ponerCantidades(c: Contexto, texto: string): Promise<Respuesta | null> {
+  const valores = leerCantidades(texto);
+  if (!valores.length) return null;
+  const todos = productosDe(c.sesion).map((p) => ({ ...p }));
+  const faltan = todos.filter((p) => p.sinCantidad);
+  faltan.forEach((p, i) => {
+    const v = valores[i];
+    if (!v) return;
+    if (v.monto) { p.monto = v.monto; p.cantidad = 1; p.unidad = null; }
+    else { p.cantidad = v.cantidad; p.unidad = v.unidad; p.monto = null; }
+    delete p.sinCantidad;
+  });
+  const quedan = todos.filter((p) => p.sinCantidad);
+  await guardarSesion(c, { productosCapturados: todos as any, estadoConversacion: quedan.length ? "pidiendo_cantidades" : "tomando_pedido" });
+  if (quedan.length) return { texto: `Anotado ✍️\n${lista(faltan.filter((p) => !p.sinCantidad))}\n\n${preguntaCantidades(quedan)}` };
+  return { texto: `Listo ✍️ Ahora tengo:\n${lista(todos)}\n\n¿Algo más?`, opciones: [{ texto: "Eso es todo" }] };
 }
 
 async function noEntendido(c: Contexto, texto: string): Promise<Respuesta> {
@@ -314,7 +349,7 @@ async function conIa(c: Contexto, texto: string, paso: string): Promise<Respuest
       }
     }
     // Se anota con las palabras del cliente (solo con la ortografía corregida), no con el nombre que eligió la IA.
-    return anotar(c, r.productos.map((p) => ({ nombre: nombreDelCliente(p.jergaOriginal, p.nombre), cantidad: p.cantidad ?? 1, unidad: p.unidad, emoji: emojiDe(p.nombre) })));
+    return anotar(c, r.productos.map((p) => ({ nombre: nombreDelCliente(p.jergaOriginal, p.nombre), cantidad: p.cantidad ?? 1, unidad: p.unidad, emoji: emojiDe(p.nombre), ...(p.cantidad == null && !p.unidad ? { sinCantidad: true } : {}) })));
   }
   if (r.respuesta) {
     const algo = productosDe(c.sesion).length > 0;
@@ -386,6 +421,7 @@ function preguntaFrecuente(c: Contexto, texto: string, timezone: string): string
 function recordatorio(c: Contexto): Respuesta | null {
   switch (c.sesion.estadoConversacion) {
     case "confirmando": return { texto: "¿Eso es todo?", opciones: [{ texto: "Sí, eso es todo" }, { texto: "Agregar más" }] };
+    case "pidiendo_cantidades": return { texto: preguntaCantidades(productosDe(c.sesion).filter((p) => p.sinCantidad)) };
     case "esperando_ubicacion": return { texto: "¿A dónde te lo llevamos?", opciones: [BOTON_UBICACION] };
     case "eligiendo_destino": return { texto: "¿Te lo llevamos ahí donde estás o a tu casa?", opciones: ELEGIR_DESTINO };
     case "ofreciendo_casa": return null;
@@ -401,7 +437,7 @@ function recordatorio(c: Contexto): Respuesta | null {
 export async function atenderChat(c: Contexto, entrada: Entrada): Promise<Respuesta[]> {
   await anotarMetrica(c, "mensajes");
   const texto = entrada.tipo === "texto" ? entrada.texto.trim() : "";
-  if (c.sesion.conversacionId && texto) await addMensaje(c.db, c.sesion.conversacionId, "user", texto);
+  if (c.sesion.conversacionId && texto) await addMensaje(c.db, c.sesion.conversacionId, "user", texto, { audioUrl: entrada.tipo === "texto" ? entrada.audioUrl : undefined });
   if (c.sesion.conversacionId && entrada.tipo === "ubicacion") await addMensaje(c.db, c.sesion.conversacionId, "user", "[Ubicación compartida 📍]");
 
   const respuestas = await responder(c, entrada, texto);
@@ -499,6 +535,20 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
   }
 
   switch (estado) {
+    case "pidiendo_cantidades": {
+      if (entrada.tipo === "texto") {
+        const r = await ponerCantidades(c, texto);
+        if (r) return [r];
+      }
+      if (entrada.tipo === "ubicacion") {
+        await guardarSesion(c, { clienteLatitud: String(entrada.latitud), clienteLongitud: String(entrada.longitud) });
+        return [{ texto: "📍 ¡Recibí tu ubicación!" }, ...(recordatorio(c) ? [recordatorio(c)!] : [])];
+      }
+      // No respondió con cantidades (pidió otra cosa, «eso es todo»…): queda 1 de cada uno y se sigue normal.
+      const todos = productosDe(c.sesion).map(({ sinCantidad: _s, ...p }) => p);
+      await guardarSesion(c, { productosCapturados: todos as any, estadoConversacion: "tomando_pedido" });
+      return responder(c, entrada, texto);
+    }
     case "inicial":
     case "tomando_pedido": {
       if (entrada.tipo === "ubicacion") {

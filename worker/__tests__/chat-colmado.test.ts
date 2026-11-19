@@ -72,6 +72,24 @@ describe("bot por pasos del chat de la página (sin IA)", () => {
     expect(r[0].contenido).toContain("1 Aceite");
   });
 
+  it("sin cantidad pregunta «¿qué cantidad o monto?» y toma la respuesta en el orden de los productos", async () => {
+    const id = await abrir("8095551212", "Rita");
+    let r = await decir(id, "arroz, habichuela y aceite");
+    expect(r[0].contenido).toContain("¿Qué cantidad o monto de *arroz, habichuela y aceite*?");
+    r = await decir(id, "15, 25");
+    expect(r[0].contenido).toContain("RD$15 de Arroz");
+    expect(r[0].contenido).toContain("RD$25 de Habichuela");
+    expect(r[0].contenido).toContain("¿Qué cantidad o monto de *aceite*?");
+    r = await decir(id, "2");
+    expect(r[0].contenido).toContain("2 Aceite");
+    expect(r[0].contenido).toContain("¿Algo más?");
+    // Si no contesta con cantidades, sigue normal con 1 de cada uno.
+    const otro = await abrir("8095551213", "Rafa");
+    await decir(otro, "salami");
+    r = await decir(otro, "eso es todo");
+    expect(r[0].contenido).not.toContain("¿Qué cantidad");
+  });
+
   it("«no» → muestra todo y pregunta «¿Eso es todo?»; «sí» → pide la ubicación", async () => {
     let r = await decir(sessionId, "no, nada más");
     expect(r[0].contenido).toContain("¿Eso es todo?");
@@ -96,7 +114,7 @@ describe("bot por pasos del chat de la página (sin IA)", () => {
 
     const [s] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, sessionId));
     const [p] = await t.db.select().from(pedidos).where(eq(pedidos.id, s.pedidoId!));
-    expect(p).toMatchObject({ estado: "pendiente_confirmacion", metodoPago: "efectivo", necesitaDevuelta: true, clienteWhatsapp: "18095557777", clienteLatitud: "18.4800000" });
+    expect(p).toMatchObject({ estado: "pendiente_confirmacion", metodoPago: "efectivo", necesitaDevuelta: true, clienteWhatsapp: "+18095557777", clienteLatitud: "18.4800000" });
     expect(Number(p.montoPago)).toBe(1000);
     expect(JSON.parse(String(p.productos))).toEqual([
       { nombre: "Arroz (libras)", cantidad: 2, monto: null }, { nombre: "Fría", cantidad: 1, monto: null }, { nombre: "Aceite", cantidad: 1, monto: null },
@@ -105,7 +123,7 @@ describe("bot por pasos del chat de la página (sin IA)", () => {
     expect(llamadasIA).toBe(0);
     expect(salientes.filter((u) => u.includes("graph.facebook.com"))).toEqual([]);
     // El colmado ve la conversación completa en su panel.
-    const [conv] = await t.db.select().from(whatsappConversaciones).where(eq(whatsappConversaciones.clienteWhatsapp, "18095557777"));
+    const [conv] = await t.db.select().from(whatsappConversaciones).where(eq(whatsappConversaciones.clienteWhatsapp, "+18095557777"));
     const enPanel = await t.db.select().from(whatsappMensajes).where(eq(whatsappMensajes.conversacionId, conv.id));
     expect(enPanel.length).toBeGreaterThanOrEqual(14);
   });
@@ -218,6 +236,14 @@ describe("la IA de Cloudflare solo cuando no entiende", () => {
     const ms = (await c().request("GET", `/api/chat-colmado/sesion/${id}/mensajes`)).json.mensajes;
     expect(ms.map((m: any) => m.contenido)).toContain("🎤 dos fundas de pan");
     expect(textos(ms)).toContain("2 fundas de Pan");
+    // El colmadero tiene el audio original al lado de la transcripción.
+    const [sesion] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
+    const [msj] = await t.db.select().from(whatsappMensajes).where(and(eq(whatsappMensajes.conversacionId, sesion.conversacionId!), eq(whatsappMensajes.contenido, "dos fundas de pan")));
+    expect(msj.audioUrl).toMatch(new RegExp(`^/uploads/audios/${colmado.id}/[0-9a-f-]{36}\\.webm$`));
+    const guardado = await t.env.UPLOADS.get(msj.audioUrl!.slice("/uploads/".length));
+    expect(await guardado!.text()).toBe("audio-de-prueba");
+    // Sin sesión del negocio nadie lo oye.
+    expect((await c().request("GET", msj.audioUrl!)).status).toBe(401);
   });
 });
 
@@ -368,7 +394,7 @@ describe("casa guardada, inactividad y memoria del último pedido", () => {
 
   it("otro día: conversación nueva que recuerda el último pedido solo en el mismo aparato", async () => {
     const antier = new Date(Date.now() - 2 * 24 * 3600_000);
-    await t.db.update(chatWebSesiones).set({ fechaCreacion: antier }).where(and(eq(chatWebSesiones.clienteWhatsapp, "18095553333")));
+    await t.db.update(chatWebSesiones).set({ fechaCreacion: antier }).where(and(eq(chatWebSesiones.clienteWhatsapp, "+18095553333")));
     const nueva = await abrir(tel, "Marta", A);
     expect(nueva).not.toBe(id);
     expect((await c().request("GET", `/api/chat-colmado/sesion/${nueva}/mensajes`)).json.mensajes).toHaveLength(0);
@@ -387,7 +413,7 @@ describe("casa guardada, inactividad y memoria del último pedido", () => {
     expect(rep2[0].contenido).toContain("Por seguridad");
     expect(rep2[0].contenido).not.toContain("Pan");
     // Los datos del cliente siguen en el sistema.
-    const [cl] = await t.db.select().from(clientes).where(eq(clientes.whatsappNumero, "18095553333"));
+    const [cl] = await t.db.select().from(clientes).where(eq(clientes.whatsappNumero, "+18095553333"));
     expect(cl.nombre).toBe("Marta");
   });
 });

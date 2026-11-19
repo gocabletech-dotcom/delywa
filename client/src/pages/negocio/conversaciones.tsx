@@ -101,6 +101,8 @@ type Mensaje = {
   conversacionId: number;
   rol: string;
   contenido: string;
+  /** Nota de voz original del cliente, al lado de la transcripción. */
+  audioUrl?: string | null;
   fechaEnvio: string;
 };
 
@@ -689,7 +691,25 @@ export default function ConversacionesPage() {
                           <div key={msg.id}>
                             {nuevoDia && <SeparadorFecha texto={textoFecha(fecha)} />}
                             <Burbuja mia={mio} cola={cola} hora={horaCorta(fecha)} testId={`mensaje-${msg.id}`}>
-                              <span className="whitespace-pre-wrap">{stripInternalAddressContext(msg.contenido)}</span>
+                              {msg.audioUrl && (
+                                <div className="mb-1 -mx-0.5" data-testid={`audio-${msg.id}`}>
+                                  <audio controls preload="none" src={msg.audioUrl} className="h-9 w-[230px] max-w-full" aria-label="Nota de voz del cliente">
+                                    Tu navegador no puede reproducir la nota de voz.
+                                  </audio>
+                                  <p className="text-[11px] text-[#667781] mt-0.5">🎤 Nota de voz · transcripción:</p>
+                                </div>
+                              )}
+                              {(() => {
+                                // El comprobante que envió el cliente se ve como foto (antes salía la dirección del archivo).
+                                const foto = msg.contenido.match(/^\[Comprobante de pago: (\/uploads\/comprobantes\/[0-9a-f-]{36}\.(?:jpg|png|webp|gif))\]$/);
+                                if (foto) return (
+                                  <a href={foto[1]} target="_blank" rel="noopener noreferrer" className="block" data-testid={`comprobante-chat-${msg.id}`}>
+                                    <img src={foto[1]} alt="Comprobante de pago" loading="lazy" className="w-[200px] max-h-[260px] object-cover object-top rounded-md" />
+                                    <span className="block text-[12px] text-[#667781] mt-0.5">📸 Comprobante de pago</span>
+                                  </a>
+                                );
+                                return <span className="whitespace-pre-wrap">{stripInternalAddressContext(msg.contenido)}</span>;
+                              })()}
                             </Burbuja>
                           </div>
                         );

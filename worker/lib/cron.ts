@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { pedidos, subidasPendientes } from "@shared/schema";
+import { pedidos, subidasPendientes, whatsappMensajes } from "@shared/schema";
 import type { Env } from "../env";
 import { getDb } from "../db";
 import { getColmado } from "../storage/colmados";
@@ -46,4 +46,19 @@ export async function borrarComprobantesHuerfanos(env: Env, ahora = Date.now()):
   }
   if (borrados) console.log(`[cron] Comprobantes sin pedido borrados: ${borrados}`);
   return borrados;
+}
+
+/** Las notas de voz del chat se guardan 90 días; después se borran y el mensaje queda solo con el texto. */
+export const AUDIOS = { dias: 90, porVuelta: 200 };
+export async function borrarAudiosViejos(env: Env, ahora = Date.now()): Promise<number> {
+  const db = getDb(env.DB);
+  const limite = ahora - AUDIOS.dias * 24 * 60 * 60 * 1000;
+  const lista = await env.UPLOADS.list({ prefix: "audios/", limit: AUDIOS.porVuelta });
+  const viejos = lista.objects.filter((o) => o.uploaded.getTime() < limite);
+  for (const o of viejos) {
+    await env.UPLOADS.delete(o.key);
+    await db.update(whatsappMensajes).set({ audioUrl: null }).where(eq(whatsappMensajes.audioUrl, `/uploads/${o.key}`));
+  }
+  if (viejos.length) console.log(`[cron] Notas de voz viejas borradas: ${viejos.length}`);
+  return viejos.length;
 }

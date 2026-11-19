@@ -1,11 +1,27 @@
 // @vitest-environment node
 // Reglas del bot sin IA: cómo lee pedidos e intenciones (no necesita base de datos).
 import { describe, expect, it } from "vitest";
-import { emojiDe, leerPedido, textoItem } from "../bot/productos";
+import { emojiDe, leerCantidades, leerPedido, textoItem } from "../bot/productos";
 import * as I from "../bot/intenciones";
 
 const jerga = new Map([["un pote", "Ron Brugal 700 ml"], ["la verde", "Cerveza Heineken"]]);
 const leer = (t: string) => leerPedido(t, jerga).map(textoItem);
+
+describe("productos sin cantidad", () => {
+  it("marca lo que llegó sin cantidad ni monto", () => {
+    const items = leerPedido("arroz, habichuela y aceite", jerga);
+    expect(items.map((i) => [i.nombre, Boolean(i.sinCantidad)])).toEqual([["Arroz", true], ["Habichuela", true], ["Aceite", true]]);
+    expect(leerPedido("2 libras de arroz, un aceite, 50 pesos de queso, una libra de azúcar, la verde", jerga).some((i) => i.sinCantidad)).toBe(false);
+  });
+
+  it("lee las cantidades en orden: números, montos y unidades", () => {
+    expect(leerCantidades("15, 25, 30")).toEqual([{ cantidad: 1, unidad: null, monto: 15 }, { cantidad: 1, unidad: null, monto: 25 }, { cantidad: 1, unidad: null, monto: 30 }]);
+    expect(leerCantidades("15 25 30").map((x) => x.monto)).toEqual([15, 25, 30]);
+    expect(leerCantidades("2 libras, 50 pesos y 1")).toEqual([{ cantidad: 2, unidad: "libras", monto: null }, { cantidad: 1, unidad: null, monto: 50 }, { cantidad: 1, unidad: null, monto: null }]);
+    expect(leerCantidades("dos")).toEqual([{ cantidad: 2, unidad: null, monto: null }]);
+    expect(leerCantidades("eso es todo")).toEqual([]);
+  });
+});
 
 describe("lee pedidos de colmado sin IA", () => {
   it("cantidades, unidades y productos", () => {

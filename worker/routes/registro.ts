@@ -55,6 +55,15 @@ export function telefonoConPais(telefono: string, prefijo: string): string | nul
   return completo.length >= 10 && completo.length <= 15 ? completo : null;
 }
 
+/**
+ * Teléfono del cliente del chat, siempre como +<país><número>: +19193436706, +9193436706 y 9193436706
+ * son el mismo (+19193436706).
+ */
+export function telefonoInternacional(telefono: string, prefijo: string): string | null {
+  const completo = telefonoConPais(telefono, prefijo);
+  return completo ? `+${completo}` : null;
+}
+
 /** Países y tipos de negocio para el formulario. */
 registroRoutes.get("/api/registro-negocio/opciones", async (c) => {
   const db = getDb(c.env.DB);

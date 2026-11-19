@@ -13,8 +13,8 @@ import {
   addChatWebMensaje, addMensaje, contarNoLeidas, deleteConversacion, getAnalyticsMensajes, getChatWebSessionByConversacionId,
   getConversacionById, getConversaciones, getMensajes, getUltimoMensajeCliente, marcarConversacionLeida, updateConversacion,
 } from "../storage/conversaciones";
-import { and, desc, eq, sql } from "drizzle-orm";
-import { chatWebMensajes, zipAlertaEventos } from "@shared/schema";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { chatWebMensajes, whatsappMensajes, zipAlertaEventos } from "@shared/schema";
 
 export const conversacionRoutes = new Hono<AppEnv>();
 
@@ -73,7 +73,12 @@ conversacionRoutes.patch("/api/conversaciones/:id", requireAuth, async (c) => {
 conversacionRoutes.delete("/api/conversaciones/:id", requireAuth, async (c) => {
   const r = await conversacionOperable(c, ADMINISTRADORES);
   if ("error" in r) return r.error;
-  await deleteConversacion(getDb(c.env.DB), r.conversacion);
+  const db = getDb(c.env.DB);
+  // Las notas de voz de esa conversación se borran también.
+  const audios = await db.select({ url: whatsappMensajes.audioUrl }).from(whatsappMensajes)
+    .where(and(eq(whatsappMensajes.conversacionId, r.conversacion.id), isNotNull(whatsappMensajes.audioUrl)));
+  await deleteConversacion(db, r.conversacion);
+  for (const a of audios) if (a.url?.startsWith("/uploads/audios/")) await c.env.UPLOADS.delete(a.url.slice("/uploads/".length)).catch(() => undefined);
   return c.json({ success: true, message: "Conversación eliminada" });
 });
 

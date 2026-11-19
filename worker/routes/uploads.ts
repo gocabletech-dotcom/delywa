@@ -122,11 +122,19 @@ uploadRoutes.post("/api/colmados/:id/logo", requireAuth, async (c) => {
 
 uploadRoutes.get("/uploads/*", sessionMiddleware, async (c) => {
   const clave = decodeURIComponent(new URL(c.req.url).pathname.slice("/uploads/".length));
-  if (!/^(productos|logos|comprobantes)\/[A-Za-z0-9/_.-]+$/.test(clave) || clave.includes("..")) return c.notFound();
+  if (!/^(productos|logos|comprobantes|audios)\/[A-Za-z0-9/_.-]+$/.test(clave) || clave.includes("..")) return c.notFound();
 
+  // Las notas de voz del chat solo las oye el personal del negocio (audios/<negocio>/…).
+  const audio = clave.match(/^audios\/(\d+)\/[0-9a-f-]{36}\.[a-z0-9]{2,4}$/);
+  if (clave.startsWith("audios/")) {
+    if (!audio) return c.notFound();
+    const user = await usuarioOpcional(c);
+    if (!user) return c.json({ error: "No autenticado" }, 401);
+    if (!(await puedeOperar(getDb(c.env.DB), user, Number(audio[1])))) return c.json({ error: "No tienes permiso para ver este archivo" }, 403);
+  }
   // Un comprobante de pago solo lo ve el personal del negocio al que pertenece el pedido.
-  const privado = clave.startsWith("comprobantes/");
-  if (privado) {
+  const privado = clave.startsWith("comprobantes/") || Boolean(audio);
+  if (clave.startsWith("comprobantes/")) {
     const user = await usuarioOpcional(c);
     if (!user) return c.json({ error: "No autenticado" }, 401);
     const db = getDb(c.env.DB);

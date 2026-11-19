@@ -112,11 +112,11 @@ export async function cerrarSesionConversacion(db: Db, id: number): Promise<void
 }
 
 /** Guarda un mensaje. Los del cliente reabren la sesión y cuentan como no leídos. */
-export async function addMensaje(db: Db, conversacionId: number, rol: string, contenido: string): Promise<void> {
+export async function addMensaje(db: Db, conversacionId: number, rol: string, contenido: string, extra: { audioUrl?: string | null } = {}): Promise<void> {
   const now = new Date();
   const esCliente = rol === "user" || rol === "cliente";
   await db.batch([
-    db.insert(whatsappMensajes).values({ conversacionId, rol, contenido }),
+    db.insert(whatsappMensajes).values({ conversacionId, rol, contenido, audioUrl: extra.audioUrl ?? null }),
     db.update(whatsappConversaciones)
       .set(esCliente
         ? { ultimoMensaje: now, ultimoMensajeCliente: now, sesionActiva: true, noLeidosColmado: sql`${whatsappConversaciones.noLeidosColmado} + 1` }

@@ -10,7 +10,7 @@ import {
   mensajesSistema, menuPlantillaItems, menuPlantillas, metaWebhookEventos, pedidos, plantillasJerga, whatsappConversaciones, zipAlertaEventos, type ChatWebSesion,
 } from "@shared/schema";
 import { isColmadoAbierto } from "../lib/horario";
-import { soloDigitos } from "../lib/telefono";
+import { mismoTelefono, soloDigitos } from "../lib/telefono";
 import { getDeliveriesByColmado, updateDeliveryEstado } from "../storage/deliveries";
 import type { Env } from "../env";
 import type { Db } from "../db";
@@ -282,7 +282,7 @@ export const storage = {
     ctx().db.select().from(chatWebMensajes).where(eq(chatWebMensajes.sessionId, sessionId)).orderBy(chatWebMensajes.fechaCreacion, chatWebMensajes.id),
   getChatWebSessionsByWhatsapp: (colmadoId: number, whatsapp: string) =>
     ctx().db.select().from(chatWebSesiones)
-      .where(and(eq(chatWebSesiones.colmadoId, colmadoId), eq(chatWebSesiones.clienteWhatsapp, whatsapp)))
+      .where(and(eq(chatWebSesiones.colmadoId, colmadoId), mismoTelefono(chatWebSesiones.clienteWhatsapp, whatsapp)))
       .orderBy(desc(chatWebSesiones.fechaUltimaActividad)),
 
   /** DELYWA: el identificador de sesión es la única llave del chat; ahora es aleatorio criptográfico (antes Math.random). */
