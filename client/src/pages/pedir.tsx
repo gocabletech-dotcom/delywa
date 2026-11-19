@@ -3,6 +3,7 @@ import { aparato } from "@/lib/aparato";
 import { useParams } from "wouter";
 import { Loader2, Square } from "lucide-react";
 import { Avatar, Burbuja, IOS, IPhone, IconoIOS, SeparadorFecha, fondoWhatsApp, horaCorta, textoFecha } from "@/components/whatsapp/ios";
+import { TextoWhatsApp } from "@/components/whatsapp/ios";
 import { FotoIlegible, prepararFoto } from "@/lib/imagen";
 import { businessTheme } from "@/lib/temaNegocio";
 
@@ -33,12 +34,8 @@ function guardar(codigo: string, g: Guardado | null) {
 }
 const hora = (f: string | number) => new Date(f).toLocaleTimeString("es-DO", { hour: "numeric", minute: "2-digit" });
 
-/** Texto con *negritas* como en WhatsApp y saltos de línea. */
-function Texto({ t }: { t: string }) {
-  return <>{t.split("\n").map((linea, i) => (
-    <span key={i}>{i > 0 && <br />}{linea.split(/(\*[^*\n]+\*)/g).map((p, j) => (p.startsWith("*") && p.endsWith("*") && p.length > 2 ? <b key={j}>{p.slice(1, -1)}</b> : p))}</span>
-  ))}</>;
-}
+/** Texto con el formato de WhatsApp (*negritas*, _cursiva_, enlaces) y saltos de línea. */
+const Texto = ({ t }: { t: string }) => <TextoWhatsApp texto={t} />;
 
 export default function PedirPage({ codigoFijo }: { codigoFijo?: string } = {}) {
   const params = useParams<{ codigo: string }>();

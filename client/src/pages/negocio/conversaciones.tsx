@@ -56,7 +56,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import NegocioLayout from "@/components/negocio/NegocioLayout";
 import { stripInternalAddressContext } from "@shared/visible-message";
-import { Avatar, Burbuja, Checks, IOS, IPhone, IconoIOS, SeparadorFecha, fondoWhatsApp, horaCorta, textoFecha } from "@/components/whatsapp/ios";
+import { Avatar, Burbuja, Checks, IOS, IPhone, IconoIOS, SeparadorFecha, TextoWhatsApp, fondoWhatsApp, horaCorta, textoFecha } from "@/components/whatsapp/ios";
 
 type Conversacion = {
   id: number;
@@ -452,9 +452,23 @@ export default function ConversacionesPage() {
     setSendError(null);
   }, [selectedConversacion?.id]);
 
+  // Como en el teléfono: el chat abre en el último mensaje y se queda abajo mientras cargan las fotos.
+  const pegadoAbajo = useRef(true);
+  const bajar = (suave = false) => {
+    const caja = messagesEndRef.current?.closest(".overflow-y-auto");
+    if (caja) caja.scrollTo({ top: caja.scrollHeight, behavior: suave ? "smooth" : "auto" });
+  };
+  useEffect(() => { pegadoAbajo.current = true; }, [selectedConversacion?.id]);
+  useEffect(() => { if (pegadoAbajo.current) bajar(); }, [mensajes]);
+  const alCargarFoto = () => { if (pegadoAbajo.current) bajar(); };
+  // Si el contenido crece (fotos, notas de voz) y estaba abajo, sigue abajo.
   useEffect(() => {
-    const caja = messagesEndRef.current?.closest(".overflow-y-auto"); if (caja) caja.scrollTo({ top: caja.scrollHeight, behavior: "smooth" });
-  }, [mensajes]);
+    const caja = messagesEndRef.current?.closest(".overflow-y-auto");
+    if (!caja || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => { if (pegadoAbajo.current) bajar(); });
+    Array.from(caja.children).forEach((hijo) => ro.observe(hijo));
+    return () => ro.disconnect();
+  }, [selectedConversacion?.id, mensajes]);
 
   const totalNoLeidos = (conversaciones || []).reduce((n, c) => n + (c.noLeidosColmado > 0 ? 1 : 0), 0);
   const filteredConversaciones = (conversaciones || []).filter((c) =>
@@ -656,7 +670,7 @@ export default function ConversacionesPage() {
                   <div className="flex-1 min-w-0 leading-tight">
                     <p className="text-[16px] font-semibold text-black truncate">{selectedConversacion.clienteNombre || selectedConversacion.clienteWhatsapp}</p>
                     <p className="text-[12px] text-[#8E8E93] truncate">
-                      {selectedConversacion.esDelivery ? "Repartidor" : etiquetaEstado(selectedConversacion.ultimoPedidoEstado) || "Cliente"} · +{selectedConversacion.clienteWhatsapp}
+                      {selectedConversacion.esDelivery ? "Repartidor" : etiquetaEstado(selectedConversacion.ultimoPedidoEstado) || "Cliente"} · +{selectedConversacion.clienteWhatsapp.replace(/\D/g, "")}
                     </p>
                   </div>
                   <a
@@ -675,7 +689,8 @@ export default function ConversacionesPage() {
                 </div>
 
                 {/* Mensajes sobre el fondo de WhatsApp */}
-                <div className="flex-1 min-h-0 overflow-y-auto py-2" style={fondoWhatsApp}>
+                <div className="flex-1 min-h-0 overflow-y-auto py-2" style={{ ...fondoWhatsApp, overflowAnchor: "none" }}
+                  onScroll={(e) => { const c = e.currentTarget; pegadoAbajo.current = c.scrollHeight - c.scrollTop - c.clientHeight < 120; }}>
                   {loadingMensajes ? (
                     <div className="flex justify-center py-10"><Loader2 className="animate-spin" color={IOS.gris} /></div>
                   ) : (
@@ -704,11 +719,11 @@ export default function ConversacionesPage() {
                                 const foto = msg.contenido.match(/^\[Comprobante de pago: (\/uploads\/comprobantes\/[0-9a-f-]{36}\.(?:jpg|png|webp|gif))\]$/);
                                 if (foto) return (
                                   <a href={foto[1]} target="_blank" rel="noopener noreferrer" className="block" data-testid={`comprobante-chat-${msg.id}`}>
-                                    <img src={foto[1]} alt="Comprobante de pago" loading="lazy" className="w-[200px] max-h-[260px] object-cover object-top rounded-md" />
+                                    <img src={foto[1]} alt="Comprobante de pago" onLoad={alCargarFoto} className="w-[200px] max-h-[260px] object-cover object-top rounded-md" />
                                     <span className="block text-[12px] text-[#667781] mt-0.5">📸 Comprobante de pago</span>
                                   </a>
                                 );
-                                return <span className="whitespace-pre-wrap">{stripInternalAddressContext(msg.contenido)}</span>;
+                                return <span className="whitespace-pre-wrap"><TextoWhatsApp texto={stripInternalAddressContext(msg.contenido)} /></span>;
                               })()}
                             </Burbuja>
                           </div>

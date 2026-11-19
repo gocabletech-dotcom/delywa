@@ -13,8 +13,28 @@ export const IOS = {
   barra: "#F6F6F6",
   gris: "#8E8E93",
   separador: "#E5E5EA",
-  fuente: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif",
+  // En la computadora (Windows) no hay letra de Apple: Inter es la más parecida a la del iPhone.
+  fuente: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
 };
+
+/** Un renglón con el formato de WhatsApp: *negrita*, _cursiva_, ~tachado~, ```código``` y enlaces. */
+function renglon(linea: string, clave: string): ReactNode[] {
+  const piezas = linea.split(/(\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~|```[^`]+```|https?:\/\/[^\s]+)/g);
+  return piezas.map((p, j) => {
+    const k = `${clave}-${j}`;
+    if (p.length > 2 && p.startsWith("*") && p.endsWith("*")) return <b key={k} className="font-semibold">{p.slice(1, -1)}</b>;
+    if (p.length > 2 && p.startsWith("_") && p.endsWith("_")) return <i key={k}>{p.slice(1, -1)}</i>;
+    if (p.length > 2 && p.startsWith("~") && p.endsWith("~")) return <s key={k}>{p.slice(1, -1)}</s>;
+    if (p.length > 6 && p.startsWith("```") && p.endsWith("```")) return <code key={k} className="font-mono text-[14px]">{p.slice(3, -3)}</code>;
+    if (/^https?:\/\//.test(p)) return <a key={k} href={p} target="_blank" rel="noopener noreferrer" className="text-[#027EB5] underline break-all">{p}</a>;
+    return p;
+  });
+}
+
+/** Texto de un mensaje como lo muestra WhatsApp (sin los asteriscos a la vista). */
+export function TextoWhatsApp({ texto }: { texto: string }) {
+  return <>{texto.split("\n").map((linea, i) => <span key={i}>{i > 0 && <br />}{renglon(linea, String(i))}</span>)}</>;
+}
 
 // Dibujitos suaves del fondo de WhatsApp (SVG en línea, sin pedir archivos).
 const DIBUJOS = encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'><g fill='none' stroke='#d6cfc4' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' opacity='.75'>
@@ -67,29 +87,54 @@ function usarPantallaGrande() {
   return grande;
 }
 
+// El teléfono se dibuja del tamaño real de un iPhone (393 × 852 de pantalla, más el borde) y se
+// achica entero si la ventana es baja, como una foto del teléfono. Si aun así no cabe, se acorta un poco.
+const ANCHO_MARCO = 393 + 26;
+const ALTO_MARCO = 852 + 26;
+function usarMedidaDelTelefono(alto: string) {
+  const resta = (() => { const m = /100dvh\s*-\s*([\d.]+)rem/.exec(alto); return m ? Number(m[1]) * 16 : 32; })() + 32;
+  const calcular = () => {
+    const disponible = typeof window === "undefined" ? ALTO_MARCO : window.innerHeight - resta;
+    const escala = Math.min(1, Math.max(0.82, disponible / ALTO_MARCO));
+    return { escala, alto: Math.max(560, Math.min(ALTO_MARCO, Math.floor(disponible / escala))) };
+  };
+  const [medida, setMedida] = useState(calcular);
+  useEffect(() => {
+    const cambio = () => setMedida(calcular());
+    cambio();
+    window.addEventListener("resize", cambio);
+    return () => window.removeEventListener("resize", cambio);
+  }, [alto]);
+  return medida;
+}
+
 /** Marco de iPhone en pantallas grandes; pantalla completa en el teléfono. Los hijos se montan una sola vez. */
 export function IPhone({ children, alto = "calc(100dvh - 2rem)", arriba = false, altoMovil }: { children: ReactNode; alto?: string; arriba?: boolean; altoMovil?: string }) {
   const grande = usarPantallaGrande();
+  const medida = usarMedidaDelTelefono(alto);
   if (!grande) {
     return <div className="h-full w-full flex flex-col overflow-hidden" style={{ fontFamily: IOS.fuente, ...(altoMovil ? { height: altoMovil } : {}) }}>{children}</div>;
   }
   return (
     <div className={`flex w-full justify-center p-4 ${arriba ? "items-start" : "h-full items-center"}`}>
+      {/* Marco de titanio, borde negro y botones como un iPhone 15/16. */}
       <div
-        className="relative bg-black rounded-[56px] p-[12px] shadow-2xl ring-1 ring-black/40"
-        style={{ height: `min(860px, ${alto})`, aspectRatio: "393 / 852", fontFamily: IOS.fuente }}
+        className="relative rounded-[60px] p-[4px] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.45),0_18px_36px_-18px_rgba(0,0,0,0.5)]"
+        style={{ width: ANCHO_MARCO, height: medida.alto, zoom: medida.escala, flexShrink: 0, fontFamily: IOS.fuente, background: "linear-gradient(145deg, #9a9ca1 0%, #5d5f63 22%, #2f3033 50%, #6b6d71 78%, #a5a7ab 100%)" }}
         data-testid="marco-iphone"
       >
-        <span className="absolute -left-[3px] top-[120px] h-8 w-[3px] rounded-l bg-neutral-800" />
-        <span className="absolute -left-[3px] top-[170px] h-14 w-[3px] rounded-l bg-neutral-800" />
-        <span className="absolute -left-[3px] top-[235px] h-14 w-[3px] rounded-l bg-neutral-800" />
-        <span className="absolute -right-[3px] top-[190px] h-20 w-[3px] rounded-r bg-neutral-800" />
-        <div className="relative h-full w-full overflow-hidden rounded-[44px] bg-white flex flex-col">
+        <span className="absolute -left-[5px] top-[16%] h-[4%] w-[5px] rounded-l-md bg-gradient-to-r from-[#5d5f63] to-[#8a8c90]" aria-hidden />
+        <span className="absolute -left-[5px] top-[23%] h-[7%] w-[5px] rounded-l-md bg-gradient-to-r from-[#5d5f63] to-[#8a8c90]" aria-hidden />
+        <span className="absolute -left-[5px] top-[32%] h-[7%] w-[5px] rounded-l-md bg-gradient-to-r from-[#5d5f63] to-[#8a8c90]" aria-hidden />
+        <span className="absolute -right-[5px] top-[26%] h-[10%] w-[5px] rounded-r-md bg-gradient-to-l from-[#5d5f63] to-[#8a8c90]" aria-hidden />
+        <div className="h-full w-full rounded-[56px] bg-black p-[9px]">
+        <div className="telefono-sin-barras relative h-full w-full overflow-hidden rounded-[47px] bg-white flex flex-col">
           <BarraDeEstado />
           <div className="flex-1 min-h-0 flex flex-col">{children}</div>
           <div className="h-6 shrink-0 flex items-center justify-center pointer-events-none absolute bottom-0 inset-x-0">
             <span className="h-[5px] w-32 rounded-full bg-black/80" />
           </div>
+        </div>
         </div>
       </div>
     </div>
