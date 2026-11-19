@@ -3,7 +3,7 @@ import { aparato } from "@/lib/aparato";
 import { useParams } from "wouter";
 import { Loader2, Square } from "lucide-react";
 import { Avatar, Burbuja, IOS, IPhone, IconoIOS, SeparadorFecha, fondoWhatsApp, horaCorta, textoFecha } from "@/components/whatsapp/ios";
-import { prepararFoto } from "@/lib/imagen";
+import { FotoIlegible, prepararFoto } from "@/lib/imagen";
 import { businessTheme } from "@/lib/temaNegocio";
 
 // Chat del colmado (delywa.com/pedir/<colmado>).
@@ -205,21 +205,32 @@ export default function PedirPage({ codigoFijo }: { codigoFijo?: string } = {}) 
   const subirComprobante = async (ev: React.ChangeEvent<HTMLInputElement>) => {
     const original = ev.target.files?.[0];
     ev.target.value = "";
-    if (!original || !sesion) return;
+    if (!original) return;
+    if (!sesion) { setError("Escribe tu nombre y teléfono para abrir el chat, y luego envía la foto."); return; }
     setSubiendo(true);
     setError(null);
+    // Cada paso tiene un tiempo máximo: con mala señal el botón nunca se queda trabado.
+    const conTiempo = (ms: number) => AbortSignal.timeout ? AbortSignal.timeout(ms) : undefined;
+    const errorDe = async (r: Response, porDefecto: string) => {
+      const d = await r.json().catch(() => ({}));
+      return (d && typeof d.error === "string" && d.error) || porDefecto;
+    };
     try {
       const file = await prepararFoto(original);
       const pre = await fetch("/api/uploads/request-url", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" }, signal: conTiempo(20_000),
         body: JSON.stringify({ name: `comprobante.${file.type.split("/")[1] || "jpg"}`, size: file.size, contentType: file.type, uso: "comprobante" }),
       });
-      if (!pre.ok) throw new Error();
+      if (!pre.ok) throw new Error(await errorDe(pre, "No se pudo preparar la subida."));
       const { uploadURL, objectPath } = await pre.json();
-      if (!(await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file })).ok) throw new Error();
+      const put = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file, signal: conTiempo(60_000) });
+      if (!put.ok) throw new Error(await errorDe(put, "No se pudo subir la foto."));
       await mandar("comprobante", { comprobanteUrl: objectPath });
-    } catch {
-      setError("No se pudo subir la foto. Intenta de nuevo.");
+    } catch (e) {
+      const mensaje = e instanceof FotoIlegible ? e.message
+        : e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError") ? "La subida tardó demasiado. Revisa tu señal e intenta de nuevo."
+        : e instanceof Error && e.message ? e.message : "No se pudo subir la foto. Intenta de nuevo.";
+      setError(mensaje);
     } finally {
       setSubiendo(false);
     }

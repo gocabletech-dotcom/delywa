@@ -32,7 +32,7 @@ const demasiados = (c: Context<AppEnv>) => c.json({ error: "Demasiados mensajes 
 export const tiempos = { primerasRespuestas: 2, rapidoMs: 2000, normalMs: 10_000, entreMensajesMs: 1200 };
 
 /** Minutos sin actividad tras los que el chat vuelve a pedir nombre y teléfono. */
-export const inactividad = { minutos: 10 };
+export const inactividad = { minutos: 10, esperandoComprobanteMinutos: 60 };
 const inactiva = (c: Context<AppEnv>) => c.json({ error: "Por tu seguridad cerramos el chat por inactividad. Escribe tus datos para continuar.", inactiva: true }, 423);
 
 async function cuerpo(c: Context<AppEnv>): Promise<Record<string, any>> {
@@ -104,7 +104,19 @@ async function sesionValida(c: Context<AppEnv>, db: Db) {
   const limite = Date.now() - inactividad.minutos * MINUTO;
   if (sesion.fechaUltimaActividad.getTime() < limite) {
     const [{ ultimo }] = await db.select({ ultimo: max(chatWebMensajes.fechaCreacion) }).from(chatWebMensajes).where(eq(chatWebMensajes.sessionId, sessionId));
-    if (!ultimo || new Date(ultimo).getTime() < limite) return "inactiva" as const;
+    if (!ultimo || new Date(ultimo).getTime() < limite) {
+      // Quien está haciendo la transferencia en su banco puede tardar: si su pedido espera el comprobante,
+      // el chat aguanta hasta una hora para que pueda volver y enviar la foto.
+      let esperaFoto = false;
+      if (sesion.pedidoId) {
+        const [p] = await db.select({ metodoPago: pedidos.metodoPago, comprobanteUrl: pedidos.comprobanteUrl, comprobanteConfirmado: pedidos.comprobanteConfirmado, estado: pedidos.estado })
+          .from(pedidos).where(eq(pedidos.id, sesion.pedidoId));
+        esperaFoto = !!p && p.metodoPago === "transferencia" && !p.comprobanteUrl && !p.comprobanteConfirmado && !["entregado", "cancelado", "fusionado", "retorno"].includes(p.estado);
+      }
+      const limiteFoto = Date.now() - inactividad.esperandoComprobanteMinutos * MINUTO;
+      const referencia = Math.max(sesion.fechaUltimaActividad.getTime(), ultimo ? new Date(ultimo).getTime() : 0);
+      if (!esperaFoto || referencia < limiteFoto) return "inactiva" as const;
+    }
   }
   return { sesion, colmado, telefono: soloDigitos(sesion.clienteWhatsapp) };
 }

@@ -230,8 +230,22 @@ describe("seguridad del chat", () => {
     const [p] = await t.db.insert(pedidos).values({ colmadoId: colmado.id, clienteNombre: "Ana", clienteWhatsapp: "18095556666", clienteUbicacion: "Calle 2",
       productos: "[]", total: "100", montoPago: "0", metodoPago: "transferencia", estado: "esperando_pago" } as any).returning();
     await t.db.update(chatWebSesiones).set({ pedidoId: p.id }).where(eq(chatWebSesiones.sessionId, id));
+    // Mientras hace la transferencia en su banco (más de 10 minutos), el chat no se cierra.
+    await t.db.update(pedidos).set({ comprobanteUrl: null }).where(eq(pedidos.id, p.id));
+    const hace = (min: number) => new Date(Date.now() - min * 60_000);
+    await t.db.update(chatWebSesiones).set({ fechaUltimaActividad: hace(25) }).where(eq(chatWebSesiones.sessionId, id));
+    await t.db.update(chatWebMensajes).set({ fechaCreacion: hace(25) }).where(eq(chatWebMensajes.sessionId, id));
+    expect((await c().request("GET", `/api/chat-colmado/sesion/${id}/mensajes`)).status).toBe(200);
     expect((await c().request("POST", `/api/chat-colmado/sesion/${id}/comprobante`, { comprobanteUrl: url })).status).toBe(200);
     expect((await t.db.select().from(pedidos).where(eq(pedidos.id, p.id)))[0].comprobanteUrl).toBe(url);
+    // Ya con la foto, vuelve la regla de 10 minutos; y sin foto, más de una hora también cierra.
+    await t.db.update(chatWebSesiones).set({ fechaUltimaActividad: hace(25) }).where(eq(chatWebSesiones.sessionId, id));
+    await t.db.update(chatWebMensajes).set({ fechaCreacion: hace(25) }).where(eq(chatWebMensajes.sessionId, id));
+    expect((await c().request("GET", `/api/chat-colmado/sesion/${id}/mensajes`)).status).toBe(423);
+    await t.db.update(pedidos).set({ comprobanteUrl: null }).where(eq(pedidos.id, p.id));
+    await t.db.update(chatWebSesiones).set({ fechaUltimaActividad: hace(70) }).where(eq(chatWebSesiones.sessionId, id));
+    await t.db.update(chatWebMensajes).set({ fechaCreacion: hace(70) }).where(eq(chatWebMensajes.sessionId, id));
+    expect((await c().request("GET", `/api/chat-colmado/sesion/${id}/mensajes`)).status).toBe(423);
   });
 
   it("un colmado cerrado avisa; uno apagado no abre el chat; una sesión falsa no lee nada", async () => {
