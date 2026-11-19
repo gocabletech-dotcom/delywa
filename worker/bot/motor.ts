@@ -14,6 +14,7 @@ import { createPedido, ESTADOS_TERMINALES } from "../storage/pedidos";
 import { interpretar } from "./ia";
 import * as I from "./intenciones";
 import { corregirOrtografia, emojiDe, leerCantidades, leerPedido, textoItem, type Item } from "./productos";
+import { entender, type Entendido } from "./entender";
 
 // Bot del chat de la página (delywa.com/pedir/<colmado>). Funciona por pasos y SIN inteligencia artificial:
 //   saludo según la hora → anota el pedido ("¿Algo más?") → "¿Eso es todo?" → ubicación →
@@ -24,7 +25,7 @@ import { corregirOrtografia, emojiDe, leerCantidades, leerPedido, textoItem, typ
 
 export type Opcion = { texto: string; accion?: "ubicacion" | "comprobante" };
 export type Respuesta = { texto: string; opciones?: Opcion[] };
-export type Entrada = { tipo: "texto"; texto: string; audioUrl?: string } | { tipo: "ubicacion"; latitud: number; longitud: number };
+export type Entrada = { tipo: "texto"; texto: string; audioUrl?: string; voz?: boolean } | { tipo: "ubicacion"; latitud: number; longitud: number };
 
 /** `emoji`: cuando la IA reconoció el producto ("la de botella verde" → cerveza), su emoji. */
 type Anotado = { nombre: string; cantidad: number; unidad: string | null; monto: number | null; emoji?: string; sinCantidad?: boolean };
@@ -45,6 +46,10 @@ const PAGOS: Opcion[] = [{ texto: "💵 Efectivo" }, { texto: "💳 Tarjeta" }, 
 const BOTON_UBICACION: Opcion = { texto: "📍 Enviar mi ubicación", accion: "ubicacion" };
 const BOTON_CASA: Opcion = { texto: "🏠 A mi casa" };
 const BOTON_REPETIR: Opcion = { texto: "🔁 Repetir mi último pedido" };
+const BOTON_COMPROBANTE: Opcion = { texto: "📸 Enviar comprobante", accion: "comprobante" };
+/** Después de una nota de voz el bot repite lo que entendió y pregunta si está bien, como el colmadero. */
+const CONFIRMAR_VOZ: Opcion[] = [{ texto: "Sí, está bien" }, { texto: "Corregir" }, { texto: "Eso es todo" }];
+const AYUDA_CORREGIR = "Dime qué cambio 👇\n• «quítame el queso»\n• «son dos, no tres»\n• «agrégame un pan»\nO toca «Borrar y empezar de nuevo» y me lo dices otra vez.";
 const ELEGIR_DESTINO: Opcion[] = [{ texto: "📍 Aquí donde estoy" }, BOTON_CASA];
 /** Si la ubicación que manda está más lejos que esto de su casa guardada, se le pregunta a dónde lo quiere. */
 const METROS_LEJOS_DE_CASA = 300;
@@ -404,6 +409,70 @@ ${lista(items.map((n) => ({ ...n, unidad: n.unidad ?? null, monto: n.monto ?? nu
 }
 
 /** Preguntas frecuentes que se contestan sin IA en cualquier paso. */
+/** Quita del pedido lo que pidió quitar («quítame el queso», «quítame una libra de arroz»). */
+async function quitarDelPedido(c: Contexto, quitar: Item[]): Promise<Respuesta> {
+  const todos = productosDe(c.sesion).map((p) => ({ ...p }));
+  const quitados: string[] = [];
+  const noEstaban: string[] = [];
+  for (const q of quitar) {
+    const i = todos.findIndex((p) => normalizar(p.nombre).includes(normalizar(q.nombre)) || normalizar(q.nombre).includes(normalizar(p.nombre)));
+    if (i < 0) { noEstaban.push(q.nombre.toLowerCase()); continue; }
+    const p = todos[i];
+    // Quitar una parte: «quítame una libra» de 3 libras deja 2.
+    if (!q.sinCantidad && !q.monto && (q.unidad ?? null) === (p.unidad ?? null) && p.cantidad > q.cantidad && q.cantidad > 0 && q.original && /\d|un|una|media|medio/.test(normalizar(q.original))) {
+      p.cantidad -= q.cantidad;
+    } else todos.splice(i, 1);
+    quitados.push(p.nombre.toLowerCase());
+  }
+  await guardarSesion(c, { productosCapturados: todos as any, estadoConversacion: "tomando_pedido" });
+  if (!quitados.length) return { texto: `No tenía ${noEstaban.join(" ni ")} en tu pedido 🤔${todos.length ? `\nTengo anotado:\n${lista(todos)}` : ""}` };
+  return { texto: `Listo, quité ${quitados.join(" y ")} ✍️${todos.length ? `\nAhora tengo:\n${lista(todos)}\n\n¿Algo más?` : "\nNo te queda nada anotado. ¿Qué te gustaría pedir?"}`, opciones: todos.length ? [{ texto: "Eso es todo" }] : undefined };
+}
+
+/** «Te dije dos, no tres»: cambia la cantidad del producto que tenía esa cantidad (o del último). */
+async function cambiarCantidad(c: Contexto, nueva: number, anterior: number | null): Promise<Respuesta> {
+  const todos = productosDe(c.sesion).map((p) => ({ ...p }));
+  if (!todos.length) return { texto: "Todavía no tengo nada anotado 🤔 ¿Qué te gustaría pedir?" };
+  const cual = (anterior != null ? todos.filter((p) => p.cantidad === anterior && !p.monto) : []).pop() ?? todos[todos.length - 1];
+  if (cual.monto) { cual.monto = nueva; } else cual.cantidad = nueva;
+  await guardarSesion(c, { productosCapturados: todos as any, estadoConversacion: "tomando_pedido" });
+  return { texto: `Corregido ✍️ Ahora tengo:\n${lista(todos)}\n\n¿Algo más?`, opciones: [{ texto: "Eso es todo" }] };
+}
+
+/** Lo que no es un pedido pero el colmadero contestaría: precio, fiado, pago, envío, esperar… */
+async function contestarEntendido(c: Contexto, e: Entendido, texto: string, pre: string, hayAnotado: boolean): Promise<Respuesta[] | null> {
+  const negocio = c.colmado.nombre;
+  const sigue = () => { const r = recordatorio(c); return r ? [r] : []; };
+  switch (e.tipo) {
+    case "precio": return [{ texto: `${pre}Le pregunto el precio a ${negocio} y te responde por aquí 🙏` }, ...sigue()];
+    case "fiado": return [{ texto: `${pre}Eso de la cuenta lo arreglas directo con ${negocio}. Ya le pasé tu mensaje y te responde por aquí 🙏` }];
+    case "cancelar":
+      await guardarSesion(c, { productosCapturados: [] as any, estadoConversacion: "tomando_pedido", clienteDireccion: null, clienteLatitud: null, clienteLongitud: null, destinoGuardado: null });
+      return [{ texto: "Listo, borré lo que llevábamos. Cuando quieras, escríbeme lo que necesitas. 👍" }];
+    case "queja": return [{ texto: `${pre}Perdona 🙏 Le aviso a ${negocio} ahora mismo para que lo revise contigo por aquí.` }];
+    case "espera": return [{ texto: `${pre}Dale, sin prisa 👍 Cuando estés listo me dices.` }];
+    case "aclarar": return [{ texto: `${pre}¿De cuál producto? 🤔 Dime el nombre, por ejemplo: «dos panes de veinte» o «una funda de hielo».` }];
+    case "cambiar": return [{ texto: `${pre}¿Cuál producto te cambio y por cuál? 🤔 Por ejemplo: «quítame el refresco pequeño» y «ponme uno grande». También le paso tu mensaje a ${negocio} 👍` }];
+    case "quitar": return hayAnotado ? [await quitarDelPedido(c, e.items)] : [{ texto: `${pre}Todavía no tengo nada anotado 🤔 ¿Qué te gustaría pedir?` }];
+    case "cambiarCantidad": return [await cambiarCantidad(c, e.nueva, e.anterior)];
+    case "envio": {
+      if (/ubicacion/.test(normalizar(texto))) return [{ texto: `${pre}Dale 👍 Cuando quieras toca «📍 Enviar mi ubicación».`, opciones: [BOTON_UBICACION] }];
+      return [{ texto: `${pre}Anotado 👍 Se lo digo a ${negocio}.` }, ...sigue()];
+    }
+    case "pago": {
+      if (e.hecho) return [{ texto: `${pre}📸 Envíanos la foto del comprobante con el botón de abajo y ${negocio} te confirma.`, opciones: [BOTON_COMPROBANTE] }];
+      if (e.pregunta === "cuenta" || (e.pregunta === "acepta" && e.forma === "transferencia")) {
+        const cuentas = await textoCuentas(c.db, c.colmado.id);
+        return [{ texto: `${pre}${cuentas ? `Sí, aceptamos transferencia.\n\n${cuentas}` : `Sí, aceptamos transferencia. Le pido las cuentas a ${negocio} y te las manda por aquí 🙏`}` }, ...sigue()];
+      }
+      if (e.pregunta === "acepta") return [{ texto: `${pre}Sí 👍 Aceptamos efectivo, tarjeta y transferencia.` }, ...sigue()];
+      if (e.monto) return [{ texto: `${pre}Dale 👍 Pagas en efectivo con ${dinero(e.monto)}: el delivery te lleva la devuelta. Cuando termines de pedir te lo confirmo.` }, ...sigue()];
+      return [{ texto: `${pre}Dale 👍 Cuando termines de pedir eliges ${e.forma === "tarjeta" ? "Tarjeta" : e.forma === "transferencia" ? "Transferencia" : "Efectivo"} en el pago.` }, ...sigue()];
+    }
+    default: return null;
+  }
+}
+
 function preguntaFrecuente(c: Contexto, texto: string, timezone: string): string | null {
   if (I.esPreguntaHorario(texto)) {
     const { abierto } = isColmadoAbierto(c.colmado, timezone);
@@ -561,7 +630,11 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
         const repetir = primera && !hayAnotado && c.aparatoConocido && (await ultimoPedido(c)).length > 0;
         return [{ texto: primera ? `${saludo}\n¿En qué te puedo ayudar?` : hayAnotado ? "¿Algo más para tu pedido?" : "¿Qué te gustaría pedir?", opciones: repetir ? [BOTON_REPETIR] : undefined }];
       }
-      if (I.esRepetir(texto)) {
+      // Qué quiere con este mensaje (pedido, precio, fiado, pago, quitar…), con el habla dominicana.
+      const jergaLeer = await jergaParaLeer(c);
+      const e = entrada.tipo === "texto" ? entender(texto, jergaLeer) : ({ tipo: "otro" } as Entendido);
+      if (I.esCorregir(texto)) return [{ texto: AYUDA_CORREGIR, opciones: [{ texto: "Borrar y empezar de nuevo" }] }];
+      if (I.esRepetir(texto) || e.tipo === "repetir") {
         const antes = primera ? `${saludo}\n\n` : "";
         // Solo desde el mismo aparato: el número no está verificado y el pedido anterior es de esa persona.
         if (!c.aparatoConocido) return [{ texto: `${antes}Por seguridad solo puedo repetir tu pedido anterior desde el mismo teléfono donde lo hiciste 🙏 Dime qué necesitas y te lo anoto.` }];
@@ -570,7 +643,7 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
         const r = await anotar(c, anteriores, antes);
         return [{ ...r, texto: r.texto.replace("Anotado ✍️", "Tu último pedido 🔁") }];
       }
-      if (hayAnotado && I.esFinDelPedido(texto) && /todo|solo eso/.test(normalizar(texto))) {
+      if (hayAnotado && (I.esFinDelPedido(texto) || e.tipo === "confirmar") && /todo|solo eso|dejalo asi|asi esta bien/.test(normalizar(texto))) {
         await guardarSesion(c, { estadoConversacion: "confirmando" });
         return pedirUbicacion(c);
       }
@@ -582,8 +655,10 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
       if (I.esGracias(texto)) return [{ texto: `¡A la orden! ${hayAnotado ? "¿Algo más para tu pedido?" : "¿Qué te gustaría pedir?"}` }];
 
       const pre = primera ? `${saludo}\n\n` : "";
+      const contestado = await contestarEntendido(c, e, texto, pre, hayAnotado);
+      if (contestado) return contestado;
       const porPregunta = I.preguntaPorProducto(texto);
-      const jerga = await jergaParaLeer(c);
+      const jerga = jergaLeer;
       if (porPregunta) {
         const items = leerPedido(porPregunta, jerga);
         if (items.length) {
@@ -591,11 +666,19 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
           return [{ ...r, texto: r.texto.replace("Anotado ✍️", "Te lo anoto ✍️ (el colmado te confirma si hay)") }];
         }
       }
-      const items = I.pareceConversacion(texto) ? leerPedido(texto, jerga).filter((i) => i.conocido) : leerPedido(texto, jerga);
+      const leidos = e.tipo === "pedido" ? e.items : leerPedido(texto, jerga);
+      const items = I.pareceConversacion(texto) ? leidos.filter((i) => i.conocido) : leidos;
       const entendidos = items.filter((i) => i.conocido).length;
       // Muchas palabras sin reconocer en un mensaje largo: mejor que lo lea la IA.
       const dudoso = items.length > 0 && entendidos === 0 && texto.split(/\s+/).length >= 8;
-      if (items.length && !dudoso) return [await anotar(c, items, pre)];
+      if (items.length && !dudoso) {
+        const r = await anotar(c, items, pre);
+        // Nota de voz: repite lo que entendió y pregunta si está bien (si no falta ninguna cantidad).
+        if (entrada.tipo === "texto" && entrada.voz && c.sesion.estadoConversacion === "tomando_pedido") {
+          return [{ texto: r.texto.replace("Anotado ✍️", "🎤 Te entendí y anoté ✍️").replace(/¿Algo más\?$/, "¿Está bien así? Si algo no es, toca «Corregir»."), opciones: CONFIRMAR_VOZ }];
+        }
+        return [r];
+      }
 
       const ia = await conIa(c, texto, hayAnotado ? "anotando el pedido" : "inicio de la conversación");
       if (ia) return [{ ...ia, texto: `${pre}${ia.texto}` }];
@@ -611,7 +694,14 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
         await guardarSesion(c, { estadoConversacion: "tomando_pedido" });
         return [{ texto: "Dale, ¿qué más te anoto?" }];
       }
-      const items = leerPedido(texto, await jergaParaLeer(c));
+      if (I.esCorregir(texto)) return [{ texto: AYUDA_CORREGIR, opciones: [{ texto: "Borrar y empezar de nuevo" }] }];
+      const jergaC = await jergaParaLeer(c);
+      const ec = entrada.tipo === "texto" ? entender(texto, jergaC) : ({ tipo: "otro" } as Entendido);
+      if (["quitar", "cambiarCantidad", "cambiar", "aclarar", "precio", "fiado", "espera", "pago"].includes(ec.tipo)) {
+        const r = await contestarEntendido(c, ec, texto, "", true);
+        if (r) return r;
+      }
+      const items = ec.tipo === "pedido" ? ec.items : leerPedido(texto, jergaC);
       if (items.length && !I.pareceConversacion(texto)) {
         const todos = sumar(productosDe(c.sesion), items);
         await guardarSesion(c, { productosCapturados: todos as any });

@@ -1,0 +1,155 @@
+Banco de pruebas: 120 frases de colmados
+1. Pedidos cotidianos
+1. Dame un pan y una leche.
+2. Ponme dos huevos.
+3. Dame una libra de arroz.
+4. Échame medio pollo.
+5. Mándame una funda de hielo.
+6. Dame un salami pequeño.
+7. Ponme un queso de cien.
+8. Dame una lata de sardina.
+9. Mándame un refresco grande.
+10. Dame dos jugos de esos pequeños.
+11. Ponme una mantequilla.
+12. Dame un paquetico de café.
+13. Échame una libra de azúcar.
+14. Dame una botella de aceite.
+15. Ponme una funda de espaguetis.
+2. Expresiones populares del Cibao
+16. Dame un chin de arroz.
+17. Ponme un poquito de habichuela.
+18. Dame dos panes de agua.
+19. Véndeme una fría.
+20. Dame una malta bien fría.
+21. Ponme un refresquito.
+22. Dame un botellón de agua.
+23. Mándame una funda de hielo pa' la casa.
+24. Dame un paquetico de galletas.
+25. Ponme un salami de esos baraticos.
+26. Dame un chin de queso.
+27. Échame dos pesitos de cilantro.
+28. Dame una libra de habichuela colorá.
+29. Ponme una funda de víveres.
+30. Dame un dulce de leche.
+3. Pedidos con cantidades y dinero
+31. Dame cien pesos de arroz.
+32. Ponme cincuenta de queso.
+33. Dame doscientos de salami.
+34. Ponme tres panes de diez.
+35. Dame cinco huevos por favor.
+36. Quiero tres libras de arroz.
+37. Dame medio galón de aceite.
+38. Ponme dos fundas de azúcar.
+39. Dame una caja de cerveza.
+40. Mándame tres refrescos de dos litros.
+41. Dame doscientos pesos de pollo.
+42. Ponme cien de jamoneta.
+43. Dame cuatro sopitas.
+44. Échame cincuenta pesos de hielo.
+45. Ponme un paquete de agua.
+4. Preguntas de precios
+46. ¿A cómo tú tienes el arroz?
+47. ¿Cuánto cuesta la libra de pollo?
+48. ¿A cómo está el huevo?
+49. ¿Cuánto vale ese queso?
+50. ¿Qué precio tiene el botellón?
+51. ¿Y la cerveza cuánto cuesta?
+52. ¿A cómo me sale la funda?
+53. ¿Cuánto es que cuesta el salami?
+54. ¿No lo tienes más barato?
+55. ¿Cuánto me sale todo eso?
+56. ¿Y si llevo dos, me lo dejas más barato?
+57. ¿Cuánto cuesta el paquete completo?
+58. ¿A cómo está el aceite hoy?
+59. ¿Cuánto vale la leche grande?
+60. ¿Qué es lo más barato que tienes?
+5. Pedidos para enviar a domicilio
+61. Mándame eso para la casa.
+62. Envíame dos panes y una leche.
+63. Mándame una funda de comida.
+64. ¿Tú puedes mandarlo ahora?
+65. Mándamelo con el delivery.
+66. Te voy a mandar la ubicación.
+67. Es en la casa de la esquina.
+68. Dile que me llame cuando llegue.
+69. Mándame también una Coca-Cola.
+70. Espérate, que voy a agregar otra cosa.
+71. Mándame todo junto.
+72. No me mandes el refresco pequeño, mándame el grande.
+73. Envíamelo para el barrio.
+74. ¿Cuánto cuesta llevarlo?
+75. Mándame eso antes de las seis.
+6. Fiado y cuentas pendientes
+76. Apúntamelo ahí.
+77. Ponlo en la cuenta.
+78. Después paso y te pago.
+79. Déjame eso fiado.
+80. ¿Cuánto te debo de la otra vez?
+81. Voy a abonarte cien pesos.
+82. Quítame lo que te pagué ayer.
+83. Anótame eso en mi cuenta.
+84. Déjame la cuenta para mañana.
+85. Ya yo te pagué eso.
+86. ¿Cuánto tengo acumulado?
+87. Cárgame eso a mi cuenta.
+88. No me apuntes más nada.
+89. Voy a saldar la cuenta.
+90. Ponme lo de hoy junto con lo anterior.
+7. Formas de pago
+91. Te voy a pagar en efectivo.
+92. ¿Aceptas transferencia?
+93. Te mandé el dinero por transferencia.
+94. ¿Cuál es el número de cuenta?
+95. Voy a pagarte con tarjeta.
+96. Dame el cambio de quinientos.
+97. Te voy a pagar con mil.
+98. Déjame revisar el dinero.
+99. Ya hice la transferencia.
+100. Confírmame si te llegó.
+8. Cambios, correcciones y cancelaciones
+101. Espérate, quítame el queso.
+102. Agrégame dos huevos más.
+103. No, mejor dame el grande.
+104. Cámbiame ese refresco.
+105. Te dije dos, no tres.
+106. Quítame una libra de arroz.
+107. Ponme otra funda.
+108. Cancélame ese pedido.
+109. Mejor no me mandes nada de eso.
+110. Agrégame un paquetico de café.
+9. Frases espontáneas y conversaciones reales simuladas
+111. Buenas, ¿está abierto?
+112. ¿Quién está atendiendo?
+113. Dame lo mismo que te pedí ahorita.
+114. Mándame lo de siempre.
+115. ¿Tú tienes de eso?
+116. Dame uno de esos que están ahí.
+117. Espérate, que no me acuerdo qué más era.
+118. Mira, te voy a pedir varias cositas.
+119. Eso no fue lo que yo pedí.
+120. Está bien, déjalo así.
+
+10. Pruebas especiales para reconocer pedidos por voz
+Estas son importantes porque un sistema puede fallar cuando recibe frases largas, mezcladas o poco claras.
+Prueba	Frase
+Pedido largo	Dame dos panes, una leche, tres huevos, un salami y una Coca-Cola grande.
+Cantidad repetida	Ponme tres refrescos, no, mejor cuatro.
+Corrección	Dame una libra de arroz y medio kilo de azúcar.
+Ruido coloquial	Oye, mándame dos de esos panes y una fría pa' acá.
+Pedido incompleto	Dame dos libras de arroz y un... espérate, ahora te digo.
+Producto por precio	Ponme de arroz cien pesos y de queso cincuenta.
+Ambigüedad	Dame dos de veinte.
+Pedido combinado	Ponme lo mío, lo de mi mujer y agrega dos jugos.
+Cambio de producto	No quiero leche entera, mándame la descremada.
+Repetición	Dame dos panes, dos panes, que son cuatro en total.
+
+Cómo utilizar este banco en las pruebas de Delywa
+Yo lo dividiría en cinco evaluaciones:
+1. Reconocimiento: entender lo que dijo el cliente.
+2. Identificación: reconocer el producto correcto del catálogo.
+3. Cantidades: interpretar libras, unidades, fundas, pesos y tamaños.
+4. Contexto: recordar cambios y correcciones dentro de la conversación.
+5. Confirmación: presentar el pedido completo antes de registrarlo.
+También probaría diferentes pronunciaciones del Cibao, velocidades al hablar, ruido de fondo y expresiones como «un chin», «una fría», «apúntamelo», «mándamelo pa'cá» y «dame de eso».
+
+Una recomendación importante: no hagas que Delywa registre automáticamente un producto cuando tenga dudas. Debe preguntar, por ejemplo: «¿Cuando dices dos de veinte, te refieres a dos unidades de veinte pesos?».

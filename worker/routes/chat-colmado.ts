@@ -2,7 +2,7 @@ import { avisarNegocio } from "../lib/tiempo-real";
 import { Hono, type Context } from "hono";
 import { and, asc, count, desc, eq, gt, gte, inArray, max, ne } from "drizzle-orm";
 import { toFile } from "openai";
-import { chatWebMensajes, chatWebSesiones, paises, pedidos } from "@shared/schema";
+import { chatWebMensajes, chatWebSesiones, menuProductos, paises, pedidos } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { permitirEvento } from "../lib/rate-limit";
@@ -280,7 +280,10 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/voz", async (c) => {
   try {
     if (iaDisponible(c.env)) {
       // Whisper de Cloudflare (Workers AI): gratis dentro del cupo diario.
-      texto = await transcribir(c.env, m[2]);
+      // Los productos del menú de este colmado ayudan a que Whisper oiga bien las marcas.
+      const delMenu = await db.select({ nombre: menuProductos.nombre }).from(menuProductos)
+        .where(eq(menuProductos.colmadoId, s.colmado.negocioPrincipalId || s.colmado.id)).limit(40).catch(() => []);
+      texto = await transcribir(c.env, m[2], delMenu.map((x) => x.nombre).join(", "));
     } else if (c.env.OPENAI_API_KEY) {
       // Respaldo si Workers AI no está conectado y hay llave de OpenAI.
       const bytes = Uint8Array.from(atob(m[2]), (ch) => ch.charCodeAt(0));
@@ -306,7 +309,7 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/voz", async (c) => {
     return c.json({ error: "No pude entender la nota de voz. Intenta de nuevo o escribe tu pedido." }, 422);
   }
   const id = await guardarDelCliente(db, s.sesion.sessionId, `🎤 ${texto}`);
-  await atender(c, s, { tipo: "texto", texto, audioUrl: audioUrl ?? undefined });
+  await atender(c, s, { tipo: "texto", texto, audioUrl: audioUrl ?? undefined, voz: true });
   return c.json({ ok: true, id, texto });
 });
 

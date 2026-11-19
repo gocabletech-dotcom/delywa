@@ -13,6 +13,7 @@ let colmado: typeof colmados.$inferSelect;
 const fetchOriginal = http.fetch;
 const tiemposOriginales = { ...tiempos };
 const runOriginal = workersAI.run;
+let pistaWhisper: string | null = null;
 const salientes: string[] = [];
 let llamadasIA = 0;
 let respuestaIA: unknown = null;
@@ -42,7 +43,7 @@ beforeAll(async () => {
   workersAI.simulada = true;
   workersAI.run = async (_env, modelo, entrada: any) => {
     llamadasIA++;
-    if (modelo.includes("whisper")) return { text: "dos fundas de pan" };
+    if (modelo.includes("whisper")) { pistaWhisper = entrada.initial_prompt ?? null; return { text: "dos fundas de pan" }; }
     return { response: respuestaIA ?? { tipo: "otro", productos: [], respuesta: null } };
   };
 }, 60_000);
@@ -236,6 +237,13 @@ describe("la IA de Cloudflare solo cuando no entiende", () => {
     const ms = (await c().request("GET", `/api/chat-colmado/sesion/${id}/mensajes`)).json.mensajes;
     expect(ms.map((m: any) => m.contenido)).toContain("🎤 dos fundas de pan");
     expect(textos(ms)).toContain("2 fundas de Pan");
+    // Whisper recibe la pista de colmado; el bot repite lo que entendió y pregunta si está bien.
+    expect(pistaWhisper).toContain("colmado en República Dominicana");
+    const ultima = ms.filter((m: any) => m.rol === "assistant").at(-1);
+    expect(ultima.contenido).toContain("Te entendí y anoté");
+    expect(ultima.opciones.map((o: any) => o.texto)).toEqual(["Sí, está bien", "Corregir", "Eso es todo"]);
+    const corregir = await decir(id, "Corregir");
+    expect(corregir[0].contenido).toContain("quítame el queso");
     // El colmadero tiene el audio original al lado de la transcripción.
     const [sesion] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
     const [msj] = await t.db.select().from(whatsappMensajes).where(and(eq(whatsappMensajes.conversacionId, sesion.conversacionId!), eq(whatsappMensajes.contenido, "dos fundas de pan")));
@@ -244,6 +252,27 @@ describe("la IA de Cloudflare solo cuando no entiende", () => {
     expect(await guardado!.text()).toBe("audio-de-prueba");
     // Sin sesión del negocio nadie lo oye.
     expect((await c().request("GET", msj.audioUrl!)).status).toBe(401);
+  });
+});
+
+describe("el bot contesta como el colmadero", () => {
+  it("precio, quitar, corregir la cantidad, fiado y pago no se anotan como productos", async () => {
+    const id = await abrir("8095557001", "Nino");
+    let r = await decir(id, "¿A cómo tú tienes el arroz?");
+    expect(r[0].contenido).toContain("Le pregunto el precio");
+    r = await decir(id, "dame 3 panes, una leche y un queso");
+    expect(r[0].contenido).toContain("3 Panes");
+    r = await decir(id, "espérate, quítame el queso");
+    expect(r[0].contenido).toContain("quité queso");
+    expect(r[0].contenido).not.toContain("Queso");
+    r = await decir(id, "te dije dos, no tres");
+    expect(r[0].contenido).toContain("2 Panes");
+    r = await decir(id, "apúntamelo ahí");
+    expect(r[0].contenido).toContain("Eso de la cuenta");
+    r = await decir(id, "¿Cuál es el número de cuenta?");
+    expect(r[0].contenido).toContain("812345678");
+    const [s] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
+    expect((s.productosCapturados as any[]).map((p) => p.nombre)).toEqual(["Panes", "Leche"]);
   });
 });
 

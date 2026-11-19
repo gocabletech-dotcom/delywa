@@ -20,9 +20,15 @@ export const workersAI = {
 
 export const iaDisponible = (env: Env) => Boolean(env.AI) || workersAI.simulada;
 
-/** Nota de voz (base64) → texto en español. */
-export async function transcribir(env: Env, base64: string): Promise<string> {
-  const r = await workersAI.run(env, MODELO_VOZ, { audio: base64, language: "es", task: "transcribe", vad_filter: true });
+/** Contexto para que Whisper oiga mejor un pedido de colmado dominicano (palabras, marcas y números). */
+export const PISTA_VOZ = "Pedido a un colmado en República Dominicana. Dame dos libras de arroz, una funda de pan, "
+  + "tres cervezas Presidente jumbo, un chin de queso, cien pesos de salami, una fría, habichuela, aceite, plátanos, "
+  + "huevos, botellón de agua, funda de hielo, refresco, malta, sopita, cuatro, cinco, diez, cincuenta, doscientos.";
+
+/** Nota de voz (base64) → texto en español. `pista`: productos de ese colmado, para que los oiga bien. */
+export async function transcribir(env: Env, base64: string, pista?: string): Promise<string> {
+  const initial_prompt = `${PISTA_VOZ}${pista ? ` ${pista}` : ""}`.slice(0, 800);
+  const r = await workersAI.run(env, MODELO_VOZ, { audio: base64, language: "es", task: "transcribe", vad_filter: true, initial_prompt });
   return String(r?.text ?? "").trim();
 }
 

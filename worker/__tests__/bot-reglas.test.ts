@@ -15,10 +15,10 @@ describe("productos sin cantidad", () => {
   });
 
   it("nota de voz: la cantidad va después del verbo y la marca después del producto", () => {
-    expect(leer("Pedir tres cervezas jumbo y presidente.")).toEqual(["3 Cerveza jumbo Presidente"]);
-    expect(leer("Dame 3 cervezas jumbo, Presidente.")).toEqual(["3 Cerveza jumbo Presidente"]);
+    expect(leer("Pedir tres cervezas jumbo y presidente.")).toEqual(["3 Cervezas jumbo Presidente"]);
+    expect(leer("Dame 3 cervezas jumbo, Presidente.")).toEqual(["3 Cervezas jumbo Presidente"]);
     expect(leer("Quiero pedir 2 libras de arroz")).toEqual(["2 libras de Arroz"]);
-    expect(leer("Me puedes mandar tres cervezas")).toEqual(["3 Cerveza"]);
+    expect(leer("Me puedes mandar tres cervezas")).toEqual(["3 Cervezas"]);
     expect(leerPedido("Pedir tres cervezas jumbo y presidente.", jerga).some((i) => i.sinCantidad)).toBe(false);
   });
 

@@ -117,6 +117,7 @@ const UNIDADES: Array<[RegExp, string, string]> = [
   [/^(cartones?|carton)$/, "cartón", "cartones"],
   [/^(pedazos?|pedacitos?)$/, "pedazo", "pedazos"],
   [/^(unidad(es)?)$/, "unidad", "unidades"],
+  [/^(kilos?|kg|kilogramos?)$/, "kilo", "kilos"],
   [/^(cabezas?)$/, "cabeza", "cabezas"],
   [/^(chin|chinchin|chin chin|poquito|poquitico)$/, "chin", "chin"],
 ];
@@ -138,6 +139,62 @@ const RELLENO = new Set([
   // Verbos con que empiezan las notas de voz: «pedir tres cervezas», «me puedes mandar dos panes».
   "pedir", "pido", "pide", "pideme", "mandar", "mandarme", "mandeme", "traer", "traerme", "enviar", "enviarme", "comprar", "compra",
   "llevame", "llevarme", "llevenme", "puede", "podria", "podrian", "pueden", "quisieramos", "queremos", "seria", "va", "ser",
+  "echame", "echa", "echale", "vendeme", "vende", "mandamelo", "mandamela", "enviamelo", "traemelo", "ponmelo", "dejame", "oiga",
+  "eso", "esto", "esa", "ese", "todo", "mas", "otra", "vez", "ahorita", "ahora", "favorcito", "tu", "usted",
+]);
+
+// ---------- Cómo se habla en el colmado (Cibao, capital, notas de voz) ----------
+// Se aplica antes de leer el pedido. Nunca cambia lo que ve el colmado por otro producto:
+// solo pone las palabras como se escriben («arroi» → arroz, «do» → dos, «pa'» → para).
+
+/** Palabras del habla dominicana → cómo se escriben. */
+const HABLA: Record<string, string> = {
+  // La «i» del Cibao en lugar de la «r» o la «l»
+  mujei: "mujer", poique: "porque", caine: "carne", comei: "comer", vei: "ver", papei: "papel", arroi: "arroz", aicohol: "alcohol",
+  saisa: "salsa", aito: "alto", taide: "tarde", veide: "verde", cueipo: "cuerpo", puei: "puerco", heimano: "hermano", heimana: "hermana",
+  sei: "seis", mai: "mar",
+  // La «s» que se come
+  do: "dos", doh: "dos", tre: "tres", treh: "tres", ma: "mas", mah: "mas", pesito: "pesos", pesitos: "pesos",
+  // Palabras propias
+  pa: "para", toy: "estoy", ta: "esta", tan: "estan", colora: "colorada", colorao: "colorado", picao: "picado", pelao: "pelado",
+  baratico: "barato", baraticos: "barato", baratica: "barata", baraticas: "barata", poquitico: "poquito", chinchin: "chin",
+  viveres: "víveres",
+};
+
+/** Números dichos con letras → cifra (menos «un», «una», «medio»…, que también son palabras de la jerga). */
+const NUMEROS_A_CIFRA: Record<string, string> = {
+  dos: "2", tres: "3", cuatro: "4", cinco: "5", seis: "6", siete: "7", ocho: "8", nueve: "9", diez: "10", once: "11", doce: "12",
+  quince: "15", veinte: "20", veinticinco: "25", treinta: "30", cuarenta: "40", cincuenta: "50", cien: "100", ciento: "100",
+  doscientos: "200", trescientos: "300", quinientos: "500", mil: "1000",
+};
+
+/** El texto como lo escribiría alguien con buena ortografía, en minúsculas y sin tildes. */
+export function normalizarHabla(texto: string): string {
+  let t = normalizar(texto)
+    .replace(/[’‘`´]/g, "'")
+    .replace(/\bpa\s*'\s*/g, "para ")
+    .replace(/\bpa\s*aca\b|\bpara\s+aca\b|\bpara\s+aqui\b/g, " ")
+    .replace(/(\w)-(\w)/g, "$1 $2");
+  t = t.split(/(\s+|[,.;!?¡¿]+)/).map((w) => HABLA[w] ?? w).join("");
+  t = t.split(/(\s+|[,.;!?¡¿]+)/).map((w) => NUMEROS_A_CIFRA[w] ?? w).join("");
+  return t
+    // «de esos», «de esas»: señala el producto, no es parte del nombre.
+    .replace(/\bde\s+(esos|esas|estos|estas)\b/g, " ")
+    // «porque tengo visita», «para la mujer»: la razón o para quién no es el producto.
+    .replace(/\s+porque\b[^,.;]*/g, " ")
+    .replace(/\s+para\s+(la|el|mi|mis|los|las)\s+(mujer|esposa|esposo|marido|mama|papa|nena|nene|vieja|viejo|muchacha|muchacho|ninos|ninas|casa|doña|dona|don)\b/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+/** Palabras comunes que no se «corrigen» a un producto aunque se parezcan («nuevo» no es «huevo»). */
+export const PALABRAS_COMUNES = new Set([
+  "nuevo", "nueva", "nuevos", "pedido", "pedidos", "hacer", "mujer", "favor", "ahora", "ahorita", "mismo", "misma", "casa", "cuenta",
+  "esquina", "barrio", "junto", "juntos", "cosas", "cosita", "cositas", "varias", "total", "mejor", "grande", "grandes", "pequeno",
+  "pequenos", "llame", "llegue", "ubicacion", "dinero", "cambio", "efectivo", "tarjeta", "transferencia", "numero", "precio",
+  "barato", "barata", "cuesta", "cuanto", "siempre", "bueno", "buena", "nuevo", "llevo", "lleva", "vengo", "tengo", "tiene",
+  "visita", "llego", "pague", "debo", "manana", "tarde", "noche", "carro", "motor", "rapido", "pronto", "porque", "entera",
+  "descremada", "tambien", "verde", "verdes", "rojo", "roja", "blanco", "blanca", "negro", "negra", "fresco", "fresca", "papel",
 ]);
 
 /** Marcas que el cliente dice después del producto: «tres cervezas jumbo, Presidente» es una sola cosa. */
@@ -163,6 +220,8 @@ const CORRECCIONES: Record<string, string> = {
   platanos: "plátanos", limon: "limón", jabon: "jabón", atun: "atún", cafe: "café", maiz: "maíz", aji: "ají", oregano: "orégano",
   salchichon: "salchichón", botellon: "botellón", galon: "galón", sazon: "sazón", fosforo: "fósforo", fosforos: "fósforos",
   azucar: "azúcar", fria: "fría", frias: "frías", pure: "puré", te: "té", melon: "melón", pina: "piña", jugo: "jugo",
+  pequeno: "pequeño", pequenos: "pequeños", pequena: "pequeña", pequenas: "pequeñas", viveres: "víveres", tamano: "tamaño",
+  jalapeno: "jalapeño", banos: "baños", platano_: "plátano",
 };
 
 /** Palabras bien escritas que el bot conoce (de los nombres del catálogo y sus sinónimos), con sus tildes. */
@@ -176,14 +235,32 @@ const DICCIONARIO: Map<string, string> = (() => {
   return d;
 })();
 
+/** Cómo suena una palabra en el español dominicano: b=v, s=z=c(e,i), k=c=qu, y=ll, sin h. */
+export function sonido(w: string): string {
+  return w.replace(/h/g, "").replace(/v/g, "b").replace(/c(?=[ei])/g, "s").replace(/z/g, "s").replace(/qu(?=[ei])/g, "k").replace(/c/g, "k")
+    .replace(/ll/g, "y").replace(/(.)\1+/g, "$1");
+}
+/** Palabras del catálogo por cómo suenan («sebolla», «bino», «yelo» → como se escriben). */
+const POR_SONIDO: Map<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const [w, mostrar] of DICCIONARIO) if (w.length >= 4) { const k = sonido(w); if (!m.has(k)) m.set(k, mostrar); }
+  return m;
+})();
+
 /** Corrige solo la ortografía de cada palabra; nunca la cambia por otra palabra. */
 export function corregirOrtografia(texto: string): string {
   const palabras = texto.split(" ").filter(Boolean).map((p) => {
     if (CORRECCIONES[p]) return CORRECCIONES[p];
     if (DICCIONARIO.has(p)) return DICCIONARIO.get(p)!;
+    // El plural de una palabra conocida ya está bien escrito («refrescos», «sopitas»): no se pasa a singular.
+    if (p.length > 3 && p.endsWith("s") && (DICCIONARIO.has(p.slice(0, -1)) || DICCIONARIO.has(p.slice(0, -2)))) {
+      const base = DICCIONARIO.get(p.slice(0, -1)) ?? (DICCIONARIO.get(p.slice(0, -2)) ? `${DICCIONARIO.get(p.slice(0, -2))}e` : null);
+      return base ? `${base}s` : p;
+    }
     // Solo una letra de diferencia y en palabras de 5 letras o más: así no se "corrige" una palabra
     // que está bien escrita pero no está en la lista ("botella" no se vuelve "botellita").
-    if (p.length >= 5 && !/\d/.test(p)) {
+    if (p.length >= 4 && !/\d/.test(p) && !PALABRAS_COMUNES.has(p) && POR_SONIDO.has(sonido(p))) return POR_SONIDO.get(sonido(p))!;
+    if (p.length >= 5 && !/\d/.test(p) && !PALABRAS_COMUNES.has(p)) {
       const tope = 1;
       let mejor: string | null = null;
       let menor = tope + 1;
@@ -254,7 +331,12 @@ export function buscarEnCatalogo(texto: string): string | null {
   // 1. Frase completa del catálogo dentro del texto (las más largas primero).
   for (const { nombre, s } of INDICE) if (t.includes(` ${s} `)) return nombre;
   // 2. Errores de escritura palabra por palabra.
-  const palabras = texto.split(" ").filter((p) => p.length >= 4);
+  const palabras = texto.split(" ").filter((p) => p.length >= 4 && !PALABRAS_COMUNES.has(p));
+  // 2a. Misma pronunciación («sebolla», «aseite», «yelo»).
+  for (const p of palabras) {
+    const k = sonido(p);
+    for (const { nombre, s } of INDICE) if (!s.includes(" ") && s.length >= 4 && sonido(s) === k) return nombre;
+  }
   for (const p of palabras) {
     for (const { nombre, s } of INDICE) {
       if (s.includes(" ")) continue;
@@ -283,6 +365,8 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
   // Pedido por dinero: "10 pesos de ajo", "RD$50 de salami", "dame 10 de ajo", "queso de a 100".
   // En el colmado ese número es lo que el cliente quiere gastar, no la cantidad.
   let monto: number | null = null;
+  // «tres panes de diez»: 3 panes de RD$10 cada uno (no RD$10 en total).
+  let montoAlFinal: number | null = null;
   {
     const crudo = normalizar(original);
     const conSigno = crudo.match(/(?:rd\s*)?\$\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*\$/);
@@ -301,6 +385,7 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
       const ultimo = n >= 3 ? leerNumero(fichas[n - 1]) : null;
       if (ultimo !== null && ultimo >= 5 && /^\d/.test(fichas[n - 1]) && (fichas[n - 2] === "de" || (fichas[n - 2] === "a" && fichas[n - 3] === "de"))) {
         monto = ultimo;
+        montoAlFinal = ultimo;
         fichas.splice(fichas[n - 2] === "a" ? n - 3 : n - 2);
       } else {
         // "dame 10 de ajo": número, luego "de", sin unidad (no "10 libras de ajo").
@@ -356,8 +441,9 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
   // Quitar "de" y relleno que quede.
   while (palabras.length && (palabras[0] === "de" || palabras[0] === "del")) palabras.shift();
   while (palabras.length && RELLENO.has(palabras[palabras.length - 1])) palabras.pop();
-  const resto = palabras.join(" ").trim();
+  let resto = palabras.join(" ").trim();
   if (!resto || resto.length < 2 || /^\d+$/.test(resto)) return null;
+  if (montoAlFinal && cantidad && cantidad > 1) { resto = `${resto} de ${montoAlFinal}`; monto = null; }
   if (palabras.every((p) => RELLENO.has(p))) return null;
   const delCatalogo = buscarEnCatalogo(resto);
   return {
@@ -394,12 +480,26 @@ export function leerCantidades(texto: string): Array<{ cantidad: number; unidad:
   return r;
 }
 
+/** Pedazos que no son productos: «espérate, ahora te digo», «que son cuatro en total», «lo mío». */
+const RUIDO = /\b(esperate|espera|aguanta|ahora te digo|no me acuerdo|en total|que son \d+)\b|^(?:(?:ponme|dame|mandame|y|agrega|agregame)\s+)?(lo|la)\s+(mio|mia|de\s+.+)$|^(y\s+)?un\s*$/;
+
 /** Un mensaje completo ("dame 2 libras de arroz, un aceite y una fría") → lista de productos. */
 export function leerPedido(mensaje: string, jerga: Map<string, string>): Item[] {
-  const pedazos = mensaje
+  const hablado = normalizarHabla(mensaje)
+    // «quiero hacer un nuevo pedido», «te voy a pedir»: es la intención, no un producto.
+    .replace(/\b(?:quiero|queria|voy\s+a|vamos\s+a|te\s+quiero)?\s*(?:hacer(?:te)?|pedir(?:te)?|mandar(?:te)?)?\s*(?:un|otro|el)?\s*(?:nuevo\s+)?pedido(?:\s+nuevo)?\b\s*[,:]?/g, " ")
+    .replace(/[.]+(?=\s|$)/g, ",")
+    // «tres refrescos, no, mejor cuatro»: vale lo último que dijo.
+    .replace(/\b(\d+(?:[.,]\d+)?)\s+([a-zñ ]+?)\s*[,.]?\s*no\s*[,.]?\s*mejor\s+(\d+(?:[.,]\d+)?)\b/g, "$3 $2")
+    .replace(/\.{2,}|…/g, ",");
+  const pedazos = hablado
     .replace(/(?<!\d)[.!?¡¿]+(?!\d)/g, ",")
-    .replace(/\s+(y|e|mas|más|tambien|también|ademas|además|con|\+)\s+(?=(\d|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|media|medio|[a-záéíóúñ]))/gi, "|")
-    .split(/[|,;\n]+/);
+    .replace(/\s+(y|e|mas|tambien|ademas|con|\+)\s+(?=(\d|un|una|uno|media|medio|de\s|[a-zñ]))/gi, "|")
+    .split(/[|,;\n]+/)
+    .map((p) => p.trim())
+    .filter((p) => p && !RUIDO.test(p))
+    // «de arroz cien pesos», «de queso cincuenta»: primero el producto, después el dinero.
+    .map((p) => p.replace(/^(?:(?:dame|ponme|echame|mandame|y)\s+)?de\s+([a-zñ ]+?)\s+(\d+)(?:\s+pesos?)?$/, "$2 pesos de $1"));
   const items = pedazos.map((p) => leerItem(p, jerga)).filter((x): x is Item => x !== null);
   // Una marca sola después del producto («tres cervezas jumbo y Presidente») es la marca de ese producto.
   const r: Item[] = [];
@@ -409,6 +509,9 @@ export function leerPedido(mensaje: string, jerga: Map<string, string>): Item[] 
       antes.nombre = `${antes.nombre} ${it.nombre}`.slice(0, 60);
       continue;
     }
+    // «dos panes, dos panes»: el mismo producto dos veces en el mensaje se suma.
+    const igual = r.find((x) => normalizar(x.nombre) === normalizar(it.nombre) && x.unidad === it.unidad && Boolean(x.monto) === Boolean(it.monto) && !x.sinCantidad && !it.sinCantidad);
+    if (igual) { if (it.monto) igual.monto = (igual.monto ?? 0) + it.monto; else igual.cantidad += it.cantidad; continue; }
     r.push(it);
   }
   return r;

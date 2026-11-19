@@ -15,7 +15,7 @@ export function esSaludo(t: string): boolean {
 export function esAfirmativo(t: string): boolean {
   return es(t, ["si", "sii", "siii", "sip", "claro", "dale", "ok", "okay", "okey", "oki", "correcto", "exacto", "asi es", "asi esta bien", "perfecto", "listo",
     "de acuerdo", "esta bien", "ta bien", "ta to", "ta bien asi", "va", "bien", "eso", "eso mismo", "si eso es todo", "si es todo", "si señor", "si senor", "afirmativo",
-    "claro que si", "si por favor", "si porfa", "seguro", "confirmo", "confirmado", "si gracias"]);
+    "claro que si", "si por favor", "si porfa", "seguro", "confirmo", "confirmado", "si gracias", "si esta bien", "si asi esta bien", "esta bien asi"]);
 }
 
 const CIERRE = new Set(["no", "nada", "mas", "gracias", "eso", "es", "todo", "solo", "ya", "por", "ahora", "seria", "esta", "asi", "bien", "ok", "de", "momento", "con"]);
@@ -33,7 +33,7 @@ export function esNegativo(t: string): boolean {
 /** "Eso es todo": termina de pedir. */
 export function esFinDelPedido(t: string): boolean {
   if (soloPalabrasDeCierre(t, ["no", "nada", "eso", "es", "solo", "ya", "con"]) && /todo|solo eso|nada mas|es todo/.test(limpio(t))) return true;
-  return es(t, ["eso es todo", "es todo", "eso seria todo", "seria todo", "solo eso", "nada mas", "nada mas gracias", "eso nada mas", "ya", "ya esta", "ya eso es todo",
+  return es(t, ["dejalo asi", "esta bien dejalo asi", "asi esta bien", "eso es todo", "es todo", "eso seria todo", "seria todo", "solo eso", "nada mas", "nada mas gracias", "eso nada mas", "ya", "ya esta", "ya eso es todo",
     "listo eso es todo", "no eso es todo", "no es todo", "no solo eso", "eso", "nada mas eso", "por ahora es todo", "todo eso", "con eso"]);
 }
 
@@ -45,8 +45,13 @@ export function esGracias(t: string): boolean {
   return contiene(t, ["gracias", "grasias", "muchas gracias", "mil gracias", "thank you", "thanks", "bendiciones", "dios te bendiga"]) && limpio(t).split(" ").length <= 6;
 }
 
+/** Tocó «Corregir» después de una nota de voz. */
+export function esCorregir(t: string): boolean {
+  return es(t, ["corregir", "corrige", "corregir pedido", "esta mal", "no esta bien", "eso no es", "no es asi", "hay un error"]);
+}
+
 export function esCancelar(t: string): boolean {
-  return contiene(t, ["cancelar", "cancela", "cancelalo", "cancelen", "ya no lo quiero", "ya no quiero", "anular", "anulalo"]);
+  return contiene(t, ["borrar y empezar de nuevo", "empezar de nuevo", "borra todo", "borrar todo", "cancelar", "cancela", "cancelalo", "cancelame", "cancelamelo", "cancela eso", "cancelen", "ya no lo quiero", "ya no quiero", "anular", "anulalo"]);
 }
 
 export function esEstado(t: string): boolean {
@@ -58,7 +63,9 @@ export function esPreguntaHorario(t: string): boolean {
 }
 
 export function esPreguntaDelivery(t: string): boolean {
-  return contiene(t, ["delivery", "envio", "cuanto cobran", "cobran el envio", "costo del envio", "llevan", "hacen entregas"]) && !contiene(t, ["mi pedido"]);
+  // Solo cuando pregunta («¿cuánto cuesta llevarlo?»), no cuando pide («mándamelo con el delivery»).
+  const pregunta = t.includes("?") || /\b(cuanto|cobran|hacen|tienen|llevan|hay|cuesta|sale)\b/.test(limpio(t));
+  return pregunta && contiene(t, ["delivery", "envio", "cuanto cobran", "cobran el envio", "costo del envio", "llevan", "hacen entregas", "llevarlo", "cuesta llevar", "cuesta llevarlo"]) && !contiene(t, ["mi pedido"]);
 }
 
 export function esPreguntaUbicacionColmado(t: string): boolean {
@@ -76,7 +83,7 @@ export function esAqui(t: string): boolean {
   return contiene(t, ["aqui", "aca", "ahi", "donde estoy", "aqui donde estoy", "aqui mismo", "donde estoy ahora", "mi ubicacion", "ubicacion actual", "esta ubicacion"]);
 }
 
-const FRASE_CASA = /(?:[,.;]|\s)*(?:\by\s+)?(?:(?:me\s+lo\s+)?(?:ll[eé]v[ae]n?(?:me|nme)?(?:lo|la|los|las)?|m[aá]nd[ae]n?(?:me)?(?:lo|la|los|las)?|env[ií][ae]n?(?:me)?(?:lo|la|los|las)?|traen|trae|es|que\s+sea)\s+)?(?:a|para|en)\s+(?:mi|la)\s+casa\b/i;
+const FRASE_CASA = /(?:[,.;]|\s)*(?:\by\s+)?(?:(?:me\s+lo\s+)?(?:ll[eé]v[ae]n?(?:me|nme)?(?:lo|la|los|las)?|m[aá]nd[ae]n?(?:me)?(?:lo|la|los|las)?|env[ií][ae]n?(?:me)?(?:lo|la|los|las)?|traen|trae|es|que\s+sea)\s+)?(?:a|para|pa\s*['’]?|en)\s*(?:mi|la)\s+casa\b/i;
 /** Saca del mensaje "llévamelo a mi casa" para que no se lea como producto. */
 export function quitarCasa(t: string): { texto: string; casa: boolean } {
   if (!FRASE_CASA.test(t)) return { texto: t, casa: false };
