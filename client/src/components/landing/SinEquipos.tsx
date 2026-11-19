@@ -62,8 +62,18 @@ export default function SinEquipos() {
               </div>
             </div>
             <p style={TITULO} className="m-0 font-bold text-[30px] md:text-[34px] leading-[1.15]">Tu celular o tu tablet.<br />Y nada más.</p>
+            <ul className="m-0 p-0 list-none flex flex-col gap-2.5" data-testid="lista-si-necesitas">
+              <li className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0"><path d="M3 9l1.5-5h15L21 9" /><path d="M4 9v11h16V9" /><path d="M9 20v-6h6v6" /></svg>
+                <span className="text-[17px] font-bold"><span className="text-[#BFE3CF] font-semibold">El colmado:</span> tu celular o tu tablet</span>
+              </li>
+              <li className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0"><circle cx="5.5" cy="17.5" r="3" /><circle cx="18.5" cy="17.5" r="3" /><path d="M8.5 17.5h5l3-6h-4l-2 3H7" /><path d="M14 6h3l1.5 5.5" /></svg>
+                <span className="text-[17px] font-bold"><span className="text-[#BFE3CF] font-semibold">El delivery:</span> su propio celular</span>
+              </li>
+            </ul>
             <p className="m-0 text-[17px] md:text-[18px] leading-relaxed text-[#D8EFE2]">
-              Funciona en el navegador. Tus repartidores usan su propio teléfono y la factura sale en la impresora que ya tengas.
+              Funciona en el navegador, sin instalar nada, y la factura sale en la impresora que ya tengas.
             </p>
             <a href="#crear-negocio" className="self-start inline-flex items-center min-h-[54px] px-7 rounded-full bg-[#F28C28] hover:bg-[#E07B17] text-[#1F2420] font-extrabold text-lg" data-testid="link-sin-equipos-empezar">
               Empezar gratis
