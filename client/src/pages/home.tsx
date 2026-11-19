@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { RegistroNegocioForm } from "@/components/RegistroNegocioForm";
 import ComoPide from "@/components/landing/ComoPide";
 import AsistentePagina from "@/components/landing/AsistentePagina";
+import SinEquipos from "@/components/landing/SinEquipos";
 import { CasaCliente, ColmadoDentro, ColmadoFrente, DeliveryMotor, IconoMoto } from "@/components/landing/Ilustraciones";
 
 // Página principal de delywa.com. Diseño aprobado por el dueño (2026-11-14): fondo claro y cálido,
@@ -249,6 +250,8 @@ export default function Home() {
       </section>
 
       {/* ── Precio ── */}
+      <SinEquipos />
+
       <section id="precio" className="bg-[#17804F] text-white scroll-mt-20">
         <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-16 md:py-[88px] flex flex-wrap gap-10 items-center">
           <div className="flex-[1_1_440px] min-w-0">
