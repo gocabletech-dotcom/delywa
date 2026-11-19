@@ -281,7 +281,7 @@ export default function Home() {
       {/* ── Pie ── */}
       <footer className="border-t border-[#F0E6D6] bg-[#FFF9EF]">
         <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-7 flex flex-wrap gap-x-7 gap-y-3.5 justify-between items-center text-[15px] text-[#5B6460]">
-          <span className="flex items-center gap-2.5"><img src="/landing/logo.png" alt="" width={60} height={40} className="h-10 w-auto" />Delywa · WRMA Developer · República Dominicana</span>
+          <span className="flex items-center gap-2.5"><img src="/landing/logo.png" alt="" width={60} height={40} className="h-10 w-auto" />Delywa · <a href="https://wrmadeveloper.com/" target="_blank" rel="noopener noreferrer" className="text-[#17804F] hover:underline" data-testid="link-wrma">WRMA Developer</a> · República Dominicana</span>
           <span className="flex flex-wrap gap-[18px]">
             <a href="/legal#terminos" className="text-[#17804F] hover:underline">Términos</a>
             <a href="/legal#privacidad" className="text-[#17804F] hover:underline">Privacidad</a>
