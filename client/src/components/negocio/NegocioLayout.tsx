@@ -8,16 +8,17 @@ import {
   MessageCircle, Truck, Package, DollarSign, TrendingUp,
   Menu, X, LogOut, Settings, Users, BookOpen, UtensilsCrossed,
    Smartphone, ClipboardList, MoreHorizontal, ChevronRight, Building2,
-  Home, BarChart3, UserCog, Contact, FileCheck2, ShoppingCart, NotebookPen } from "lucide-react";
+  Home, BarChart3, UserCog, Contact, FileCheck2, ShoppingCart, NotebookPen, Flame } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import AvisoConfirmarCorreo from "./AvisoConfirmarCorreo";
+import { AvisoActivar, useSonidoPedidoNuevo } from "./AvisosAparato";
 import { businessTheme } from "@/lib/temaNegocio";
 import { useTiempoReal } from "@/hooks/use-tiempo-real";
 
 type ActiveNav =
    | "dashboard" | "conversaciones" | "clientes" | "pedidos" | "cocina"
-  | "deliveries" | "cuadres" | "ventas" | "menu" | "mostrador" | "fiado" | "whatsapp-config"
+  | "deliveries" | "cuadres" | "ventas" | "menu" | "mostrador" | "fiado" | "ofertas" | "whatsapp-config"
    | "settings" | "manual" | "sucursales" | "usuarios" | "reportes" | "empleados" | "facturacion";
 
 interface NegocioLayoutProps {
@@ -91,6 +92,8 @@ export default function NegocioLayout({
     },
     enabled: !!colmadoId,
   });
+
+  useSonidoPedidoNuevo(pedidosData ? pedidosData.filter((p) => p.estado === "pendiente_confirmacion").length : undefined);
 
   const { data: suscripcionData } = useQuery<{ plan: { nombre: string } }>({
     queryKey: ["suscripcion", colmadoId],
@@ -233,7 +236,7 @@ export default function NegocioLayout({
 
   const currentDateTime = formatDominicanDateTime();
 
-  const OTRAS_NAVS: ActiveNav[] = ["cocina", "clientes", "cuadres", "ventas", "reportes", "menu", "mostrador", "fiado", "whatsapp-config", "settings", "manual", "sucursales", "usuarios", "empleados"];
+  const OTRAS_NAVS: ActiveNav[] = ["cocina", "clientes", "cuadres", "ventas", "reportes", "menu", "mostrador", "fiado", "ofertas", "whatsapp-config", "settings", "manual", "sucursales", "usuarios", "empleados"];
   const isOtrasActive = OTRAS_NAVS.includes(activeNav);
 
   return (
@@ -272,6 +275,7 @@ export default function NegocioLayout({
           {tieneMenu && navLink("/negocio/menu", "menu", UtensilsCrossed, esColmado ? "Productos e inventario" : "Menú y productos")}
           {navLink("/negocio/deliveries", "deliveries", Truck, "Repartidores")}
           {navLink("/negocio/clientes", "clientes", Users, "Clientes")}
+          {esAdmin && navLink("/negocio/ofertas", "ofertas", Flame, "Ofertas")}
           {esAdmin && navLink("/negocio/empleados", "empleados", Contact, "Empleados")}
 
           {esAdmin && grupo("Dinero")}
@@ -360,6 +364,7 @@ export default function NegocioLayout({
             </div>
           )}
           <AvisoConfirmarCorreo />
+          <AvisoActivar colmadoId={colmadoId} />
           {children}
         </div>
       </div>
@@ -413,6 +418,7 @@ export default function NegocioLayout({
               <div className="grid grid-cols-3 gap-2.5 mb-3">
                 {otrasCard("/negocio/mostrador", "mostrador", ShoppingCart, "Mostrador")}
                 {otrasCard("/negocio/fiado", "fiado", NotebookPen, "Fiado")}
+                {esAdmin && otrasCard("/negocio/ofertas", "ofertas", Flame, "Ofertas")}
                 {tieneMenu && otrasCard("/negocio/menu", "menu", UtensilsCrossed, esColmado ? "Productos" : "Menú")}
                 {otrasCard("/negocio/clientes", "clientes", Users, "Clientes")}
                 {esAdmin && otrasCard("/negocio/empleados", "empleados", Contact, "Empleados")}

@@ -12,6 +12,8 @@ import { getColmadoTimezone } from "../storage/colmados";
 import { addMensaje, getClienteByWhatsapp, updateConversacionPedidoEstado } from "../storage/conversaciones";
 import { createPedido, ESTADOS_TERMINALES } from "../storage/pedidos";
 import { getMenuProductos } from "../storage/menu";
+import { avisarAlNegocio, avisarPedidoNuevo } from "../lib/push";
+import { ofertasVigentes } from "../routes/push";
 import { estadoInventario, productoAgotado } from "../lib/inventario";
 import { interpretar } from "./ia";
 import * as I from "./intenciones";
@@ -224,6 +226,7 @@ async function crearElPedido(c: Contexto, metodo: I.Pago, montoPago: number | nu
     estado: "pendiente_confirmacion",
     notas: "Pedido hecho en el chat de la página",
   } as any);
+  await avisarPedidoNuevo(c.env, c.db, pedido);
   await guardarSesion(c, { pedidoId: pedido.id, estado: "pedido_creado", estadoConversacion: "pedido_creado", metodoPagoSeleccionado: metodo, montoPagoCliente: montoPago ? String(montoPago) : null });
   // La última dirección usada queda en la ficha del cliente (el colmado la ve en su panel).
   let ofrecerCasa = false;
@@ -343,6 +346,14 @@ async function noEntendido(c: Contexto, texto: string): Promise<Respuesta> {
     opciones: algo ? [{ texto: "Eso es todo" }] : undefined };
 }
 
+/** El bot le pasó un mensaje al colmado: aviso del navegador al personal (uno por conversación a la vez). */
+async function avisoDeMensaje(c: Contexto, que: string) {
+  await avisarAlNegocio(c.env, c.db, c.colmado, {
+    titulo: `💬 ${c.sesion.clienteNombre || "Un cliente"} te escribió`, texto: `${que} · Contéstale en Chats.`,
+    url: "/negocio/conversaciones", etiqueta: `chat-${c.sesion.id}`,
+  }).catch(() => 0);
+}
+
 /**
  * Mejora 9: lo que está agotado en Productos e inventario no se anota; se le dice al cliente en el momento.
  * Solo cuando el nombre es el del producto (con o sin plural), para no decir «no hay» por error.
@@ -459,6 +470,7 @@ ${lista(items.map((n) => ({ ...n, unidad: n.unidad ?? null, monto: n.monto ?? nu
   }
   await anotarMetrica(c, "sinEntender");
   await c.db.insert(botNoEntendidos).values({ colmadoId: c.colmado.id, texto: texto.slice(0, 300) }).catch(() => undefined);
+  await avisoDeMensaje(c, `«${texto.slice(0, 80)}»`);
   return despues([{ texto: `Le pasé tu mensaje a ${c.colmado.nombre} para que te responda 👍` }]);
 }
 
@@ -573,8 +585,10 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
   let texto = textoOriginal;
   const timezone = await getColmadoTimezone(c.db, c.colmado);
   const nombre = primerNombre(c.sesion);
-  const saludo = `${I.saludoPorHora(timezone)}${nombre ? `, ${nombre}` : ""} 👋`;
   const primera = c.respuestasPrevias === 0;
+  // Mejora 12: en el primer saludo, la oferta del día del colmado.
+  const oferta = primera ? (await ofertasVigentes(c.db, [c.colmado.id, ...(c.colmado.negocioPrincipalId ? [c.colmado.negocioPrincipalId] : [])]).catch(() => []))[0] : undefined;
+  const saludo = `${I.saludoPorHora(timezone)}${nombre ? `, ${nombre}` : ""} 👋${oferta ? `\n🔥 *Hoy:* ${oferta.texto}` : ""}`;
   // "finalizado" y "esperando_confirmacion_sustitucion" los pone el panel al confirmar el pedido: el pedido sigue vivo.
   const guardado = c.sesion.estadoConversacion || "inicial";
   const estado = c.sesion.pedidoId && ["finalizado", "esperando_confirmacion_sustitucion"].includes(guardado) ? "pedido_creado" : guardado;
@@ -620,7 +634,11 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
     if (I.esGracias(texto)) return [{ texto: `¡A la orden${nombre ? `, ${nombre}` : ""}! 🙌` }];
     const faq = preguntaFrecuente(c, texto, timezone);
     if (faq) return [{ texto: faq }];
-    if (I.esCancelar(texto) && pedido) return [{ texto: `Le aviso a ${c.colmado.nombre} que quieres cancelar el pedido #${pedido.id}. Te confirman por aquí. 👍` }];
+    if (I.esCancelar(texto) && pedido) {
+      await avisoDeMensaje(c, `quiere cancelar el pedido #${pedido.id}`);
+      return [{ texto: `Le aviso a ${c.colmado.nombre} que quieres cancelar el pedido #${pedido.id}. Te confirman por aquí. 👍` }];
+    }
+    await avisoDeMensaje(c, entrada.tipo === "texto" ? `«${texto.slice(0, 80)}»` : "te escribió");
     return [{ texto: `Le pasé tu mensaje a ${c.colmado.nombre} 👍 Te responden por aquí.` }];
   }
 

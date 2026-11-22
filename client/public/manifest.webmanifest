@@ -1,0 +1,15 @@
+{
+  "name": "Delywa",
+  "short_name": "Delywa",
+  "description": "Pedidos, delivery y ventas de tu colmado.",
+  "start_url": "/negocio/pedidos",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#17804F",
+  "lang": "es",
+  "icons": [
+    { "src": "/delywa-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/delywa-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

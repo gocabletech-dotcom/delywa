@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AvisosCliente, OfertasChat } from "@/components/whatsapp/AvisosCliente";
 import { aparato } from "@/lib/aparato";
 import { useParams } from "wouter";
 import { Loader2, Square } from "lucide-react";
@@ -12,7 +13,7 @@ import { businessTheme } from "@/lib/temaNegocio";
 // Es lo mismo que escribirle al colmado por WhatsApp: el mismo bot atiende, pide la dirección,
 // toma el pedido y el colmado ve la conversación en su panel. No hay menú: se pide hablando.
 
-type Info = { id: number; nombre: string; logo: string | null; colorPrimario: string | null; direccion: string; estaAbierto: boolean; mensajeCerrado: string | null; codigoPais: string };
+type Info = { id: number; nombre: string; logo: string | null; colorPrimario: string | null; direccion: string; estaAbierto: boolean; mensajeCerrado: string | null; codigoPais: string; ofertas?: Array<{ id: number; texto: string }> };
 type Opcion = { texto: string; accion?: "ubicacion" | "comprobante" };
 type Mensaje = { id: number; rol: string; contenido: string; fecha: string | number; opciones?: Opcion[] | null };
 type Pedido = { id: number; estado: string; total: string | null; metodoPago: string | null } | null;
@@ -290,6 +291,8 @@ export default function PedirPage({ codigoFijo }: { codigoFijo?: string } = {}) 
   ) : (
     <div className="flex-1 min-h-0 flex flex-col" style={tema}>
       {cabecera}
+      <OfertasChat ofertas={info.ofertas ?? []} />
+      {pedido && <AvisosCliente sessionId={sesion.sessionId} colmado={info.nombre} />}
       {pedido && (
         <button type="button" onClick={() => setMisPedidos({ abrir: pedido.id })} className="shrink-0 w-full text-left bg-white/95 border-b border-[#E5E5EA] px-4 py-2 text-[13.5px] flex justify-between items-center gap-2 active:bg-[#F2F2F7]" data-testid="estado-pedido">
           <span className="flex items-center gap-1.5 min-w-0 truncate">📌 Pedido #{pedido.id}: <b>{ESTADOS[pedido.estado] ?? pedido.estado}</b></span>

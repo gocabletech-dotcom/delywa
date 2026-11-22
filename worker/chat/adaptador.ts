@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { avisarPedidoNuevo } from "../lib/push";
 import { conocimientoRelevante } from "../lib/conocimiento";
 import { llaveOpenAI } from "../lib/integraciones";
 import { avisarNegocio } from "../lib/tiempo-real";
@@ -240,6 +241,8 @@ export const storage = {
   getPedidosByClienteWhatsapp: (colmadoId: number, whatsapp: string) => getPedidosByClienteWhatsapp(ctx().db, colmadoId, whatsapp),
   async createPedido(data: any) {
     const pedido = await createPedido(ctx().db, data);
+    // DELYWA: aviso del navegador al personal (gratis); no toca el bot de WhatsApp.
+    await avisarPedidoNuevo(ctx().env, ctx().db, pedido);
     // DELYWA: el pedido hecho desde el chat de la página queda ligado a esa sesión (avisos de estado y comprobante).
     const web = ctx().canalWeb;
     if (web) await ctx().db.update(chatWebSesiones).set({ pedidoId: pedido.id, estado: "pedido_creado" }).where(eq(chatWebSesiones.sessionId, web.sessionId));

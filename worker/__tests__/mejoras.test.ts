@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { colmados, fiadoMovimientos, menuProductos, pedidos, planes, ventas } from "@shared/schema";
 import { tiempos } from "../routes/chat-colmado";
+import { pushHttp, repartirOfertas, olvidarLlavesEnMemoria } from "../lib/push";
+import { pushSuscripciones, chatWebSesiones } from "@shared/schema";
 import { createTestApp } from "./helpers";
 import { createUser } from "../storage/users";
 import { htmlTicket } from "../../client/src/lib/ticket";
@@ -146,5 +148,63 @@ describe("fiado", () => {
     expect((await dueno.request("PATCH", `/api/colmados/${negocio.id}/fiado/${cuenta.id}`, { activo: false })).status).toBe(409);
     const movs = await t.db.select().from(fiadoMovimientos).where(eq(fiadoMovimientos.cuentaId, cuenta.id));
     expect(movs).toHaveLength(3);
+  });
+});
+
+describe("avisos del navegador y ofertas", () => {
+  const enviados: string[] = [];
+  let respuesta = 201;
+  const fetchOriginal = pushHttp.fetch;
+  async function suscripcion(n: number) {
+    const par = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]) as CryptoKeyPair;
+    const crudo = new Uint8Array(await crypto.subtle.exportKey("raw", par.publicKey));
+    const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return { endpoint: `https://fcm.googleapis.com/fcm/send/prueba-${n}`, keys: { p256dh: b64(crudo), auth: b64(crypto.getRandomValues(new Uint8Array(16))) } };
+  }
+  beforeAll(() => {
+    (t.env as any).DELYWA_CLAVE_MAESTRA = "clave-maestra-de-prueba";
+    olvidarLlavesEnMemoria();
+    pushHttp.fetch = async (url) => { enviados.push(url); return new Response("", { status: respuesta }); };
+  });
+  afterAll(() => { pushHttp.fetch = fetchOriginal; });
+
+  it("el personal activa avisos y le llega el pedido nuevo del chat", async () => {
+    const clave = await t.client().request("GET", "/api/push/clave");
+    expect(clave.json.publica).toMatch(/^B[A-Za-z0-9_-]{80,}$/);
+    expect((await dueno.request("POST", "/api/push/negocio", { colmadoId: negocio.id, suscripcion: { endpoint: "https://evil.example/x", keys: {} } })).status).toBe(400);
+    expect((await dueno.request("POST", "/api/push/negocio", { colmadoId: negocio.id, suscripcion: await suscripcion(1) })).status).toBe(200);
+    enviados.length = 0;
+    const s = await t.client().request("POST", "/api/chat-colmado/colmado-mejoras/sesion", { nombre: "Rita", telefono: "8095550801" });
+    const id = s.json.sessionId;
+    for (const texto of ["dame un pan", "eso es todo", "Calle 5 #3, frente al parque", "tarjeta"]) await t.client().request("POST", `/api/chat-colmado/sesion/${id}/mensaje`, { texto });
+    expect(enviados).toContain("https://fcm.googleapis.com/fcm/send/prueba-1");
+    expect((await dueno.request("POST", "/api/push/prueba")).json.enviados).toBe(1);
+  });
+
+  it("el cliente acepta avisos de su pedido y de ofertas; la oferta sale en el chat y en el saludo", async () => {
+    const s = await t.client().request("POST", "/api/chat-colmado/colmado-mejoras/sesion", { nombre: "Lino", telefono: "8095550802" });
+    const id = s.json.sessionId;
+    expect((await t.client().request("POST", `/api/chat-colmado/sesion/${id}/push`, { suscripcion: await suscripcion(2), ofertas: true })).status).toBe(200);
+    const [sub] = await t.db.select().from(pushSuscripciones).where(eq(pushSuscripciones.endpoint, "https://fcm.googleapis.com/fcm/send/prueba-2"));
+    expect(sub).toMatchObject({ tipo: "cliente", colmadoId: negocio.id, ofertas: true });
+
+    const r = await dueno.request("POST", `/api/colmados/${negocio.id}/ofertas`, { texto: "Hoy pollo a RD$95 la libra", horas: 12, avisar: true });
+    expect(r.status).toBe(201);
+    expect(r.json.suscritos).toBe(1);
+    expect((await dueno.request("POST", `/api/colmados/${negocio.id}/ofertas`, { texto: "Otra oferta del día", avisar: true })).status).toBe(409);
+
+    enviados.length = 0;
+    respuesta = 410; // el navegador ya no acepta: se borra la suscripción
+    expect(await repartirOfertas(t.env, t.db, () => "https://colmadomejoras.delywa.com")).toBe(0);
+    expect(enviados).toEqual(["https://fcm.googleapis.com/fcm/send/prueba-2"]);
+    expect(await t.db.select().from(pushSuscripciones).where(eq(pushSuscripciones.id, sub.id))).toHaveLength(0);
+    respuesta = 201;
+
+    const info = await t.client().request("GET", "/api/chat-colmado/colmado-mejoras/info");
+    expect(info.json.ofertas.map((o: any) => o.texto)).toEqual(["Hoy pollo a RD$95 la libra"]);
+    const s2 = await t.client().request("POST", "/api/chat-colmado/colmado-mejoras/sesion", { nombre: "Ana", telefono: "8095550803" });
+    await t.client().request("POST", `/api/chat-colmado/sesion/${s2.json.sessionId}/mensaje`, { texto: "hola" });
+    const ms = (await t.client().request("GET", `/api/chat-colmado/sesion/${s2.json.sessionId}/mensajes`)).json.mensajes;
+    expect(ms.find((m: any) => m.rol === "assistant").contenido).toContain("🔥 *Hoy:* Hoy pollo a RD$95 la libra");
   });
 });

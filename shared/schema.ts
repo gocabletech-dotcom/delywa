@@ -1018,6 +1018,40 @@ export const fiadoMovimientos = sqliteTable("fiado_movimientos", {
 }, (t) => [index("fiado_movimientos_cuenta_idx").on(t.cuentaId, t.fecha)]);
 
 /**
+ * DELYWA: notificaciones del navegador (Web Push), gratis. tipo «negocio»: el personal (pedidos nuevos,
+ * comprobantes, mensajes); tipo «cliente»: avisos de su pedido y ofertas del colmado que aceptó.
+ */
+export const pushSuscripciones = sqliteTable("push_suscripciones", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  tipo: text("tipo").notNull(),
+  colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
+  telefono: text("telefono"),
+  /** Cliente: acepta recibir ofertas (los avisos de su pedido siempre). */
+  ofertas: integer("ofertas", { mode: "boolean" }).notNull().default(true),
+  fallos: integer("fallos").notNull().default(0),
+  fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (t) => [index("push_suscripciones_colmado_idx").on(t.colmadoId, t.tipo)]);
+
+/** DELYWA: ofertas del colmado («hoy hay pollo a 95»): salen en su chat y como aviso a quien aceptó. */
+export const ofertas = sqliteTable("ofertas", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),
+  texto: text("texto").notNull(),
+  hasta: integer("hasta", { mode: "timestamp_ms" }).notNull(),
+  activa: integer("activa", { mode: "boolean" }).notNull().default(true),
+  /** Aviso a los clientes: pendiente | enviando | enviado | null (no se manda). Se reparte en el cron. */
+  aviso: text("aviso"),
+  avisoCursor: integer("aviso_cursor").notNull().default(0),
+  avisados: integer("avisados").notNull().default(0),
+  creadoPor: text("creado_por"),
+  fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (t) => [index("ofertas_colmado_idx").on(t.colmadoId, t.hasta)]);
+
+/**
  * DELYWA: lo que gasta el día la IA de Cloudflare (Workers AI), en «neuronas» estimadas.
  * El plan gratis da 10,000 al día (se reinicia a las 00:00 UTC); el bot se detiene antes de pasarse.
  */

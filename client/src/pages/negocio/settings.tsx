@@ -3,6 +3,7 @@ import { enlaceChat } from "@shared/subdominio";
 import { PreguntasFrecuentes } from "@/components/negocio/PreguntasFrecuentes";
 import { BotAprendido } from "@/components/negocio/BotAprendido";
 import { ImpresoraTicket } from "@/components/negocio/ImpresoraTicket";
+import { AvisosAparato } from "@/components/negocio/AvisosAparato";
 import { prepararLogo } from "@/lib/imagen";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -142,7 +143,7 @@ type MetodosPago = {
   fechaModificacion: string;
 };
 
-type Seccion = "datos" | "imagen" | "ubicacion" | "horario" | "delivery" | "pagos" | "chat" | "preguntas" | "aprendido" | "impresora" | "mensajes" | "bot" | "canales";
+type Seccion = "datos" | "imagen" | "ubicacion" | "horario" | "delivery" | "pagos" | "chat" | "preguntas" | "aprendido" | "impresora" | "avisos" | "mensajes" | "bot" | "canales";
 
 export default function SettingsPage() {
   const { user, isLoading: authLoading, isAuthenticated, logout } = useAuth();
@@ -432,6 +433,7 @@ export default function SettingsPage() {
       { clave: "delivery", titulo: "Delivery", palabras: "costo envio radio minimo tiempo", resumen: Number(formData.costoDelivery) > 0 ? `Costo ${Number(formData.costoDelivery)}` : "Gratis" },
       { clave: "pagos", titulo: "Formas de pago", palabras: "efectivo tarjeta transferencia banco cuenta" },
       { clave: "impresora", titulo: "Impresora de tickets", palabras: "imprimir ticket factura termica papel 58 80" },
+      { clave: "avisos", titulo: "Avisos en este aparato", palabras: "notificaciones sonido avisos push pedido nuevo celular" },
     ] },
     { nombre: "Chat y bot", items: [
       { clave: "chat", titulo: "Chat de mi página", palabras: "link qr enlace pedidos web" },
@@ -576,6 +578,10 @@ export default function SettingsPage() {
 
           <div className={ver("preguntas")}>
             {colmadoId && <PreguntasFrecuentes colmadoId={colmadoId} />}
+          </div>
+
+          <div className={ver("avisos")}>
+            {colmadoId && <AvisosAparato colmadoId={colmadoId} />}
           </div>
 
           <div className={ver("impresora")}>

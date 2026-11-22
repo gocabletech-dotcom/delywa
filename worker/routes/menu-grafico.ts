@@ -15,6 +15,7 @@ import {
   updateConversacionPedidoEstado,
 } from "../storage/conversaciones";
 import { createPedido, getPedidosByClienteWhatsapp } from "../storage/pedidos";
+import { avisarPedidoNuevo } from "../lib/push";
 
 export const menuGraficoRoutes = new Hono<AppEnv>();
 
@@ -246,6 +247,7 @@ menuGraficoRoutes.post("/api/menu-grafico/pedido", async (c) => {
     tipoEntrega,
     costoDeliveryAplicado: costoDelivery.toFixed(2),
   });
+  await avisarPedidoNuevo(c.env, db, pedido);
   await updateConversacionPedidoEstado(db, conversacion.id, "pendiente_confirmacion");
   await registrarEvento(db, claveTel, claveIp);
   // Este aparato ya pidió con este número: podrá ver sus pedidos y su dirección la próxima vez.

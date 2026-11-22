@@ -10,6 +10,8 @@ import { mismoTelefono, soloDigitos } from "../lib/telefono";
 import { ia } from "../chat/adaptador";
 import { anotarNotaDeVoz, atenderChat, type Entrada } from "../bot/motor";
 import { CupoAgotado, iaDisponible, transcribir } from "../bot/ia";
+import { avisarAlNegocio } from "../lib/push";
+import { guardarSuscripcion, leerSuscripcion, ofertasVigentes } from "./push";
 import { inicioDiaLocal } from "../lib/fechas";
 import { getColmado, getColmadoTimezone, getPais } from "../storage/colmados";
 import { addMensaje, getOrCreateCliente, getOrCreateConversacion } from "../storage/conversaciones";
@@ -53,7 +55,22 @@ chatColmadoRoutes.get("/api/chat-colmado/:codigo/info", async (c) => {
     id: colmado.id, nombre: colmado.nombre, logo: colmado.logo, colorPrimario: colmado.colorPrimario,
     direccion: colmado.direccion, estaAbierto: colmado.estaAbiertoManual !== false, mensajeCerrado: colmado.mensajeCerrado,
     prefijoTelefono: pais?.prefijoCelular ?? "1809", codigoPais: pais?.codigo ?? "DO",
+    ofertas: await ofertasVigentes(db, [colmado.id, ...(colmado.negocioPrincipalId ? [colmado.negocioPrincipalId] : [])]).catch(() => []),
   });
+});
+
+/** El cliente acepta avisos en su celular: de su pedido siempre, y de ofertas si quiere. */
+chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/push", async (c) => {
+  const db = getDb(c.env.DB);
+  const s = await sesionValida(c, db);
+  if (!s) return c.json({ error: "Sesión no encontrada" }, 404);
+  if (s === "inactiva") return inactiva(c);
+  const body = await cuerpo(c);
+  const sus = leerSuscripcion(body.suscripcion);
+  if (!sus) return c.json({ error: "Tu navegador no permitió los avisos." }, 400);
+  if (!(await permitirEvento(db, `chat-push:${ipDe(c)}`, 10, 60 * MINUTO))) return demasiados(c);
+  await guardarSuscripcion(db, sus, { tipo: "cliente", colmadoId: s.colmado.id, telefono: s.sesion.clienteWhatsapp, ofertas: body.ofertas !== false });
+  return c.json({ ok: true });
 });
 
 /** El cliente se identifica con nombre y teléfono, como en WhatsApp. */
@@ -338,5 +355,6 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/comprobante", async 
   }
   // El panel ve el comprobante al momento para revisarlo.
   await avisarNegocio(c.env, s.colmado.id, ["pedidos", "conversaciones"]);
+  await avisarAlNegocio(c.env, db, s.colmado, { titulo: `📸 Comprobante del pedido #${s.sesion.pedidoId}`, texto: `${s.sesion.clienteNombre || "El cliente"} envió la foto de la transferencia. Revísala antes de despachar.`, url: "/negocio/pedidos", etiqueta: `comprobante-${s.sesion.pedidoId}` }).catch(() => 0);
   return c.json({ ok: true, id });
 });

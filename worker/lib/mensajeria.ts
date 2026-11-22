@@ -1,4 +1,6 @@
 import type { Colmado, Pedido } from "@shared/schema";
+import { avisarAlCliente } from "./push";
+import { enlaceChat } from "@shared/subdominio";
 import type { Env } from "../env";
 import { getDb, type Db } from "../db";
 import {
@@ -69,6 +71,9 @@ export async function notificarCliente(
       await addChatWebMensaje(db, sesion.sessionId, "assistant", mensaje);
       if (estadoChat) await updateChatWebSession(db, sesion.sessionId, { estadoConversacion: estadoChat });
       chat = true;
+      // Si el cliente aceptó avisos en su celular, le llega aunque tenga el chat cerrado (gratis).
+      await avisarAlCliente(env, db, colmado, sesion.clienteWhatsapp || pedido.clienteWhatsapp, mensaje, enlaceChat(colmado.slug, urlPublica(env)))
+        .catch((err) => console.error("[push] Aviso al cliente:", err instanceof Error ? err.message : err));
     }
   }
   let whatsappEnviado = false;

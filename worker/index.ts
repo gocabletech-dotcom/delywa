@@ -32,6 +32,10 @@ import { conocimientoRoutes } from "./routes/conocimiento";
 import { saludRoutes } from "./routes/salud";
 import { mostradorRoutes } from "./routes/mostrador";
 import { fiadoRoutes } from "./routes/fiado";
+import { pushRoutes } from "./routes/push";
+import { repartirOfertas } from "./lib/push";
+import { enlaceChat } from "@shared/subdominio";
+import { urlPublica } from "./lib/mensajeria";
 import { asistenteRoutes } from "./routes/asistente";
 import { borrarRespaldosViejos, iniciarRespaldo, pasoRespaldo } from "./lib/respaldo";
 import { avisosFinDePrueba } from "./lib/avisos";
@@ -97,6 +101,7 @@ app.route("/", conocimientoRoutes);
 app.route("/", saludRoutes);
 app.route("/", mostradorRoutes);
 app.route("/", fiadoRoutes);
+app.route("/", pushRoutes);
 app.route("/", asistenteRoutes);
 app.route("/", tiempoRealRoutes);
 
@@ -119,6 +124,8 @@ export default {
       // 09:00 UTC (5:00 a.m. en RD): empieza el respaldo del día; cada vuelta copia una parte.
       if (hora === 9 && primeraVuelta) await iniciarRespaldo(env);
       await pasoRespaldo(env);
+      // Avisos de ofertas a los clientes, de a 40 por vuelta.
+      await repartirOfertas(env, getDb(env.DB), (c) => enlaceChat(c.slug, urlPublica(env)));
       if (hora === 3 && primeraVuelta) { await borrarComprobantesHuerfanos(env); await borrarAudiosViejos(env); await limpiarSeguridad(env); await borrarRespaldosViejos(env); await olvidarEquiposViejos(getDb(env.DB)); }
       // 14:00 UTC (10:00 a.m. en RD): aviso de fin de prueba gratis.
       if (hora === 14 && primeraVuelta) await avisosFinDePrueba(env);
