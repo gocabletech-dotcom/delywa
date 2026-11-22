@@ -33,6 +33,7 @@ import { saludRoutes } from "./routes/salud";
 import { mostradorRoutes } from "./routes/mostrador";
 import { fiadoRoutes } from "./routes/fiado";
 import { pushRoutes } from "./routes/push";
+import { comprasRoutes } from "./routes/compras";
 import { repartirOfertas } from "./lib/push";
 import { enlaceChat } from "@shared/subdominio";
 import { urlPublica } from "./lib/mensajeria";
@@ -102,6 +103,7 @@ app.route("/", saludRoutes);
 app.route("/", mostradorRoutes);
 app.route("/", fiadoRoutes);
 app.route("/", pushRoutes);
+app.route("/", comprasRoutes);
 app.route("/", asistenteRoutes);
 app.route("/", tiempoRealRoutes);
 

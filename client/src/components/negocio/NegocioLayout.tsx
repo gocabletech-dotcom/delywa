@@ -18,7 +18,7 @@ import { useTiempoReal } from "@/hooks/use-tiempo-real";
 
 type ActiveNav =
    | "dashboard" | "conversaciones" | "clientes" | "pedidos" | "cocina"
-  | "deliveries" | "cuadres" | "ventas" | "menu" | "mostrador" | "fiado" | "ofertas" | "whatsapp-config"
+  | "deliveries" | "cuadres" | "ventas" | "menu" | "mostrador" | "fiado" | "ofertas" | "compras" | "whatsapp-config"
    | "settings" | "manual" | "sucursales" | "usuarios" | "reportes" | "empleados" | "facturacion";
 
 interface NegocioLayoutProps {
@@ -236,7 +236,7 @@ export default function NegocioLayout({
 
   const currentDateTime = formatDominicanDateTime();
 
-  const OTRAS_NAVS: ActiveNav[] = ["cocina", "clientes", "cuadres", "ventas", "reportes", "menu", "mostrador", "fiado", "ofertas", "whatsapp-config", "settings", "manual", "sucursales", "usuarios", "empleados"];
+  const OTRAS_NAVS: ActiveNav[] = ["cocina", "clientes", "cuadres", "ventas", "reportes", "menu", "mostrador", "fiado", "ofertas", "compras", "whatsapp-config", "settings", "manual", "sucursales", "usuarios", "empleados"];
   const isOtrasActive = OTRAS_NAVS.includes(activeNav);
 
   return (
@@ -281,6 +281,7 @@ export default function NegocioLayout({
           {esAdmin && grupo("Dinero")}
           {/* El despachador no maneja dinero ni configuración */}
           {esAdmin && navLink("/negocio/ventas", "ventas", DollarSign, "Ventas")}
+          {esAdmin && navLink("/negocio/compras", "compras", Truck, "Compras y suplidores")}
           {esAdmin && navLink("/negocio/cuadres", "cuadres", ClipboardList, "Cuadres")}
           {esAdmin && navLink("/negocio/reportes", "reportes", BarChart3, "Reportes")}
           {esAdmin && navLink("/negocio/facturacion-electronica", "facturacion", FileCheck2, "Factura electrónica")}
@@ -419,6 +420,7 @@ export default function NegocioLayout({
                 {otrasCard("/negocio/mostrador", "mostrador", ShoppingCart, "Mostrador")}
                 {otrasCard("/negocio/fiado", "fiado", NotebookPen, "Fiado")}
                 {esAdmin && otrasCard("/negocio/ofertas", "ofertas", Flame, "Ofertas")}
+                {esAdmin && otrasCard("/negocio/compras", "compras", Truck, "Compras")}
                 {tieneMenu && otrasCard("/negocio/menu", "menu", UtensilsCrossed, esColmado ? "Productos" : "Menú")}
                 {otrasCard("/negocio/clientes", "clientes", Users, "Clientes")}
                 {esAdmin && otrasCard("/negocio/empleados", "empleados", Contact, "Empleados")}

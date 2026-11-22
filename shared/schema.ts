@@ -1051,6 +1051,97 @@ export const ofertas = sqliteTable("ofertas", {
   fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (t) => [index("ofertas_colmado_idx").on(t.colmadoId, t.hasta)]);
 
+// ---------- Compras (cargo de mercancía) ----------
+const ahoraCompras = sql`(cast(unixepoch('subsec') * 1000 as integer))`;
+
+/** DELYWA: suplidores del negocio (los comparten sus sucursales: colmadoId = negocio principal). */
+export const suplidores = sqliteTable("suplidores", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),
+  nombre: text("nombre").notNull(),
+  rnc: text("rnc"),
+  telefono: text("telefono"),
+  vendedor: text("vendedor"),
+  diasCredito: integer("dias_credito"),
+  notas: text("notas"),
+  activo: integer("activo", { mode: "boolean" }).notNull().default(true),
+  fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(ahoraCompras).notNull(),
+}, (t) => [index("suplidores_colmado_idx").on(t.colmadoId)]);
+export type Suplidor = typeof suplidores.$inferSelect;
+
+/** DELYWA: una factura de compra de una sucursal. saldo > 0 = se le debe al suplidor (crédito). */
+export const compras = sqliteTable("compras", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),
+  suplidorId: integer("suplidor_id").notNull().references(() => suplidores.id),
+  factura: text("factura"),
+  ncf: text("ncf"),
+  /** AAAA-MM-DD de la factura. */
+  fecha: text("fecha").notNull(),
+  subtotal: numeric("subtotal").notNull().default("0"),
+  itbis: numeric("itbis").notNull().default("0"),
+  descuento: numeric("descuento").notNull().default("0"),
+  total: numeric("total").notNull(),
+  /** efectivo | transferencia | tarjeta | cheque | credito */
+  formaPago: text("forma_pago").notNull(),
+  vence: text("vence"),
+  saldo: numeric("saldo").notNull().default("0"),
+  /** registrada | anulada */
+  estado: text("estado").notNull().default("registrada"),
+  fotoUrl: text("foto_url"),
+  notas: text("notas"),
+  usuario: text("usuario"),
+  fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(ahoraCompras).notNull(),
+}, (t) => [index("compras_colmado_fecha_idx").on(t.colmadoId, t.fecha), index("compras_suplidor_idx").on(t.suplidorId)]);
+export type Compra = typeof compras.$inferSelect;
+
+export const compraLineas = sqliteTable("compra_lineas", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  compraId: integer("compra_id").notNull().references(() => compras.id, { onDelete: "cascade" }),
+  /** Lo que dice la factura («PRES GDE 24/650»). */
+  descripcion: text("descripcion").notNull(),
+  menuProductoId: integer("menu_producto_id"),
+  cantidad: real("cantidad").notNull(),
+  /** Unidades que trae cada una (1 caja = 24). */
+  unidadesPorPaquete: integer("unidades_por_paquete").notNull().default(1),
+  /** Costo de cada una, como en la factura. */
+  costo: numeric("costo").notNull(),
+  total: numeric("total").notNull(),
+  /** Unidades que entraron al inventario y costo de cada unidad (con ITBIS y descuento repartidos). */
+  unidadesSumadas: integer("unidades_sumadas").notNull().default(0),
+  costoUnitario: numeric("costo_unitario"),
+}, (t) => [index("compra_lineas_compra_idx").on(t.compraId)]);
+
+export const compraPagos = sqliteTable("compra_pagos", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  compraId: integer("compra_id").notNull().references(() => compras.id, { onDelete: "cascade" }),
+  monto: numeric("monto").notNull(),
+  metodo: text("metodo").notNull(),
+  nota: text("nota"),
+  usuario: text("usuario"),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(ahoraCompras).notNull(),
+}, (t) => [index("compra_pagos_compra_idx").on(t.compraId)]);
+
+/** DELYWA: lo que el bot de compras aprende: esta descripción de este suplidor es este producto. */
+export const suplidorEquivalencias = sqliteTable("suplidor_equivalencias", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  suplidorId: integer("suplidor_id").notNull().references(() => suplidores.id, { onDelete: "cascade" }),
+  descripcion: text("descripcion").notNull(),
+  menuProductoId: integer("menu_producto_id").notNull().references(() => menuProductos.id, { onDelete: "cascade" }),
+  unidadesPorPaquete: integer("unidades_por_paquete").notNull().default(1),
+  veces: integer("veces").notNull().default(1),
+}, (t) => [uniqueIndex("suplidor_equivalencias_uq").on(t.suplidorId, t.descripcion)]);
+
+/**
+ * DELYWA: costo de cada producto (promedio ponderado), aparte del menú para que nunca salga en
+ * respuestas públicas ni lo vea el despachador.
+ */
+export const productoCostos = sqliteTable("producto_costos", {
+  menuProductoId: integer("menu_producto_id").primaryKey().references(() => menuProductos.id, { onDelete: "cascade" }),
+  costo: numeric("costo").notNull(),
+  actualizado: integer("actualizado", { mode: "timestamp_ms" }).default(ahoraCompras).notNull(),
+});
+
 /**
  * DELYWA: lo que gasta el día la IA de Cloudflare (Workers AI), en «neuronas» estimadas.
  * El plan gratis da 10,000 al día (se reinicia a las 00:00 UTC); el bot se detiene antes de pasarse.
