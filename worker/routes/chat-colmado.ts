@@ -2,7 +2,7 @@ import { avisarNegocio } from "../lib/tiempo-real";
 import { Hono, type Context } from "hono";
 import { and, asc, count, desc, eq, gt, gte, inArray, max, ne } from "drizzle-orm";
 import { toFile } from "openai";
-import { chatWebMensajes, chatWebSesiones, menuProductos, paises, pedidos } from "@shared/schema";
+import { chatWebMensajes, chatWebSesiones, deliveries, menuProductos, paises, pedidos } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { permitirEvento } from "../lib/rate-limit";
@@ -192,6 +192,37 @@ chatColmadoRoutes.get("/api/chat-colmado/sesion/:sessionId/pedidos", async (c) =
       fecha: p.fechaCreacion, productos: productosDe(p.productos), pagoAprobado: Boolean(p.comprobanteConfirmado),
       motivoRetorno: p.motivoRetorno ?? null, actual: p.id === s.sesion.pedidoId,
     })),
+  });
+});
+
+/**
+ * Mejora 10: dónde va el delivery, solo mientras el pedido de esa sesión está en camino y con una ubicación
+ * de los últimos 20 minutos. No da el teléfono ni el apellido del repartidor.
+ */
+chatColmadoRoutes.get("/api/chat-colmado/sesion/:sessionId/pedidos/:pedidoId/delivery", async (c) => {
+  const db = getDb(c.env.DB);
+  const s = await sesionValida(c, db);
+  if (!s) return c.json({ error: "Sesión no encontrada" }, 404);
+  if (s === "inactiva") return inactiva(c);
+  const pedidoId = Number(c.req.param("pedidoId"));
+  // El pedido tiene que ser de este teléfono en este colmado (igual que «Mis pedidos»).
+  const [suyo] = pedidoId === s.sesion.pedidoId ? [{ id: s.sesion.id }] : s.sesion.aparato && s.sesion.clienteWhatsapp
+    ? await db.select({ id: chatWebSesiones.id }).from(chatWebSesiones)
+      .where(and(eq(chatWebSesiones.colmadoId, s.colmado.id), eq(chatWebSesiones.pedidoId, pedidoId), mismoTelefono(chatWebSesiones.clienteWhatsapp, s.sesion.clienteWhatsapp), eq(chatWebSesiones.aparato, s.sesion.aparato)))
+    : [];
+  const [p] = suyo ? await db.select().from(pedidos).where(and(eq(pedidos.id, pedidoId), eq(pedidos.colmadoId, s.colmado.id))) : [];
+  if (!p) return c.json({ error: "Pedido no encontrado" }, 404);
+  if (!["en_camino", "llegando"].includes(p.estado) || !p.deliveryId) return c.json({ visible: false });
+  const [d] = await db.select({ nombre: deliveries.nombre, lat: deliveries.ultimaLatitud, lon: deliveries.ultimaLongitud, en: deliveries.ultimaUbicacionAt })
+    .from(deliveries).where(eq(deliveries.id, p.deliveryId));
+  const reciente = d?.en && Date.now() - new Date(d.en).getTime() < 20 * 60_000 && d.lat != null && d.lon != null;
+  const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
+  return c.json({
+    visible: true,
+    estado: p.estado,
+    delivery: { nombre: String(d?.nombre || "El delivery").split(" ")[0], lat: reciente ? num(d!.lat) : null, lon: reciente ? num(d!.lon) : null, actualizado: reciente ? d!.en : null },
+    destino: { lat: num(p.clienteLatitud), lon: num(p.clienteLongitud) },
+    colmado: { lat: num(s.colmado.latitud), lon: num(s.colmado.longitud) },
   });
 });
 

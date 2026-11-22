@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { IOS, IconoIOS } from "./ios";
+
+// El mapa (Leaflet) se carga solo cuando hace falta.
+const MapaDelivery = lazy(() => import("./MapaDelivery"));
 
 // «Mis pedidos» del chat del cliente: el pedido de ahora con sus pasos y los anteriores (hechos desde
 // este mismo teléfono). Se ve dentro del mismo iPhone, con «Volver al chat».
@@ -112,7 +115,7 @@ export default function MisPedidos({ sessionId, abrir, alVolver }: { sessionId: 
           )
         )}
 
-        {detalle && <Detalle p={detalle} />}
+        {detalle && <Detalle p={detalle} sessionId={sessionId} />}
       </main>
 
       <div className="shrink-0 bg-[#F6F6F6] border-t border-[#D1D1D6] px-3 pt-2 pb-3 md:pb-8">
@@ -124,11 +127,14 @@ export default function MisPedidos({ sessionId, abrir, alVolver }: { sessionId: 
   );
 }
 
-function Detalle({ p }: { p: PedidoCliente }) {
+function Detalle({ p, sessionId }: { p: PedidoCliente; sessionId: string }) {
   const terminado = p.estado === "cancelado" || p.estado === "retorno";
   const { pasos, actual } = pasosDe(p);
   return (
     <div className="flex flex-col gap-3" data-testid={`detalle-pedido-${p.id}`}>
+      {["en_camino", "llegando"].includes(p.estado) && (
+        <Suspense fallback={null}><MapaDelivery sessionId={sessionId} pedidoId={p.id} /></Suspense>
+      )}
       <section className="rounded-xl bg-white p-4">
         {terminado ? (
           <div className="text-center py-2">

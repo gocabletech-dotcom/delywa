@@ -2,7 +2,7 @@
 // Mejoras de noviembre 2026 (v2.52 en adelante). D1 local en memoria; nada de producción.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { colmados, fiadoMovimientos, menuProductos, pedidos, planes, ventas } from "@shared/schema";
+import { colmados, deliveries, fiadoMovimientos, menuProductos, pedidos, planes, ventas } from "@shared/schema";
 import { tiempos } from "../routes/chat-colmado";
 import { pushHttp, repartirOfertas, olvidarLlavesEnMemoria } from "../lib/push";
 import { pushSuscripciones, chatWebSesiones } from "@shared/schema";
@@ -206,5 +206,32 @@ describe("avisos del navegador y ofertas", () => {
     await t.client().request("POST", `/api/chat-colmado/sesion/${s2.json.sessionId}/mensaje`, { texto: "hola" });
     const ms = (await t.client().request("GET", `/api/chat-colmado/sesion/${s2.json.sessionId}/mensajes`)).json.mensajes;
     expect(ms.find((m: any) => m.rol === "assistant").contenido).toContain("🔥 *Hoy:* Hoy pollo a RD$95 la libra");
+  });
+});
+
+describe("el cliente ve al delivery en el mapa", () => {
+  it("solo mientras va en camino, con ubicación reciente, y solo su pedido", async () => {
+    const cliente = t.client();
+    const s = await cliente.request("POST", "/api/chat-colmado/colmado-mejoras/sesion", { nombre: "Mapa", telefono: "8095550901" });
+    const id = s.json.sessionId;
+    for (const texto of ["dame un pan", "eso es todo", "Calle 9 #1, al lado del parque", "tarjeta"]) await cliente.request("POST", `/api/chat-colmado/sesion/${id}/mensaje`, { texto });
+    const [ses] = await t.db.select().from(chatWebSesiones).where(eq(chatWebSesiones.sessionId, id));
+    const pedidoId = ses.pedidoId!;
+    const ruta = `/api/chat-colmado/sesion/${id}/pedidos/${pedidoId}/delivery`;
+    expect((await cliente.request("GET", ruta)).json).toEqual({ visible: false });
+
+    const [d] = await t.db.insert(deliveries).values({ colmadoId: negocio.id, nombre: "Pedro Martínez", whatsappNumero: "8095559999", ultimaLatitud: "18.4861", ultimaLongitud: "-69.9312", ultimaUbicacionAt: new Date() } as any).returning();
+    await t.db.update(pedidos).set({ estado: "en_camino", deliveryId: d.id, clienteLatitud: "18.49", clienteLongitud: "-69.93" }).where(eq(pedidos.id, pedidoId));
+    const r = await cliente.request("GET", ruta);
+    expect(r.json).toMatchObject({ visible: true, estado: "en_camino", delivery: { nombre: "Pedro", lat: 18.4861, lon: -69.9312 }, destino: { lat: 18.49, lon: -69.93 } });
+    expect(JSON.stringify(r.json)).not.toContain("8095559999");
+
+    // Ubicación vieja: no se muestra dónde estaba.
+    await t.db.update(deliveries).set({ ultimaUbicacionAt: new Date(Date.now() - 60 * 60_000) }).where(eq(deliveries.id, d.id));
+    expect((await cliente.request("GET", ruta)).json.delivery.lat).toBeNull();
+
+    // Otra sesión (otro teléfono) no ve ese pedido.
+    const otra = await t.client().request("POST", "/api/chat-colmado/colmado-mejoras/sesion", { nombre: "Otro", telefono: "8095550902" });
+    expect((await t.client().request("GET", `/api/chat-colmado/sesion/${otra.json.sessionId}/pedidos/${pedidoId}/delivery`)).status).toBe(404);
   });
 });
