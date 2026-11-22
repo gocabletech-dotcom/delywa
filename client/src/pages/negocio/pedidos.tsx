@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import { imprimirTicket } from "@/lib/ticket";
 import { enlaceSeguimiento, type PedidoConCodigo } from "@/lib/seguimiento";
-import { printOrderWindow, generateOrderPdf } from "@/services/PrinterService";
+import { generateOrderPdf } from "@/services/PrinterService";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -431,6 +432,25 @@ export default function PedidosPage() {
   });
 
   const moneda = colmadoData?.simboloMoneda || "RD$";
+  const imprimirPedido = (pedido: PedidoNegocio) => {
+    let lista: any[] = [];
+    try { const l = JSON.parse(pedido.productos); if (Array.isArray(l)) lista = l; } catch { /* texto suelto */ }
+    const total = parseFloat(pedido.totalConfirmado || pedido.total || "0") || 0;
+    const recibido = parseFloat(pedido.montoPago || "0") || 0;
+    imprimirTicket({
+      negocio: { nombre: colmadoData?.nombre || "Mi negocio", direccion: colmadoData?.direccion, telefono: colmadoData?.telefonoAlternativo || colmadoData?.whatsappNumero },
+      titulo: `Pedido #${pedido.id}${pedido.tipoEntrega === "pickup" ? " · Para recoger" : ""}`,
+      fecha: new Date(pedido.fechaCreacion),
+      cliente: { nombre: pedido.clienteNombre, telefono: pedido.clienteWhatsapp, direccion: pedido.tipoEntrega === "pickup" ? null : pedido.clienteUbicacion },
+      lineas: lista.length
+        ? lista.map((x) => ({ nombre: String(x.nombre || x.name || "Producto"), cantidad: parseFloat(x.cantidad) || 1, precio: parseFloat(x.monto ?? x.precio) || null }))
+        : [{ nombre: String(pedido.productos || "Productos"), cantidad: 1 }],
+      delivery: getCostoDeliveryPedido(pedido),
+      total,
+      pago: { metodo: pedido.metodoPago, recibido: pedido.metodoPago === "efectivo" && recibido > total ? recibido : null, devuelta: pedido.metodoPago === "efectivo" && recibido > total ? recibido - total : null },
+      moneda,
+    });
+  };
   const getCostoDeliveryPedido = (pedido?: {
     tipoEntrega?: string;
     costoDeliveryAplicado?: string | null;
@@ -494,10 +514,8 @@ export default function PedidosPage() {
     await copiarLinkSeguimiento(pedido);
   };
 
-  const handlePrint = (pedido: any) => {
-    if (!colmadoData) return;
-    printOrderWindow(pedido, colmadoData, toast);
-  };
+  // Ticket para impresora térmica de 58/80 mm (Configuración → Impresora de tickets).
+  const handlePrint = (pedido: any) => imprimirPedido(pedido);
 
   const handleDownloadPdf = (pedido: any) => {
     if (!colmadoData) return;

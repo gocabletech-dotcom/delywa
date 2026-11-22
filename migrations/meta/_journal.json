@@ -169,6 +169,13 @@
       "when": 1795362832345,
       "tag": "0023_bot_ia_y_correcciones",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1795364229176,
+      "tag": "0024_trial_30_dias",
+      "breakpoints": true
     }
   ]
 }

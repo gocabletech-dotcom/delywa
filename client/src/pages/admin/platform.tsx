@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Loader2, Store, Users, Package, DollarSign, Settings, LogOut, MessageSquare, Save, X, Plus, Edit, ChevronDown, ChevronRight, MapPin, Phone, Trash2, Building2, Percent, Crown, Image, Video, Download, Tag, FileText, LayoutGrid, BookOpen, Sparkles, Check, AlertCircle, Ban, Play, Truck, Brain, Globe, KeyRound, ShieldCheck, Receipt } from "lucide-react";
+import { Loader2, Store, Users, Package, DollarSign, Settings, LogOut, MessageSquare, Save, X, Plus, Edit, ChevronDown, ChevronRight, MapPin, Phone, Trash2, Building2, Percent, Crown, Image, Video, Download, Tag, FileText, LayoutGrid, BookOpen, Sparkles, Check, AlertCircle, Ban, Play, Truck, Brain, Globe, KeyRound, ShieldCheck, Receipt, Activity } from "lucide-react";
 import { SeguridadSection } from "@/components/admin/SeguridadSection";
 import { AsistentePaginaSection } from "@/components/admin/AsistentePaginaSection";
 import { IntegracionesSection } from "@/components/admin/IntegracionesSection";
@@ -20,6 +20,7 @@ import { FacturacionElectronicaSection } from "@/components/admin/FacturacionEle
 import { JergaAprendidaPanel } from "@/components/admin/JergaAprendidaPanel";
 import { JergaSimple } from "@/components/admin/JergaSimple";
 import { BotChatPanel } from "@/components/admin/BotChatPanel";
+import { SaludSection } from "@/components/admin/SaludSection";
 import promoVideo1 from "@assets/generated_videos/complete_delivery_flow_sequence.mp4";
 import promoVideo2 from "@assets/generated_videos/delywa_logo_with_slogan.mp4";
 import promoVideoFull1 from "@assets/generated_videos/customer_types_order_ai_responds.mp4";
@@ -201,7 +202,7 @@ function whatsappPlaceholder(pais: { codigo: string; prefijoCelular: string } | 
   return `Ej: ${prefix}${getPhoneExample(pais.codigo)}`;
 }
 
-type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones" | "solicitudes" | "seguridad" | "facturacion" | "asistente-pagina";
+type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones" | "solicitudes" | "seguridad" | "facturacion" | "asistente-pagina" | "salud";
 
 const tiposNegocioLocal = [
   { value: "colmado", label: "Colmado" },
@@ -3361,6 +3362,7 @@ export default function PlatformAdminPage() {
     { id: "productos-restringidos" as SectionType, label: "Productos Restringidos", icon: Ban },
     { id: "paises" as SectionType, label: "Países", icon: Globe },
     { id: "planes" as SectionType, label: "Planes", icon: Crown },
+    { id: "salud" as SectionType, label: "Salud", icon: Activity },
     { id: "solicitudes" as SectionType, label: "Solicitudes", icon: Check },
     { id: "asistente-pagina" as SectionType, label: "Asistente de la página", icon: MessageSquare },
     { id: "negocios" as SectionType, label: "Negocios", icon: Store },
@@ -3472,6 +3474,7 @@ export default function PlatformAdminPage() {
               {activeSection === "facturacion" && <FacturacionElectronicaSection />}
               {activeSection === "seguridad" && <SeguridadSection />}
               {activeSection === "asistente-pagina" && <AsistentePaginaSection />}
+              {activeSection === "salud" && <SaludSection />}
             </>
           )}
         </main>

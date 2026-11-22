@@ -29,6 +29,7 @@ import { chatColmadoRoutes } from "./routes/chat-colmado";
 import { seguridadRoutes } from "./routes/seguridad";
 import { facturacionElectronicaRoutes } from "./routes/facturacion-electronica";
 import { conocimientoRoutes } from "./routes/conocimiento";
+import { saludRoutes } from "./routes/salud";
 import { asistenteRoutes } from "./routes/asistente";
 import { borrarRespaldosViejos, iniciarRespaldo, pasoRespaldo } from "./lib/respaldo";
 import { avisosFinDePrueba } from "./lib/avisos";
@@ -91,6 +92,7 @@ app.route("/", chatColmadoRoutes);
 app.route("/", seguridadRoutes);
 app.route("/", facturacionElectronicaRoutes);
 app.route("/", conocimientoRoutes);
+app.route("/", saludRoutes);
 app.route("/", asistenteRoutes);
 app.route("/", tiempoRealRoutes);
 
