@@ -27,6 +27,14 @@ import {
 } from "../storage/pedidos";
 import { chatWebMensajes, pedidos, whatsappConversaciones } from "@shared/schema";
 import { avisarNegocio } from "../lib/tiempo-real";
+import { aprenderDeCorrecciones, esPedidoDelChat, type Correccion } from "../lib/correcciones-bot";
+
+/** Fase 4: si el colmadero le cambió el nombre a lo que dijo el cliente en el chat, el bot lo va aprendiendo. */
+async function aprenderDelColmadero(db: Db, colmado: Colmado, pedidoId: number, cambios: Correccion[]) {
+  if (!cambios.length || !(await esPedidoDelChat(db, pedidoId))) return;
+  await aprenderDeCorrecciones(db, colmado, pedidoId, cambios).catch((err) =>
+    console.error("[pedidos] No se pudo aprender de la corrección:", err instanceof Error ? err.message : err));
+}
 import { and, eq, inArray, isNotNull, not, or, isNull } from "drizzle-orm";
 
 export const pedidoRoutes = new Hono<AppEnv>();
@@ -344,6 +352,11 @@ pedidoRoutes.post("/api/pedidos/:id/confirmar", requireAuth, async (c) => {
   if ((Array.isArray(productosActualizados) && productosActualizados.length) || adicionales.length) {
     await updatePedidoProductos(db, pedido.id, productosFinales);
   }
+  if (Array.isArray(productosActualizados)) {
+    await aprenderDelColmadero(db, colmado, pedido.id, productosActualizados
+      .filter((p: any) => typeof p?.textoOriginal === "string" && typeof p?.nombre === "string")
+      .map((p: any) => ({ dicho: p.textoOriginal, producto: p.nombre })));
+  }
 
   let mensaje: string;
   if (haySustituciones) {
@@ -495,7 +508,17 @@ pedidoRoutes.patch("/api/pedidos/:id/revisar-productos", requireAuth, async (c) 
   const calculado = productos.reduce((s, p) => s + num(p.monto ?? p.precio) * p.cantidad, 0);
   const nuevoTotal = totalConfirmado !== undefined && totalConfirmado !== "" ? Number(totalConfirmado) : calculado;
   if (!Number.isFinite(nuevoTotal) || nuevoTotal < 0) return c.json({ error: "El total no puede ser negativo" }, 400);
+  const antes = leerProductos(r.pedido.productos);
   await updateProductosYTotalConfirmado(db, r.pedido.id, productos, nuevoTotal.toFixed(2));
+  // Misma lista con nombres cambiados en su lugar: es una corrección del nombre, no otro pedido.
+  if (antes.length === productos.length) {
+    const colmadoPedido = await getColmado(db, r.pedido.colmadoId);
+    if (colmadoPedido) {
+      await aprenderDelColmadero(db, colmadoPedido, r.pedido.id, productos
+        .map((p, i) => ({ dicho: String(antes[i]?.textoOriginal || antes[i]?.nombre || ""), producto: p.nombre }))
+        .filter((x) => x.dicho && x.dicho !== x.producto));
+    }
+  }
   // Un pedido ya confirmado muestra y cobra `total`: se corrige también.
   if (r.pedido.estado !== "esperando_confirmacion_pago") {
     await db.update(pedidos).set({ total: nuevoTotal.toFixed(2) }).where(eq(pedidos.id, r.pedido.id));

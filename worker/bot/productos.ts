@@ -358,6 +358,28 @@ function capitalizar(t: string): string {
 }
 
 /** Un pedazo del mensaje ("2 libras de arroz") → producto con cantidad y unidad. */
+/** Singular aproximado para comparar («cervezas» = «cerveza», «panes» = «pan»). */
+export function singular(w: string): string {
+  if (w.length < 4 || /\d/.test(w) || w in NUMEROS_A_CIFRA) return w;
+  if (!w.endsWith("s")) return w;
+  const sinS = w.slice(0, -1);
+  return /[nlrdz]e$/.test(sinS) && sinS.length >= 4 ? sinS.slice(0, -1) : sinS;
+}
+
+/**
+ * ¿Lo que dice la IA que pidió aparece de verdad en el mensaje? Al menos una palabra con sentido
+ * (no relleno) igual, en singular, que suena igual o con una letra de diferencia. Así la IA no
+ * puede inventar productos que el cliente no nombró.
+ */
+export function apareceEnMensaje(frase: string, mensaje: string): boolean {
+  const delMensaje = normalizarHabla(mensaje).replace(/[^a-z0-9ñ\s]/g, " ").split(/\s+/).filter(Boolean);
+  const buscadas = normalizar(frase).replace(/[^a-z0-9ñ\s]/g, " ").split(/\s+/)
+    .filter((w) => w.length >= 3 && !RELLENO.has(w) && !/^\d+$/.test(w));
+  if (!buscadas.length) return false;
+  return buscadas.some((b) => delMensaje.some((m) => m === b || singular(m) === singular(b) || sonido(m) === sonido(b)
+    || (b.length >= 5 && m.length >= 5 && distancia(singular(m), singular(b)) <= 1)));
+}
+
 export function leerItem(pedazo: string, jerga: Map<string, string>): Item | null {
   const original = pedazo.trim();
   let t = normalizar(original).replace(/[^a-z0-9ñ/.,\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -403,9 +425,15 @@ export function leerItem(pedazo: string, jerga: Map<string, string>): Item | nul
     if (!t) return null;
   }
   // La jerga primero, con la frase entera ("una fria", "un pote").
+  const fichasT = t.split(" ");
+  const singT = fichasT.map(singular);
   for (const [frase, producto] of jerga) {
-    if (` ${t} `.includes(` ${frase} `)) {
-      const resto = t.replace(frase, " ").trim().split(" ");
+    // Con o sin plural: «cerveza jumbo» también es «cervezas jumbo».
+    const fs = frase.split(" ").map(singular);
+    let k = -1;
+    for (let i = 0; i + fs.length <= singT.length && k < 0; i++) if (fs.every((w, j) => singT[i + j] === w)) k = i;
+    if (k >= 0) {
+      const resto = [...fichasT.slice(0, k), ...fichasT.slice(k + fs.length)];
       const n = resto.map(leerNumero).find((x) => x !== null && x > 0 && x <= 100);
       const cantidadEnFrase = leerNumero(frase.split(" ")[0]);
       // «la verde», «el pote»: el artículo ya dice que es uno.

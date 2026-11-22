@@ -1,7 +1,7 @@
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { mismoTelefono } from "../lib/telefono";
 import { conocimientoParaPrompt } from "../lib/conocimiento";
-import { botNoEntendidos, botRegistro, chatWebSesiones, clienteDirecciones, clientes, diccionarioJerga, pedidos, type ChatWebSesion, type Colmado } from "@shared/schema";
+import { botNoEntendidos, botRegistro, chatWebSesiones, clienteDirecciones, clientes, diccionarioJerga, menuProductos, pedidos, type ChatWebSesion, type Colmado } from "@shared/schema";
 import { textoCuentas } from "../lib/transferencia";
 import type { Env } from "../env";
 import type { Db } from "../db";
@@ -13,7 +13,7 @@ import { addMensaje, getClienteByWhatsapp, updateConversacionPedidoEstado } from
 import { createPedido, ESTADOS_TERMINALES } from "../storage/pedidos";
 import { interpretar } from "./ia";
 import * as I from "./intenciones";
-import { corregirOrtografia, emojiDe, leerCantidades, leerPedido, textoItem, type Item } from "./productos";
+import { apareceEnMensaje, corregirOrtografia, emojiDe, leerCantidades, leerPedido, textoItem, type Item } from "./productos";
 import { entender, type Entendido } from "./entender";
 
 // Bot del chat de la página (delywa.com/pedir/<colmado>). Funciona por pasos y SIN inteligencia artificial:
@@ -341,9 +341,28 @@ async function noEntendido(c: Contexto, texto: string): Promise<Respuesta> {
     opciones: algo ? [{ texto: "Eso es todo" }] : undefined };
 }
 
+/** Fase 3: la IA recibe el menú del colmado y lo que ya lleva anotado, y gasta del cupo gratis del día. */
+async function preguntarIa(c: Contexto, texto: string, paso: string) {
+  const [conocimiento, menu] = await Promise.all([
+    conocimientoParaPrompt(c.db, c.colmado, texto).catch(() => ""),
+    c.db.select({ nombre: menuProductos.nombre }).from(menuProductos)
+      .where(eq(menuProductos.colmadoId, c.colmado.negocioPrincipalId || c.colmado.id)).limit(80).catch(() => [] as Array<{ nombre: string }>),
+  ]);
+  const r = await interpretar(c.env, {
+    mensaje: texto, colmado: infoColmado(c.colmado), paso, conocimiento,
+    menu: menu.map((m) => m.nombre), anotado: productosDe(c.sesion).map((p) => p.nombre),
+  }, c.db);
+  // La IA no puede inventar: solo quedan los productos que el cliente nombró de verdad.
+  if (r?.tipo === "productos") {
+    r.productos = r.productos.filter((p) => apareceEnMensaje(p.jergaOriginal || p.nombre, texto));
+    if (!r.productos.length) return r.respuesta ? { ...r, tipo: "pregunta" as const } : null;
+  }
+  return r;
+}
+
 /** Cuando las reglas no alcanzan: IA de Cloudflare, y lo que entienda se le enseña al diccionario. */
 async function conIa(c: Contexto, texto: string, paso: string): Promise<Respuesta | null> {
-  const r = await interpretar(c.env, { mensaje: texto, colmado: infoColmado(c.colmado), paso, conocimiento: await conocimientoParaPrompt(c.db, c.colmado, texto).catch(() => "") });
+  const r = await preguntarIa(c, texto, paso);
   if (!r) return null;
   await anotarMetrica(c, "conIa");
   await c.db.insert(botNoEntendidos).values({ colmadoId: c.colmado.id, texto: texto.slice(0, 300), resueltoConIa: true }).catch(() => undefined);
@@ -354,7 +373,12 @@ async function conIa(c: Contexto, texto: string, paso: string): Promise<Respuest
       }
     }
     // Se anota con las palabras del cliente (solo con la ortografía corregida), no con el nombre que eligió la IA.
-    return anotar(c, r.productos.map((p) => ({ nombre: nombreDelCliente(p.jergaOriginal, p.nombre), cantidad: p.cantidad ?? 1, unidad: p.unidad, emoji: emojiDe(p.nombre), ...(p.cantidad == null && !p.unidad ? { sinCantidad: true } : {}) })));
+    const a = await anotar(c, r.productos.map((p) => ({ nombre: nombreDelCliente(p.jergaOriginal, p.nombre), cantidad: p.cantidad ?? 1, unidad: p.unidad, emoji: emojiDe(p.nombre), ...(p.cantidad == null && !p.unidad ? { sinCantidad: true } : {}) })));
+    // Lo entendió la IA, no las reglas: se le pregunta al cliente si es eso, como haría una persona.
+    if (c.sesion.estadoConversacion === "tomando_pedido") {
+      return { texto: a.texto.replace("Anotado ✍️", "Creo que me pediste esto y lo anoté ✍️").replace(/¿Algo más\?$/, "¿Está bien así? Si algo no es, toca «Corregir»."), opciones: CONFIRMAR_VOZ };
+    }
+    return a;
   }
   if (r.respuesta) {
     const algo = productosDe(c.sesion).length > 0;
@@ -392,7 +416,7 @@ async function fueraDelPaso(c: Contexto, texto: string, paso: string): Promise<R
     return despues([{ texto: `Anotado también ✍️
 ${lista(items.map((n) => ({ ...n, unidad: n.unidad ?? null, monto: n.monto ?? null })))}` }]);
   }
-  const ia = await interpretar(c.env, { mensaje: texto, colmado: infoColmado(c.colmado), paso, conocimiento: await conocimientoParaPrompt(c.db, c.colmado, texto).catch(() => "") });
+  const ia = await preguntarIa(c, texto, paso);
   if (ia) {
     await anotarMetrica(c, "conIa");
     if (ia.tipo === "productos" && ia.productos.length) {

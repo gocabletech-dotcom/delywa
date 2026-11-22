@@ -9,7 +9,7 @@ import { permitirEvento } from "../lib/rate-limit";
 import { mismoTelefono, soloDigitos } from "../lib/telefono";
 import { ia } from "../chat/adaptador";
 import { anotarNotaDeVoz, atenderChat, type Entrada } from "../bot/motor";
-import { iaDisponible, transcribir } from "../bot/ia";
+import { CupoAgotado, iaDisponible, transcribir } from "../bot/ia";
 import { inicioDiaLocal } from "../lib/fechas";
 import { getColmado, getColmadoTimezone, getPais } from "../storage/colmados";
 import { addMensaje, getOrCreateCliente, getOrCreateConversacion } from "../storage/conversaciones";
@@ -277,13 +277,14 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/voz", async (c) => {
   if (body.audioData.length > 4_200_000) return c.json({ error: "La nota de voz es demasiado larga. Graba una más corta." }, 413);
   if (!(await permitirEvento(db, `chat-voz:${s.sesion.sessionId}`, 10, 10 * MINUTO)) || !(await dentroDelLimite(c, db, s.sesion.sessionId))) return demasiados(c);
   let texto = "";
+  let sinCupo = false;
   try {
     if (iaDisponible(c.env)) {
       // Whisper de Cloudflare (Workers AI): gratis dentro del cupo diario.
       // Los productos del menú de este colmado ayudan a que Whisper oiga bien las marcas.
       const delMenu = await db.select({ nombre: menuProductos.nombre }).from(menuProductos)
         .where(eq(menuProductos.colmadoId, s.colmado.negocioPrincipalId || s.colmado.id)).limit(40).catch(() => []);
-      texto = await transcribir(c.env, m[2], delMenu.map((x) => x.nombre).join(", "));
+      texto = await transcribir(c.env, m[2], delMenu.map((x) => x.nombre).join(", "), db);
     } else if (c.env.OPENAI_API_KEY) {
       // Respaldo si Workers AI no está conectado y hay llave de OpenAI.
       const bytes = Uint8Array.from(atob(m[2]), (ch) => ch.charCodeAt(0));
@@ -293,6 +294,7 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/voz", async (c) => {
     }
     await anotarNotaDeVoz(db, s.colmado.id);
   } catch (err) {
+    sinCupo = err instanceof CupoAgotado;
     console.error("[chat-colmado] No se pudo transcribir:", err instanceof Error ? err.message : err);
   }
   // El audio original queda para que el colmadero lo escuche al lado de la transcripción.
@@ -306,7 +308,9 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/voz", async (c) => {
       await addMensaje(db, s.sesion.conversacionId, "user", "🎤 Nota de voz (no se pudo pasar a texto)", { audioUrl });
       await avisarNegocio(c.env, s.colmado.id, ["conversaciones"]);
     }
-    return c.json({ error: "No pude entender la nota de voz. Intenta de nuevo o escribe tu pedido." }, 422);
+    return c.json({ error: sinCupo
+      ? "Ahora mismo no puedo escuchar notas de voz 🙏 Escríbeme tu pedido, por favor. El colmado sí puede escuchar la que mandaste."
+      : "No pude entender la nota de voz. Intenta de nuevo o escribe tu pedido." }, 422);
   }
   const id = await guardarDelCliente(db, s.sesion.sessionId, `🎤 ${texto}`);
   await atender(c, s, { tipo: "texto", texto, audioUrl: audioUrl ?? undefined, voz: true });

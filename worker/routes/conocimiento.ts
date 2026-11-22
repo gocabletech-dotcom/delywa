@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { conocimientoArchivos } from "@shared/schema";
+import { botCorrecciones, conocimientoArchivos } from "@shared/schema";
+import { ensenar, listaCorrecciones, olvidar, VECES_PARA_APRENDER } from "../lib/correcciones-bot";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAdmin, requireAuth, requireBusinessAccess } from "../lib/auth";
@@ -105,4 +106,38 @@ conocimientoRoutes.post("/api/admin/conocimiento-niveles", async (c) => {
   if (contenido.length > 100_000) return c.json({ error: "El contenido no puede superar 100,000 caracteres" }, 400);
   const [fila] = await getDb(c.env.DB).insert(conocimientoArchivos).values({ tipoNegocio, nombre, contenido, paisId }).returning();
   return c.json({ ...fila, nivel: nivelDe(fila) }, 201);
+});
+
+// ---------- Negocio: lo que el bot aprendió de las correcciones del colmadero (fase 4) ----------
+
+const rutaAprendido = "/api/colmados/:id/bot-aprendido";
+conocimientoRoutes.use(rutaAprendido, requireAuth, requireBusinessAccess());
+conocimientoRoutes.use(`${rutaAprendido}/*`, requireAuth, requireBusinessAccess());
+const soloAdministradoresBot = async (c: any, next: () => Promise<void>) => {
+  if (!ADMINISTRADORES.includes(c.var.user.role ?? "")) return c.json({ error: "Solo el dueño o el colmadero cambian lo que aprende el bot." }, 403);
+  await next();
+};
+conocimientoRoutes.use(rutaAprendido, soloAdministradoresBot);
+conocimientoRoutes.use(`${rutaAprendido}/*`, soloAdministradoresBot);
+
+conocimientoRoutes.get(rutaAprendido, async (c) => {
+  const db = getDb(c.env.DB);
+  return c.json({ correcciones: await listaCorrecciones(db, Number(c.req.param("id"))), vecesParaAprender: VECES_PARA_APRENDER });
+});
+
+conocimientoRoutes.post(`${rutaAprendido}/:cid/ensenar`, async (c) => {
+  const db = getDb(c.env.DB);
+  const colmadoId = Number(c.req.param("id"));
+  const colmado = await getColmado(db, colmadoId);
+  const [fila] = await db.select().from(botCorrecciones).where(and(eq(botCorrecciones.id, Number(c.req.param("cid"))), eq(botCorrecciones.colmadoId, colmadoId)));
+  if (!colmado || !fila) return c.json({ error: "No encontrado" }, 404);
+  await ensenar(db, colmado, fila.id, fila.dicho, fila.producto);
+  return c.json({ correcciones: await listaCorrecciones(db, colmadoId) });
+});
+
+conocimientoRoutes.delete(`${rutaAprendido}/:cid`, async (c) => {
+  const db = getDb(c.env.DB);
+  const colmadoId = Number(c.req.param("id"));
+  if (!(await olvidar(db, colmadoId, Number(c.req.param("cid"))))) return c.json({ error: "No encontrado" }, 404);
+  return c.json({ correcciones: await listaCorrecciones(db, colmadoId) });
 });

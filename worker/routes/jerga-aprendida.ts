@@ -1,3 +1,4 @@
+import { CLAVE_CUPO, consumoDeHoy, cupoDiario, NEURONAS_GRATIS } from "../lib/cupo-ia";
 import { Hono, type Context } from "hono";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { botNoEntendidos, botRegistro, colmados, jergaAprendizaje, paises, plantillasJerga } from "@shared/schema";
@@ -156,5 +157,18 @@ jergaAprendidaRoutes.get("/api/admin/bot-chat", async (c) => {
   }).from(botRegistro).where(gte(botRegistro.dia, desde)).groupBy(botRegistro.dia).orderBy(desc(botRegistro.dia));
   const frases = await db.select({ id: botNoEntendidos.id, texto: botNoEntendidos.texto, resueltoConIa: botNoEntendidos.resueltoConIa, fecha: botNoEntendidos.fecha, colmado: colmados.nombre })
     .from(botNoEntendidos).leftJoin(colmados, eq(colmados.id, botNoEntendidos.colmadoId)).orderBy(desc(botNoEntendidos.id)).limit(50);
-  return c.json({ dias: dias.map((d) => ({ dia: d.dia, mensajes: Number(d.mensajes), conIa: Number(d.conIa), sinEntender: Number(d.sinEntender), notasDeVoz: Number(d.notasDeVoz) })), frases });
+  const [hoy, cupo] = await Promise.all([consumoDeHoy(db), cupoDiario(db)]);
+  return c.json({
+    dias: dias.map((d) => ({ dia: d.dia, mensajes: Number(d.mensajes), conIa: Number(d.conIa), sinEntender: Number(d.sinEntender), notasDeVoz: Number(d.notasDeVoz) })), frases,
+    ia: { ...hoy, neuronas: Math.round(hoy.neuronas), cupo, gratis: NEURONAS_GRATIS },
+  });
+});
+
+/** Cupo diario de IA (neuronas). Nunca más que el plan gratis, para que no cueste. */
+jergaAprendidaRoutes.put("/api/admin/bot-chat/cupo", requireAuth, requireAdmin, async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const cupo = Number(body.cupo);
+  if (!Number.isInteger(cupo) || cupo < 0 || cupo > NEURONAS_GRATIS) return c.json({ error: `El cupo debe estar entre 0 y ${NEURONAS_GRATIS.toLocaleString("es-DO")} (lo gratis del día).` }, 400);
+  await upsertConfiguracion(getDb(c.env.DB), CLAVE_CUPO, String(cupo), "Neuronas de Workers AI que el bot puede usar al día (máximo lo gratis)", "numero");
+  return c.json({ success: true, cupo });
 });

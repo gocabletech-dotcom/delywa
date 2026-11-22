@@ -1,7 +1,7 @@
 import "./columns";
 import { secreto } from "./columns";
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, numeric, unique, index, primaryKey, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, numeric, unique, index, primaryKey, uniqueIndex, real } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -978,6 +978,34 @@ export const botRegistro = sqliteTable("bot_registro", {
   sinEntender: integer("sin_entender").notNull().default(0),
   notasDeVoz: integer("notas_de_voz").notNull().default(0),
 }, (t) => [primaryKey({ columns: [t.dia, t.colmadoId] })]);
+
+/**
+ * DELYWA: lo que gasta el día la IA de Cloudflare (Workers AI), en «neuronas» estimadas.
+ * El plan gratis da 10,000 al día (se reinicia a las 00:00 UTC); el bot se detiene antes de pasarse.
+ */
+export const iaConsumo = sqliteTable("ia_consumo", {
+  dia: text("dia").primaryKey(),
+  neuronas: real("neuronas").notNull().default(0),
+  llamadasTexto: integer("llamadas_texto").notNull().default(0),
+  notasDeVoz: integer("notas_de_voz").notNull().default(0),
+  sinCupo: integer("sin_cupo").notNull().default(0),
+});
+
+/**
+ * DELYWA: correcciones del colmadero a los nombres de un pedido del chat («una fría» → «Presidente»).
+ * Cuando la misma corrección se repite en pedidos distintos, el bot la aprende para ese colmado.
+ */
+export const botCorrecciones = sqliteTable("bot_correcciones", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),
+  dicho: text("dicho").notNull(),
+  producto: text("producto").notNull(),
+  veces: integer("veces").notNull().default(1),
+  ultimoPedidoId: integer("ultimo_pedido_id"),
+  /** esperando | aprendida | descartada */
+  estado: text("estado").notNull().default("esperando"),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (t) => [uniqueIndex("bot_correcciones_uq").on(t.colmadoId, t.dicho, t.producto)]);
 
 /** DELYWA: frases que el bot no entendió (para mejorar la jerga y los productos). 60 días. */
 export const botNoEntendidos = sqliteTable("bot_no_entendidos", {
