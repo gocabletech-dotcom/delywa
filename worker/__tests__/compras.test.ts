@@ -2,7 +2,8 @@
 // Compras (cargo de mercancía): suplidores, factura a mano, inventario, costo y crédito. D1 local en memoria.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { colmados, menuProductos, menuProductoSucursales, productoCostos, suplidorEquivalencias } from "@shared/schema";
+import { colmados, diccionarioJerga, menuProductos, menuProductoSucursales, pedidos, productoCostos, suplidorEquivalencias } from "@shared/schema";
+import { precioSugerido } from "../lib/inventario";
 import { createTestApp } from "./helpers";
 import { createUser } from "../storage/users";
 import { workersAI } from "../bot/ia";
@@ -187,5 +188,44 @@ describe("foto de la factura (IA simulada)", () => {
     expect(sin.status).toBe(429);
     expect(sin.json.sinCupo).toBe(true);
     expect((await despachador.request("POST", `/api/colmados/${negocio.id}/compras/leer-factura`, { fotos: [foto] })).status).toBe(403);
+  });
+});
+
+describe("fase C: precio sugerido al confirmar y reporte", () => {
+  it("precio del catálogo por nombre (con o sin plural y sin «(libras)») o por jerga", () => {
+    const menu = [{ id: 1, nombre: "Arroz (libra)", precio: "45.00" }, { id: 2, nombre: "Presidente grande", precio: "200.00" }, { id: 3, nombre: "Pan", precio: "0" }];
+    const jerga = new Map([["una fria", "Presidente grande"]]);
+    expect(precioSugerido("Arroz (libras)", menu, jerga)).toMatchObject({ menuProductoId: 1, precio: 45 });
+    expect(precioSugerido("Presidentes grandes", menu, jerga)).toMatchObject({ menuProductoId: 2, precio: 200 });
+    expect(precioSugerido("Una fria", menu, jerga)).toMatchObject({ menuProductoId: 2 });
+    expect(precioSugerido("Pan", menu, jerga)).toBeNull(); // sin precio en el catálogo
+    expect(precioSugerido("Salami", menu, jerga)).toBeNull();
+  });
+
+  it("el panel recibe el precio sugerido de cada producto del pedido sin precio", async () => {
+    await t.db.insert(diccionarioJerga).values({ colmadoId: negocio.id, jerga: "una fria", productoIdentificado: "Presidente grande" });
+    const [p] = await t.db.insert(pedidos).values({ colmadoId: negocio.id, clienteNombre: "Ana", clienteWhatsapp: "8095550000", clienteUbicacion: "Calle 1",
+      productos: JSON.stringify([{ nombre: "Arroz (libras)", cantidad: 3, monto: null }, { nombre: "Una fria", cantidad: 2, monto: null }, { nombre: "Ajo (RD$10)", cantidad: 1, monto: 10 }, { nombre: "Salami", cantidad: 1, monto: null }]),
+      total: "0", montoPago: "0", estado: "pendiente_confirmacion" } as any).returning();
+    const r = await dueno.request("GET", `/api/pedidos/${p.id}/precios-sugeridos`);
+    expect(r.status).toBe(200);
+    expect(r.json.sugeridos.map((x: any) => `${x.indice}:${x.nombre}:${x.precio}`)).toEqual(["0:Arroz (libra):45", "1:Presidente grande:200"]);
+    expect((await t.client().request("GET", `/api/pedidos/${p.id}/precios-sugeridos`)).status).toBe(401);
+  });
+
+  it("reporte del mes: por suplidor, productos, ITBIS, crédito y ganancia del mostrador", async () => {
+    const venta = await dueno.request("POST", `/api/colmados/${negocio.id}/mostrador`, { metodoPago: "efectivo", items: [{ menuProductoId: arroz.id, cantidad: 2 }] });
+    expect(venta.status).toBe(201);
+    const mes = new Date(Date.now() - 4 * 3600_000).toISOString().slice(0, 7);
+    const r = await dueno.request("GET", `/api/colmados/${negocio.id}/compras/reporte?mes=2026-11`);
+    expect(r.status).toBe(200);
+    expect(r.json.total).toBeGreaterThan(0);
+    expect(r.json.porSuplidor[0].suplidor).toBe("Distribuidora Caribe");
+    expect(r.json.productos.map((x: any) => x.producto)).toContain("Arroz (libra)");
+    if (mes === "2026-11") {
+      expect(r.json.mostrador.vendido).toBe(90);
+      expect(r.json.mostrador.ganancia).toBeGreaterThan(0);
+    }
+    expect((await despachador.request("GET", `/api/colmados/${negocio.id}/compras/reporte`)).status).toBe(403);
   });
 });

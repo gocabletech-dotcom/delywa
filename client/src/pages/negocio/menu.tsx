@@ -325,6 +325,13 @@ export default function MenuPage() {
   const esColmado = colmado?.tipoNegocio === "colmado" || colmado?.tipoNegocio === "colmadon";
   const tituloMenu = esColmado ? "Productos e inventario" : "Menú";
 
+  // Costo (de las compras) y ganancia: solo el dueño y el colmadero; al despachador el servidor no se lo da.
+  const { data: costosData } = useQuery<{ costos: Record<number, number> } | null>({
+    queryKey: ["costos", colmadoId],
+    queryFn: async () => { const r = await fetch(`/api/colmados/${colmadoId}/compras/costos`); return r.ok ? r.json() : null; },
+    enabled: !!colmadoId,
+  });
+
   const productosFiltrados = filterCategoria === "todas" 
     ? productos 
     : productos.filter(p => p.categoria === filterCategoria);
@@ -536,6 +543,12 @@ export default function MenuPage() {
                             <p className="text-xs text-gray-500">
                               {producto.inventario == null ? "Existencias sin límite" : `${producto.inventario} disponibles en esta sucursal`}
                             </p>
+                            {costosData?.costos?.[producto.id] != null && (() => {
+                              const costo = costosData.costos[producto.id];
+                              const precio = parseFloat(producto.precio) || 0;
+                              const margen = precio > 0 ? Math.round(((precio - costo) / precio) * 100) : null;
+                              return <p className={`text-xs ${margen != null && margen < 10 ? "text-red-700 font-semibold" : "text-gray-500"}`} data-testid={`costo-${producto.id}`}>Costo {moneda} {costo.toFixed(2)}{margen != null ? ` · ganas ${margen} %` : ""}</p>;
+                            })()}
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0">
                             <Button 

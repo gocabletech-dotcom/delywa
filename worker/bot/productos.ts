@@ -363,7 +363,7 @@ export function singular(w: string): string {
   if (w.length < 4 || /\d/.test(w) || w in NUMEROS_A_CIFRA) return w;
   if (!w.endsWith("s")) return w;
   const sinS = w.slice(0, -1);
-  return /[nlrdz]e$/.test(sinS) && sinS.length >= 4 ? sinS.slice(0, -1) : sinS;
+  return /[nlrz]e$/.test(sinS) && sinS.length >= 4 ? sinS.slice(0, -1) : sinS;
 }
 
 /**

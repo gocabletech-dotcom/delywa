@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { and, desc, eq, gt, inArray, like, or, sql } from "drizzle-orm";
-import { compraLineas, compraPagos, compras, productoCostos, suplidores, suplidorEquivalencias } from "@shared/schema";
+import { and, desc, eq, gt, gte, inArray, like, lt, or, sql } from "drizzle-orm";
+import { compraLineas, compraPagos, compras, pedidos, productoCostos, suplidores, suplidorEquivalencias } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { requireAuth, requireBusinessAccess } from "../lib/auth";
@@ -237,6 +237,62 @@ comprasRoutes.post("/api/colmados/:id/compras/leer-factura", async (c) => {
     }),
   };
   return c.json({ borrador, fotos: urls });
+});
+
+/**
+ * Reporte del mes: cuánto se compró, a quién, qué productos, cuánto falta por pagar, y la ganancia
+ * aproximada de lo vendido en mostrador (precio de venta − costo de cada producto).
+ */
+comprasRoutes.get("/api/colmados/:id/compras/reporte", async (c) => {
+  const db = getDb(c.env.DB);
+  const colmadoId = Number(c.req.param("id"));
+  const mes = /^\d{4}-\d{2}$/.test(c.req.query("mes") ?? "") ? c.req.query("mes")! : hoyRD().slice(0, 7);
+  const delMes = await db.select({ compra: compras, suplidor: suplidores.nombre }).from(compras).innerJoin(suplidores, eq(suplidores.id, compras.suplidorId))
+    .where(and(eq(compras.colmadoId, colmadoId), eq(compras.estado, "registrada"), like(compras.fecha, `${mes}-%`)));
+  const porSuplidor = new Map<string, { suplidor: string; compras: number; total: number; debo: number }>();
+  for (const { compra, suplidor } of delMes) {
+    const x = porSuplidor.get(suplidor) ?? { suplidor, compras: 0, total: 0, debo: 0 };
+    x.compras++; x.total = r2(x.total + Number(compra.total)); x.debo = r2(x.debo + Number(compra.saldo));
+    porSuplidor.set(suplidor, x);
+  }
+  const ids = delMes.map((d) => d.compra.id);
+  const lineas = ids.length ? await db.select().from(compraLineas).where(inArray(compraLineas.compraId, ids.slice(0, 500))) : [];
+  const menu = await getMenuProductos(db, colmadoId);
+  const nombre = new Map(menu.map((p) => [p.id, p.nombre]));
+  const porProducto = new Map<string, { producto: string; unidades: number; costo: number }>();
+  for (const l of lineas) {
+    const k = l.menuProductoId ? nombre.get(l.menuProductoId) ?? l.descripcion : l.descripcion;
+    const x = porProducto.get(k) ?? { producto: k, unidades: 0, costo: 0 };
+    x.unidades += l.unidadesSumadas || l.cantidad; x.costo = r2(x.costo + Number(l.total));
+    porProducto.set(k, x);
+  }
+  // Ganancia aproximada del mostrador en el mes (solo productos con costo).
+  const costos = new Map((menu.length ? await db.select().from(productoCostos).where(inArray(productoCostos.menuProductoId, menu.map((p) => p.id))) : []).map((x) => [x.menuProductoId, Number(x.costo)]));
+  const [desdeA, desdeM] = mes.split("-").map(Number);
+  const desde = new Date(Date.UTC(desdeA, desdeM - 1, 1, 4)), hasta = new Date(Date.UTC(desdeA, desdeM, 1, 4));
+  const ventas = await db.select({ productos: pedidos.productos }).from(pedidos)
+    .where(and(eq(pedidos.colmadoId, colmadoId), eq(pedidos.origen, "mostrador"), eq(pedidos.estado, "entregado"), gte(pedidos.fechaCreacion, desde), lt(pedidos.fechaCreacion, hasta)));
+  let vendido = 0, costoVendido = 0, sinCosto = 0;
+  for (const v of ventas) {
+    let lista: any[] = [];
+    try { lista = JSON.parse(v.productos); } catch { /* */ }
+    for (const l of Array.isArray(lista) ? lista : []) {
+      const venta = Number(l.monto) * Number(l.cantidad);
+      if (!Number.isFinite(venta)) continue;
+      const costo = l.menuProductoId ? costos.get(Number(l.menuProductoId)) : undefined;
+      if (costo == null) { sinCosto += venta; continue; }
+      vendido += venta; costoVendido += costo * Number(l.cantidad);
+    }
+  }
+  const total = r2(delMes.reduce((s, d) => s + Number(d.compra.total), 0));
+  return c.json({
+    mes, total, compras: delMes.length, itbis: r2(delMes.reduce((s, d) => s + Number(d.compra.itbis), 0)),
+    aCredito: r2(delMes.filter((d) => d.compra.formaPago === "credito").reduce((s, d) => s + Number(d.compra.total), 0)),
+    porPagar: r2(delMes.reduce((s, d) => s + Number(d.compra.saldo), 0)),
+    porSuplidor: [...porSuplidor.values()].sort((a, b) => b.total - a.total),
+    productos: [...porProducto.values()].sort((a, b) => b.costo - a.costo).slice(0, 15),
+    mostrador: { vendido: r2(vendido), costo: r2(costoVendido), ganancia: r2(vendido - costoVendido), margen: vendido > 0 ? Math.round(((vendido - costoVendido) / vendido) * 100) : null, sinCosto: r2(sinCosto) },
+  });
 });
 
 /** Costos de los productos (solo dueño y colmadero), para la pantalla de compras y de productos. */

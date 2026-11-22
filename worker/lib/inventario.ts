@@ -48,3 +48,21 @@ export async function descontarInventario(db: Db, sucursalId: number, vendidos: 
       .where(and(eq(menuProductos.id, v.productoId), isNotNull(menuProductos.inventario)));
   }
 }
+
+/**
+ * Compras, fase C: precio del catálogo para lo que pidió el cliente (al confirmar el pedido en el panel).
+ * El bot nunca dice precios; aquí el colmadero ve el sugerido en amarillo y lo verifica.
+ * Coincide si el nombre es el del producto (con o sin plural, sin «(libras)» ni «(RD$10)»), o si la
+ * jerga del colmado lleva a ese producto.
+ */
+export function precioSugerido(nombre: string, menu: Array<Pick<MenuProducto, "id" | "nombre" | "precio">>, jerga: Map<string, string>): { menuProductoId: number; nombre: string; precio: number } | null {
+  const base = nombre.replace(/\s*\([^)]*\)\s*$/g, "").trim();
+  const k = clave(base);
+  if (!k) return null;
+  const porClave = new Map(menu.map((p) => [clave(p.nombre.replace(/\s*\([^)]*\)\s*$/g, "")), p]));
+  const directo = porClave.get(k) ?? menu.find((p) => clave(p.nombre) === k);
+  const delaJerga = !directo ? jerga.get(normalizar(base)) : undefined;
+  const p = directo ?? (delaJerga ? porClave.get(clave(delaJerga)) ?? menu.find((x) => clave(x.nombre) === clave(delaJerga)) : undefined);
+  const precio = p ? Number(p.precio) : 0;
+  return p && precio > 0 ? { menuProductoId: p.id, nombre: p.nombre, precio } : null;
+}

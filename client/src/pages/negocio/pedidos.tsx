@@ -783,7 +783,7 @@ export default function PedidosPage() {
   const [newProductPrecioRevisar, setNewProductPrecioRevisar] = useState("");
 
   // Inline product editing state for the confirm modal
-  const [productosParaConfirmar, setProductosParaConfirmar] = useState<Array<{nombre: string; cantidad: number; precio: string; nombreOriginal: string}>>([]);
+  const [productosParaConfirmar, setProductosParaConfirmar] = useState<Array<{nombre: string; cantidad: number; precio: string; nombreOriginal: string; sugerido?: boolean}>>([]);
   const [newProdNombreConf, setNewProdNombreConf] = useState("");
   const [newProdCantidadConf, setNewProdCantidadConf] = useState("1");
   const [newProdPrecioConf, setNewProdPrecioConf] = useState("");
@@ -968,6 +968,14 @@ export default function PedidosPage() {
           precio: p.monto != null && p.monto !== 0 ? String(p.monto) : p.precio != null && p.precio !== 0 ? String(p.precio) : "",
           nombreOriginal: p.nombre || p.name || "Producto",
         })));
+        // Precio del catálogo (Productos e inventario) para lo que no tiene precio: sale en amarillo para verificarlo.
+        fetch(`/api/pedidos/${pedido.id}/precios-sugeridos`).then((r) => (r.ok ? r.json() : null)).then((j) => {
+          if (!j?.sugeridos?.length) return;
+          setProductosParaConfirmar((lista) => lista.map((x, i) => {
+            const s = j.sugeridos.find((y: any) => y.indice === i);
+            return s && !x.precio ? { ...x, precio: String(s.precio), sugerido: true } : x;
+          }));
+        }).catch(() => undefined);
       } else {
         setProductosParaConfirmar([]);
       }
@@ -2032,7 +2040,8 @@ export default function PedidosPage() {
                     const subtotal = p.cantidad * precio;
                     const sinPrecio = !p.precio || precio === 0;
                     return (
-                      <div key={idx} className="grid grid-cols-[minmax(0,1fr)_40px_72px_48px_20px] gap-1 items-center">
+                      <div key={idx} className="contents">
+                      <div className="grid grid-cols-[minmax(0,1fr)_40px_72px_48px_20px] gap-1 items-center">
                         <Input
                           value={p.nombre}
                           onChange={(e) => {
@@ -2061,10 +2070,12 @@ export default function PedidosPage() {
                           value={p.precio}
                           onChange={(e) => {
                             const updated = [...productosParaConfirmar];
-                            updated[idx] = { ...updated[idx], precio: e.target.value };
+                            updated[idx] = { ...updated[idx], precio: e.target.value, sugerido: false };
                             setProductosParaConfirmar(updated);
                           }}
-                          className={`h-7 text-xs text-right px-2 ${sinPrecio ? "border-red-400 bg-red-50 focus:border-red-500" : ""}`}
+                          title={p.sugerido ? "Precio de tu catálogo: verifica que esté bien" : undefined}
+                          data-testid={`precio-confirmar-${idx}`}
+                          className={`h-7 text-xs text-right px-2 ${sinPrecio ? "border-red-400 bg-red-50 focus:border-red-500" : p.sugerido ? "border-amber-400 bg-amber-50" : ""}`}
                         />
                         <span className="text-xs text-right font-medium text-gray-700 tabular-nums">
                           {subtotal > 0 ? subtotal.toFixed(0) : <span className="text-red-400">—</span>}
@@ -2076,6 +2087,8 @@ export default function PedidosPage() {
                         >
                           <X size={13} />
                         </button>
+                      </div>
+                      {p.sugerido && <p className="text-[11px] text-amber-800 -mt-0.5 mb-0.5" data-testid={`sugerido-${idx}`}>Precio de tu catálogo: verifica que esté bien.</p>}
                       </div>
                     );
                   })}

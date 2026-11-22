@@ -25,8 +25,11 @@ import {
   marcarRetornoRecibido, registrarEnVentas, reenviarRetorno, updateMetodoPago, updatePedidoCoordenadas, updatePedidoEstado, updatePedidoProductos,
   updateProductosYTotalConfirmado, updateVuelto, ESTADOS_TERMINALES, type Sustitucion,
 } from "../storage/pedidos";
-import { chatWebMensajes, pedidos, whatsappConversaciones } from "@shared/schema";
+import { chatWebMensajes, diccionarioJerga, pedidos, whatsappConversaciones } from "@shared/schema";
 import { avisarNegocio } from "../lib/tiempo-real";
+import { precioSugerido } from "../lib/inventario";
+import { getMenuProductos } from "../storage/menu";
+import { normalizar } from "../lib/jerga";
 import { aprenderDeCorrecciones, esPedidoDelChat, type Correccion } from "../lib/correcciones-bot";
 
 /** Fase 4: si el colmadero le cambió el nombre a lo que dijo el cliente en el chat, el bot lo va aprendiendo. */
@@ -525,6 +528,23 @@ pedidoRoutes.patch("/api/pedidos/:id/revisar-productos", requireAuth, async (c) 
     await avisarNegocio(c.env, r.pedido.colmadoId, ["pedidos"]);
   }
   return c.json({ success: true, totalConfirmado: nuevoTotal.toFixed(2) });
+});
+
+/** Compras, fase C: precio del catálogo de cada producto del pedido, para llenar el panel de confirmar. */
+pedidoRoutes.get("/api/pedidos/:id/precios-sugeridos", requireAuth, async (c) => {
+  const db = getDb(c.env.DB);
+  const r = await cargarPedidoOperable(db, c.var.user, Number(c.req.param("id")));
+  if (r.error) return c.json(r.error.body, r.error.status);
+  const menu = await getMenuProductos(db, r.pedido.colmadoId);
+  if (!menu.length) return c.json({ sugeridos: [] });
+  const jerga = new Map((await db.select({ jerga: diccionarioJerga.jerga, producto: diccionarioJerga.productoIdentificado }).from(diccionarioJerga)
+    .where(eq(diccionarioJerga.colmadoId, r.pedido.colmadoId))).map((j) => [normalizar(j.jerga), j.producto]));
+  const sugeridos = leerProductos(r.pedido.productos).map((p: any, indice: number) => {
+    if (num(p.monto ?? p.precio) > 0) return null; // ya tiene precio (pedido por dinero o ya confirmado)
+    const s = precioSugerido(String(p.nombre || p.name || ""), menu, jerga);
+    return s ? { indice, ...s } : null;
+  }).filter(Boolean);
+  return c.json({ sugeridos });
 });
 
 pedidoRoutes.post("/api/pedidos/:id/avisar-comprobante", requireAuth, async (c) => {

@@ -43,9 +43,9 @@ export default function ComprasPage() {
   useEffect(() => { if (!cargandoSesion && !isAuthenticated) window.location.href = "/login"; }, [cargandoSesion, isAuthenticated]);
   const { data: rol } = useQuery({ queryKey: ["user-role"], queryFn: async () => { const r = await fetch("/api/user/role"); return r.ok ? r.json() : null; }, enabled: isAuthenticated });
   const colmadoId = rol?.colmadoId as number | undefined;
-  const [tab, setTab] = useState<"nueva" | "lista" | "pagar" | "suplidores">("lista");
+  const [tab, setTab] = useState<"nueva" | "lista" | "pagar" | "suplidores" | "reporte">("lista");
   const [abierta, setAbierta] = useState<number | null>(null);
-  const TABS = [["lista", "Compras"], ["nueva", "+ Nueva compra"], ["pagar", "Por pagar"], ["suplidores", "Suplidores"]] as const;
+  const TABS = [["lista", "Compras"], ["nueva", "+ Nueva compra"], ["pagar", "Por pagar"], ["suplidores", "Suplidores"], ["reporte", "Reporte"]] as const;
   return (
     <NegocioLayout title="Compras" activeNav="compras">
       <main className="flex-1 overflow-y-auto p-3 sm:p-6">
@@ -60,6 +60,7 @@ export default function ComprasPage() {
           {colmadoId && tab === "lista" && <ListaCompras colmadoId={colmadoId} porPagar={false} onAbrir={setAbierta} onNueva={() => setTab("nueva")} />}
           {colmadoId && tab === "pagar" && <ListaCompras colmadoId={colmadoId} porPagar onAbrir={setAbierta} onNueva={() => setTab("nueva")} />}
           {colmadoId && tab === "suplidores" && <Suplidores colmadoId={colmadoId} />}
+          {colmadoId && tab === "reporte" && <Reporte colmadoId={colmadoId} />}
         </div>
       </main>
       {colmadoId && abierta && <DetalleCompra colmadoId={colmadoId} id={abierta} onCerrar={() => setAbierta(null)} />}
@@ -450,6 +451,57 @@ function DetalleCompra({ colmadoId, id, onCerrar }: { colmadoId: number; id: num
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+type DatosReporte = {
+  mes: string; total: number; compras: number; itbis: number; aCredito: number; porPagar: number;
+  porSuplidor: Array<{ suplidor: string; compras: number; total: number; debo: number }>;
+  productos: Array<{ producto: string; unidades: number; costo: number }>;
+  mostrador: { vendido: number; costo: number; ganancia: number; margen: number | null; sinCosto: number };
+};
+
+function Reporte({ colmadoId }: { colmadoId: number }) {
+  const [mes, setMes] = useState(hoy().slice(0, 7));
+  const { data, isLoading } = useQuery<DatosReporte>({ queryKey: ["reporte-compras", colmadoId, mes], queryFn: () => pedir(`/api/colmados/${colmadoId}/compras/reporte?mes=${mes}`) });
+  const Cifra = ({ v, t }: { v: string; t: string }) => <div className="rounded-xl bg-white border border-slate-200 p-3"><p className="text-xl font-bold text-slate-900">{v}</p><p className="text-xs text-slate-500">{t}</p></div>;
+  return (
+    <div className="space-y-4" data-testid="reporte-compras">
+      <input type="month" className={`${campo} w-auto`} value={mes} onChange={(e) => setMes(e.target.value)} aria-label="Mes" />
+      {isLoading || !data ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <Cifra v={dinero(data.total)} t={`compraste (${data.compras} factura${data.compras === 1 ? "" : "s"})`} />
+            <Cifra v={dinero(data.itbis)} t="ITBIS pagado" />
+            <Cifra v={dinero(data.aCredito)} t="a crédito" />
+            <Cifra v={dinero(data.porPagar)} t="falta por pagar" />
+          </div>
+          <section className="rounded-2xl bg-white border border-slate-200 p-4 space-y-2">
+            <h3 className="font-bold text-slate-900">Ganancia aproximada del mostrador</h3>
+            {data.mostrador.vendido > 0 ? (
+              <p className="text-[15px] text-slate-700">Vendiste {dinero(data.mostrador.vendido)} que te costaron {dinero(data.mostrador.costo)}: ganaste <b className="text-[#0F5C39]">{dinero(data.mostrador.ganancia)}</b> ({data.mostrador.margen} %).</p>
+            ) : <p className="text-sm text-slate-500">Todavía no hay ventas de mostrador de productos con costo en este mes.</p>}
+            {data.mostrador.sinCosto > 0 && <p className="text-xs text-slate-500">{dinero(data.mostrador.sinCosto)} vendidos de productos sin costo (no se cuentan). Regístralos en una compra para saber su ganancia.</p>}
+          </section>
+          <section className="rounded-2xl bg-white border border-slate-200 p-4">
+            <h3 className="font-bold text-slate-900 mb-2">Por suplidor</h3>
+            {!data.porSuplidor.length ? <p className="text-sm text-slate-500">Sin compras en este mes.</p> : (
+              <ul className="divide-y divide-slate-100 text-sm">{data.porSuplidor.map((x) => (
+                <li key={x.suplidor} className="py-2 flex justify-between gap-2"><span>{x.suplidor} <span className="text-slate-500">· {x.compras} factura{x.compras === 1 ? "" : "s"}{x.debo ? ` · debes ${dinero(x.debo)}` : ""}</span></span><b>{dinero(x.total)}</b></li>
+              ))}</ul>
+            )}
+          </section>
+          <section className="rounded-2xl bg-white border border-slate-200 p-4">
+            <h3 className="font-bold text-slate-900 mb-2">Lo que más compraste</h3>
+            {!data.productos.length ? <p className="text-sm text-slate-500">Sin compras en este mes.</p> : (
+              <ul className="divide-y divide-slate-100 text-sm">{data.productos.map((x) => (
+                <li key={x.producto} className="py-2 flex justify-between gap-2"><span>{x.producto} <span className="text-slate-500">· {x.unidades} unidades</span></span><b>{dinero(x.costo)}</b></li>
+              ))}</ul>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }
