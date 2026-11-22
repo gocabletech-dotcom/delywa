@@ -11,6 +11,8 @@ import { avisarNegocio } from "../lib/tiempo-real";
 import { getColmadoTimezone } from "../storage/colmados";
 import { addMensaje, getClienteByWhatsapp, updateConversacionPedidoEstado } from "../storage/conversaciones";
 import { createPedido, ESTADOS_TERMINALES } from "../storage/pedidos";
+import { getMenuProductos } from "../storage/menu";
+import { estadoInventario, productoAgotado } from "../lib/inventario";
 import { interpretar } from "./ia";
 import * as I from "./intenciones";
 import { apareceEnMensaje, corregirOrtografia, emojiDe, leerCantidades, leerPedido, textoItem, type Item } from "./productos";
@@ -339,6 +341,34 @@ async function noEntendido(c: Contexto, texto: string): Promise<Respuesta> {
     ? "Perdona, no te entendí bien 🙏 ¿Quieres agregar algo más o eso es todo?"
     : "Perdona, no te entendí bien 🙏 Escríbeme lo que necesitas, por ejemplo: «2 libras de arroz y un aceite».",
     opciones: algo ? [{ texto: "Eso es todo" }] : undefined };
+}
+
+/**
+ * Mejora 9: lo que está agotado en Productos e inventario no se anota; se le dice al cliente en el momento.
+ * Solo cuando el nombre es el del producto (con o sin plural), para no decir «no hay» por error.
+ */
+async function separarAgotados<T extends { nombre: string }>(c: Contexto, items: T[]): Promise<{ quedan: T[]; aviso: string }> {
+  const agotados = (await getMenuProductos(c.db, c.colmado.id).catch(() => [])).filter((p) => estadoInventario(p) === "agotado");
+  if (!agotados.length) return { quedan: items, aviso: "" };
+  const quedan: T[] = [];
+  const no: string[] = [];
+  for (const it of items) {
+    const a = productoAgotado(it.nombre, agotados);
+    if (a) no.push(a); else quedan.push(it);
+  }
+  const unicos = [...new Set(no)];
+  return { quedan, aviso: unicos.length ? `😕 Ahora mismo no tenemos ${unicos.map((n) => `*${n}*`).join(", ").replace(/, ([^,]*)$/, " ni $1")}.` : "" };
+}
+
+/** Anota lo que hay y avisa lo agotado. */
+async function anotarSiHay(c: Contexto, items: Nuevo[], pre = ""): Promise<Respuesta> {
+  const { quedan, aviso } = await separarAgotados(c, items);
+  if (!quedan.length) {
+    const algo = productosDe(c.sesion).length > 0;
+    return { texto: `${pre}${aviso} ${algo ? "¿Quieres algo más?" : "¿Te anoto otra cosa?"}`, opciones: algo ? [{ texto: "Eso es todo" }] : undefined };
+  }
+  const r = await anotar(c, quedan, pre);
+  return aviso ? { ...r, texto: r.texto.replace(/^(.*?)(Anotado ✍️|Te lo anoto)/s, `$1${aviso}\n\n$2`) } : r;
 }
 
 /** Fase 3: la IA recibe el menú del colmado y lo que ya lleva anotado, y gasta del cupo gratis del día. */
@@ -686,7 +716,7 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
       if (porPregunta) {
         const items = leerPedido(porPregunta, jerga);
         if (items.length) {
-          const r = await anotar(c, items, pre);
+          const r = await anotarSiHay(c, items, pre);
           return [{ ...r, texto: r.texto.replace("Anotado ✍️", "Te lo anoto ✍️ (el colmado te confirma si hay)") }];
         }
       }
@@ -696,7 +726,7 @@ async function responder(c: Contexto, entradaOriginal: Entrada, textoOriginal: s
       // Muchas palabras sin reconocer en un mensaje largo: mejor que lo lea la IA.
       const dudoso = items.length > 0 && entendidos === 0 && texto.split(/\s+/).length >= 8;
       if (items.length && !dudoso) {
-        const r = await anotar(c, items, pre);
+        const r = await anotarSiHay(c, items, pre);
         // Nota de voz: repite lo que entendió y pregunta si está bien (si no falta ninguna cantidad).
         if (entrada.tipo === "texto" && entrada.voz && c.sesion.estadoConversacion === "tomando_pedido") {
           return [{ texto: r.texto.replace("Anotado ✍️", "🎤 Te entendí y anoté ✍️").replace(/¿Algo más\?$/, "¿Está bien así? Si algo no es, toca «Corregir»."), opciones: CONFIRMAR_VOZ }];

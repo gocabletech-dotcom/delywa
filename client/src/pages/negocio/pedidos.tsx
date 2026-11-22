@@ -723,7 +723,8 @@ export default function PedidosPage() {
   const hoy = getBusinessDate(new Date(), colmadoData?.codigoPais);
   // Hoy: lo creado hoy, más los retornos que el negocio todavía no ha recibido (sean del día que sean).
   const retornoAbierto = (p: any) => p.estado === "retorno" && !p.retornoRecibidoAt;
-  const pedidosActivos = pedidos?.filter((p: any) =>
+  // Las ventas de mostrador ya se entregaron en el colmado: no van al tablero (sí al historial y a Ventas).
+  const pedidosActivos = pedidos?.filter((p: any) => p.origen !== "mostrador" &&
     (p.fechaCreacion && getBusinessDate(p.fechaCreacion, colmadoData?.codigoPais) === hoy && p.estado !== "fusionado") || retornoAbierto(p)
   ) || [];
   // El historial se pide al servidor por mes: así la pantalla no carga los pedidos de siempre.

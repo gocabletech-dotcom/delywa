@@ -176,6 +176,13 @@
       "when": 1795364229176,
       "tag": "0024_trial_30_dias",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1795365253489,
+      "tag": "0025_mostrador_inventario_fiado",
+      "breakpoints": true
     }
   ]
 }

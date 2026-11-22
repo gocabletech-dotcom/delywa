@@ -421,6 +421,8 @@ export const pedidos = sqliteTable("pedidos", {
   comprobanteUrl: text("comprobante_url"),
   comprobanteConfirmado: integer("comprobante_confirmado", { mode: "boolean" }).default(false),
   notas: text("notas"),
+  /** DELYWA: de dónde salió el pedido. null = chat, WhatsApp o menú; «mostrador» = venta en el colmado. */
+  origen: text("origen"),
   ultimoRecordatorioCobro: integer("ultimo_recordatorio_cobro", { mode: "timestamp_ms" }),
   cuadreId: integer("cuadre_id").references(() => cuadres.id, { onDelete: "set null" }),
   fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
@@ -830,6 +832,8 @@ export const menuProductos = sqliteTable("menu_productos", {
   imagen: text("imagen"),
   disponible: integer("disponible", { mode: "boolean" }).notNull().default(true),
   inventario: integer("inventario"),
+  /** DELYWA: avisar cuando el inventario llegue a esta cantidad («se está acabando»). */
+  inventarioMinimo: integer("inventario_minimo"),
   orden: integer("orden").default(0),
   fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (t) => [
@@ -978,6 +982,40 @@ export const botRegistro = sqliteTable("bot_registro", {
   sinEntender: integer("sin_entender").notNull().default(0),
   notasDeVoz: integer("notas_de_voz").notNull().default(0),
 }, (t) => [primaryKey({ columns: [t.dia, t.colmadoId] })]);
+
+/**
+ * DELYWA: fiado (cuentas por cobrar) de cada sucursal: la libreta del colmado.
+ * El saldo es lo que debe el cliente; cada cargo (fiado) o abono queda en fiado_movimientos.
+ */
+export const fiadoCuentas = sqliteTable("fiado_cuentas", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),
+  nombre: text("nombre").notNull(),
+  telefono: text("telefono"),
+  /** Hasta cuánto se le fía (null = sin límite). */
+  limite: numeric("limite"),
+  saldo: numeric("saldo").notNull().default("0"),
+  activo: integer("activo", { mode: "boolean" }).notNull().default(true),
+  notas: text("notas"),
+  fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+  ultimoMovimiento: integer("ultimo_movimiento", { mode: "timestamp_ms" }),
+}, (t) => [index("fiado_cuentas_colmado_idx").on(t.colmadoId)]);
+
+export type FiadoCuenta = typeof fiadoCuentas.$inferSelect;
+
+export const fiadoMovimientos = sqliteTable("fiado_movimientos", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  cuentaId: integer("cuenta_id").notNull().references(() => fiadoCuentas.id, { onDelete: "cascade" }),
+  colmadoId: integer("colmado_id").notNull(),
+  /** cargo (se le fió) | abono (pagó) */
+  tipo: text("tipo").notNull(),
+  monto: numeric("monto").notNull(),
+  pedidoId: integer("pedido_id"),
+  metodoPago: text("metodo_pago"),
+  nota: text("nota"),
+  usuario: text("usuario"),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (t) => [index("fiado_movimientos_cuenta_idx").on(t.cuentaId, t.fecha)]);
 
 /**
  * DELYWA: lo que gasta el día la IA de Cloudflare (Workers AI), en «neuronas» estimadas.

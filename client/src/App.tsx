@@ -50,6 +50,8 @@ const NegocioSucursalesPage = lazyConReintento(() => import("@/pages/negocio/suc
 const NegocioEmpleadosPage = lazyConReintento(() => import("@/pages/negocio/empleados"));
 const NegocioFacturacionPage = lazyConReintento(() => import("@/pages/negocio/facturacion-electronica"));
 const NegocioReportesPage = lazyConReintento(() => import("@/pages/negocio/reportes"));
+const NegocioMostradorPage = lazyConReintento(() => import("@/pages/negocio/mostrador"));
+const NegocioFiadoPage = lazyConReintento(() => import("@/pages/negocio/fiado"));
 const EmpleadoPortalPage = lazyConReintento(() => import("@/pages/empleado-portal"));
 const LoginPage = lazyConReintento(() => import("@/pages/login"));
 const PrimerAccesoPage = lazyConReintento(() => import("@/pages/primer-acceso"));
@@ -134,6 +136,8 @@ function Router() {
       <Route path="/negocio/ventas" component={NegocioVentasPage} />
       <Route path="/negocio/facturacion-electronica" component={NegocioFacturacionPage} />
       <Route path="/negocio/reportes" component={NegocioReportesPage} />
+      <Route path="/negocio/mostrador" component={NegocioMostradorPage} />
+      <Route path="/negocio/fiado" component={NegocioFiadoPage} />
       <Route path="/negocio/delivery-dashboard" component={NegocioDeliveryDashboard} />
       <Route path="/negocio/whatsapp-config" component={NegocioWhatsAppConfigPage} />
       <Route path="/negocio/conversaciones" component={NegocioConversacionesPage} />

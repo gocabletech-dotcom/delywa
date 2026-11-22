@@ -2,7 +2,8 @@
 // Mejoras de noviembre 2026 (v2.52 en adelante). D1 local en memoria; nada de producción.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { colmados, planes } from "@shared/schema";
+import { colmados, fiadoMovimientos, menuProductos, pedidos, planes, ventas } from "@shared/schema";
+import { tiempos } from "../routes/chat-colmado";
 import { createTestApp } from "./helpers";
 import { createUser } from "../storage/users";
 import { htmlTicket } from "../../client/src/lib/ticket";
@@ -60,5 +61,90 @@ describe("ticket para imprimir", () => {
     expect(html).toContain("RD$140.00");
     expect(html).toContain("Devuelta");
     expect(html).toContain("RD$60.00");
+  });
+});
+
+describe("productos, inventario y venta de mostrador", () => {
+  let arroz: any, cerveza: any;
+  it("un colmado ya puede tener su lista de productos con existencias y mínimo", async () => {
+    const r1 = await dueno.request("POST", `/api/colmados/${negocio.id}/menu`, { nombre: "Arroz (libra)", precio: "45", inventario: 10, inventarioMinimo: 8 });
+    expect(r1.status).toBe(201);
+    arroz = r1.json;
+    expect(arroz.inventarioMinimo).toBe(8);
+    cerveza = (await dueno.request("POST", `/api/colmados/${negocio.id}/menu`, { nombre: "Presidente grande", precio: "200", inventario: 1 })).json;
+  });
+
+  it("vende en mostrador: precio del servidor, devuelta, descuenta inventario, cuenta en ventas y avisa lo bajo", async () => {
+    const r = await dueno.request("POST", `/api/colmados/${negocio.id}/mostrador`, {
+      metodoPago: "efectivo", recibido: 500,
+      items: [{ menuProductoId: arroz.id, cantidad: 3, precio: 1 }, { nombre: "Funda de hielo", precio: 50, cantidad: 1 }],
+    });
+    expect(r.status).toBe(201);
+    expect(r.json).toMatchObject({ total: 185, devuelta: 315 });
+    expect(r.json.avisos).toContain("Quedan 7 de «Arroz (libra)».");
+    const [a] = await t.db.select().from(menuProductos).where(eq(menuProductos.id, arroz.id));
+    expect(a.inventario).toBe(7);
+    const [p] = await t.db.select().from(pedidos).where(eq(pedidos.id, r.json.pedidoId));
+    expect(p).toMatchObject({ estado: "entregado", origen: "mostrador", tipoEntrega: "pickup" });
+    const [v] = await t.db.select().from(ventas).where(eq(ventas.colmadoId, negocio.id));
+    expect(Number(v.totalVentas)).toBe(185);
+    const hoy = await dueno.request("GET", `/api/colmados/${negocio.id}/mostrador/hoy`);
+    expect(hoy.json).toMatchObject({ ventas: 1, total: 185 });
+  });
+
+  it("no vende más de lo que hay ni lo agotado; avisa en Inicio", async () => {
+    expect((await dueno.request("POST", `/api/colmados/${negocio.id}/mostrador`, { metodoPago: "tarjeta", items: [{ menuProductoId: cerveza.id, cantidad: 2 }] })).status).toBe(409);
+    expect((await dueno.request("POST", `/api/colmados/${negocio.id}/mostrador`, { metodoPago: "tarjeta", items: [{ menuProductoId: cerveza.id, cantidad: 1 }] })).status).toBe(201);
+    const otra = await dueno.request("POST", `/api/colmados/${negocio.id}/mostrador`, { metodoPago: "tarjeta", items: [{ menuProductoId: cerveza.id, cantidad: 1 }] });
+    expect(otra.status).toBe(409);
+    expect(otra.json.error).toContain("agotado");
+    const al = await dueno.request("GET", `/api/colmados/${negocio.id}/inventario/alertas`);
+    expect(al.json.agotados.map((x: any) => x.nombre)).toEqual(["Presidente grande"]);
+    expect(al.json.bajos.map((x: any) => x.nombre)).toEqual(["Arroz (libra)"]);
+  });
+
+  it("el bot del chat dice que no hay lo agotado y no lo anota", async () => {
+    Object.assign(tiempos, { rapidoMs: 0, normalMs: 0, entreMensajesMs: 0 });
+    const s = await t.client().request("POST", "/api/chat-colmado/colmado-mejoras/sesion", { nombre: "Tavo", telefono: "8095550701" });
+    const id = s.json.sessionId;
+    await t.client().request("POST", `/api/chat-colmado/sesion/${id}/mensaje`, { texto: "dame 2 presidente grande y un pan" });
+    const ms = (await t.client().request("GET", `/api/chat-colmado/sesion/${id}/mensajes`)).json.mensajes.filter((m: any) => m.rol === "assistant");
+    const texto = ms.map((m: any) => m.contenido).join("\n");
+    expect(texto).toContain("no tenemos *Presidente grande*");
+    expect(texto).toContain("Pan");
+  });
+});
+
+describe("fiado", () => {
+  let cuenta: any;
+  it("crea la cuenta con lo que ya debía y un límite", async () => {
+    const r = await dueno.request("POST", `/api/colmados/${negocio.id}/fiado`, { nombre: "Doña Carmen", telefono: "809-555-1234", limite: 1000, saldoInicial: 300 });
+    expect(r.status).toBe(201);
+    cuenta = r.json;
+    expect(cuenta).toMatchObject({ saldo: 300, limite: 1000, disponible: 700 });
+    expect((await dueno.request("POST", `/api/colmados/${negocio.id}/fiado`, { nombre: "Otra", telefono: "8095551234" })).status).toBe(409);
+  });
+
+  it("fía desde el mostrador sin pasar del límite", async () => {
+    const ok = await dueno.request("POST", `/api/colmados/${negocio.id}/mostrador`, { metodoPago: "fiado", clienteId: cuenta.id, items: [{ nombre: "Salami", precio: 600, cantidad: 1 }] });
+    expect(ok.status).toBe(201);
+    expect(ok.json.fiado).toMatchObject({ nombre: "Doña Carmen", saldo: 900 });
+    const pasa = await dueno.request("POST", `/api/colmados/${negocio.id}/mostrador`, { metodoPago: "fiado", clienteId: cuenta.id, items: [{ nombre: "Queso", precio: 200, cantidad: 1 }] });
+    expect(pasa.status).toBe(409);
+    expect((await dueno.request("POST", `/api/colmados/${negocio.id}/mostrador`, { metodoPago: "fiado", items: [{ nombre: "Queso", precio: 200, cantidad: 1 }] })).status).toBe(400);
+  });
+
+  it("abonos bajan el saldo, no más de lo que debe, y queda todo en movimientos", async () => {
+    expect((await dueno.request("POST", `/api/colmados/${negocio.id}/fiado/${cuenta.id}/abono`, { monto: 1000 })).status).toBe(409);
+    const r = await dueno.request("POST", `/api/colmados/${negocio.id}/fiado/${cuenta.id}/abono`, { monto: 400, metodoPago: "transferencia" });
+    expect(r.json.saldo).toBe(500);
+    const d = await dueno.request("GET", `/api/colmados/${negocio.id}/fiado/${cuenta.id}`);
+    expect(d.json.movimientos.map((m: any) => `${m.tipo}:${m.monto}`)).toEqual(["abono:400", "cargo:600", "cargo:300"]);
+    const lista = await dueno.request("GET", `/api/colmados/${negocio.id}/fiado?buscar=carmen`);
+    expect(lista.json).toMatchObject({ totalFiado: 500, conDeuda: 1 });
+    // No se cierra con deuda.
+    expect((await dueno.request("PATCH", `/api/colmados/${negocio.id}/fiado/${cuenta.id}`, { activo: false })).status).toBe(409);
+    const movs = await t.db.select().from(fiadoMovimientos).where(eq(fiadoMovimientos.cuentaId, cuenta.id));
+    expect(movs).toHaveLength(3);
   });
 });

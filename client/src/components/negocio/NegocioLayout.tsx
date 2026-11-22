@@ -8,7 +8,7 @@ import {
   MessageCircle, Truck, Package, DollarSign, TrendingUp,
   Menu, X, LogOut, Settings, Users, BookOpen, UtensilsCrossed,
    Smartphone, ClipboardList, MoreHorizontal, ChevronRight, Building2,
-  Home, BarChart3, UserCog, Contact, FileCheck2 } from "lucide-react";
+  Home, BarChart3, UserCog, Contact, FileCheck2, ShoppingCart, NotebookPen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import AvisoConfirmarCorreo from "./AvisoConfirmarCorreo";
@@ -17,7 +17,7 @@ import { useTiempoReal } from "@/hooks/use-tiempo-real";
 
 type ActiveNav =
    | "dashboard" | "conversaciones" | "clientes" | "pedidos" | "cocina"
-  | "deliveries" | "cuadres" | "ventas" | "menu" | "whatsapp-config"
+  | "deliveries" | "cuadres" | "ventas" | "menu" | "mostrador" | "fiado" | "whatsapp-config"
    | "settings" | "manual" | "sucursales" | "usuarios" | "reportes" | "empleados" | "facturacion";
 
 interface NegocioLayoutProps {
@@ -121,7 +121,9 @@ export default function NegocioLayout({
 
   const pedidosPendientes = pedidosData?.filter((p) => p.estado === "pendiente") || [];
   const unreadCount = unreadData?.count || 0;
-  const tieneMenu = colmadoData?.tipoNegocio && !["colmado", "colmadon"].includes(colmadoData.tipoNegocio);
+  // Todos los negocios tienen su lista de productos; para un colmado se llama «Productos».
+  const tieneMenu = Boolean(colmadoData?.tipoNegocio);
+  const esColmado = ["colmado", "colmadon"].includes(colmadoData?.tipoNegocio ?? "");
 
   const NOMBRE_ROL: Record<string, string> = { colmado_owner: "Dueño", admin_pedidos: "Colmadero", operador_sucursal: "Despachador" };
   const esDueno = roleData?.role === "colmado_owner";
@@ -231,7 +233,7 @@ export default function NegocioLayout({
 
   const currentDateTime = formatDominicanDateTime();
 
-  const OTRAS_NAVS: ActiveNav[] = ["cocina", "clientes", "cuadres", "ventas", "reportes", "menu", "whatsapp-config", "settings", "manual", "sucursales", "usuarios", "empleados"];
+  const OTRAS_NAVS: ActiveNav[] = ["cocina", "clientes", "cuadres", "ventas", "reportes", "menu", "mostrador", "fiado", "whatsapp-config", "settings", "manual", "sucursales", "usuarios", "empleados"];
   const isOtrasActive = OTRAS_NAVS.includes(activeNav);
 
   return (
@@ -263,9 +265,11 @@ export default function NegocioLayout({
           {navLink("/negocio/dashboard", "dashboard", Home, "Inicio")}
           {navLink("/negocio/pedidos", "pedidos", Package, "Pedidos", pedidosPendientes.length || 0)}
           {navLink("/negocio/conversaciones", "conversaciones", MessageCircle, "Chats", unreadCount)}
+          {navLink("/negocio/mostrador", "mostrador", ShoppingCart, "Venta de mostrador")}
+          {navLink("/negocio/fiado", "fiado", NotebookPen, "Fiado")}
 
           {grupo("Mi negocio")}
-          {tieneMenu && navLink("/negocio/menu", "menu", UtensilsCrossed, "Menú y productos")}
+          {tieneMenu && navLink("/negocio/menu", "menu", UtensilsCrossed, esColmado ? "Productos e inventario" : "Menú y productos")}
           {navLink("/negocio/deliveries", "deliveries", Truck, "Repartidores")}
           {navLink("/negocio/clientes", "clientes", Users, "Clientes")}
           {esAdmin && navLink("/negocio/empleados", "empleados", Contact, "Empleados")}
@@ -407,7 +411,9 @@ export default function NegocioLayout({
 
             <div className="overflow-y-auto px-4 pb-5" style={{ maxHeight: "calc(82vh - 110px)" }}>
               <div className="grid grid-cols-3 gap-2.5 mb-3">
-                {tieneMenu && otrasCard("/negocio/menu", "menu", UtensilsCrossed, "Menú")}
+                {otrasCard("/negocio/mostrador", "mostrador", ShoppingCart, "Mostrador")}
+                {otrasCard("/negocio/fiado", "fiado", NotebookPen, "Fiado")}
+                {tieneMenu && otrasCard("/negocio/menu", "menu", UtensilsCrossed, esColmado ? "Productos" : "Menú")}
                 {otrasCard("/negocio/clientes", "clientes", Users, "Clientes")}
                 {esAdmin && otrasCard("/negocio/empleados", "empleados", Contact, "Empleados")}
                 {esAdmin && otrasCard("/negocio/ventas", "ventas", DollarSign, "Ventas")}

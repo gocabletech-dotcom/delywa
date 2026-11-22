@@ -49,14 +49,15 @@ afterAll(async () => { await t?.dispose(); });
 describe("menú", () => {
   let cafe: any;
 
-  it("crea productos validando permisos, tipo de negocio y precio", async () => {
+  it("crea productos validando permisos y precio", async () => {
     const nuevo = { nombre: "Café con leche", precio: 85, categoria: "Bebidas", inventario: "12.7" };
     expect((await t.client().request("POST", `/api/colmados/${principal.id}/menu`, nuevo)).status).toBe(401);
     expect((await ajeno.request("POST", `/api/colmados/${principal.id}/menu`, nuevo)).status).toBe(403);
     expect((await repartidor.request("POST", `/api/colmados/${principal.id}/menu`, nuevo)).status).toBe(403);
     expect((await dueno.request("POST", `/api/colmados/${principal.id}/menu`, { nombre: "Sin precio" })).status).toBe(400);
     expect((await dueno.request("POST", `/api/colmados/${principal.id}/menu`, { ...nuevo, precio: -1 })).status).toBe(400);
-    expect((await admin.request("POST", `/api/colmados/${colmadoLibre.id}/menu`, nuevo)).status).toBe(400);
+    // Desde v2.53 los colmados también tienen su lista de productos (mostrador e inventario).
+    expect((await admin.request("POST", `/api/colmados/${colmadoLibre.id}/menu`, nuevo)).status).toBe(201);
 
     const res = await dueno.request("POST", `/api/colmados/${principal.id}/menu`, nuevo);
     expect(res.status).toBe(201);

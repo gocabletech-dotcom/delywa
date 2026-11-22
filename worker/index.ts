@@ -30,6 +30,8 @@ import { seguridadRoutes } from "./routes/seguridad";
 import { facturacionElectronicaRoutes } from "./routes/facturacion-electronica";
 import { conocimientoRoutes } from "./routes/conocimiento";
 import { saludRoutes } from "./routes/salud";
+import { mostradorRoutes } from "./routes/mostrador";
+import { fiadoRoutes } from "./routes/fiado";
 import { asistenteRoutes } from "./routes/asistente";
 import { borrarRespaldosViejos, iniciarRespaldo, pasoRespaldo } from "./lib/respaldo";
 import { avisosFinDePrueba } from "./lib/avisos";
@@ -93,6 +95,8 @@ app.route("/", seguridadRoutes);
 app.route("/", facturacionElectronicaRoutes);
 app.route("/", conocimientoRoutes);
 app.route("/", saludRoutes);
+app.route("/", mostradorRoutes);
+app.route("/", fiadoRoutes);
 app.route("/", asistenteRoutes);
 app.route("/", tiempoRealRoutes);
 

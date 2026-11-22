@@ -16,7 +16,9 @@ type BatchItem = Parameters<Db["batch"]>[0][number];
 
 /** Colmados y colmadones toman pedidos de forma libre, sin menú estructurado. */
 export const TIPOS_SIN_MENU = ["colmado", "colmadon"];
-export const tieneMenuPermitido = (tipoNegocio: string) => !TIPOS_SIN_MENU.includes(tipoNegocio);
+// Desde v2.53 los colmados también tienen su lista de productos (para el mostrador, el inventario y el bot),
+// aunque al registrarse no se les carga una plantilla de menú.
+export const tieneMenuPermitido = (_tipoNegocio: string) => true;
 
 async function runBatch(db: Db, statements: BatchItem[]): Promise<void> {
   if (statements.length) await db.batch(statements as [BatchItem, ...BatchItem[]]);

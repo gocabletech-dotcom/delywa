@@ -31,6 +31,7 @@ interface MenuProducto {
   emoji: string | null;
   disponible: boolean;
   inventario: number | null;
+  inventarioMinimo?: number | null;
   orden: number | null;
   fechaCreacion: string;
 }
@@ -61,6 +62,7 @@ export default function MenuPage() {
     descripcion: "",
     precio: "",
     inventario: "",
+    inventarioMinimo: "",
     categoria: "General",
     disponible: true,
     imagen: "",
@@ -283,6 +285,7 @@ export default function MenuPage() {
       descripcion: "",
       precio: "",
       inventario: "",
+    inventarioMinimo: "",
       categoria: "General",
       disponible: true,
       imagen: "",
@@ -298,6 +301,7 @@ export default function MenuPage() {
       descripcion: producto.descripcion || "",
       precio: producto.precio,
       inventario: producto.inventario == null ? "" : String(producto.inventario),
+      inventarioMinimo: producto.inventarioMinimo == null ? "" : String(producto.inventarioMinimo),
       categoria: producto.categoria,
       disponible: producto.disponible,
       imagen: producto.imagen || "",
@@ -316,10 +320,10 @@ export default function MenuPage() {
     }
   };
 
-  const tieneMenu = colmado && (
-    (colmado.tipoNegocio !== "colmado" && colmado.tipoNegocio !== "colmadon") ||
-    colmado.tecnologiasHabilitadas?.link_pedido === true
-  );
+  // Desde v2.53 todos los negocios tienen su lista de productos (los colmados la usan para el mostrador y el inventario).
+  const tieneMenu = Boolean(colmado);
+  const esColmado = colmado?.tipoNegocio === "colmado" || colmado?.tipoNegocio === "colmadon";
+  const tituloMenu = esColmado ? "Productos e inventario" : "Menú";
 
   const productosFiltrados = filterCategoria === "todas" 
     ? productos 
@@ -379,7 +383,7 @@ export default function MenuPage() {
 
   return (
     <NegocioLayout
-      title="Menú"
+      title={tituloMenu}
       activeNav="menu"
       headerRight={
         <div className="flex items-center gap-1">
@@ -517,9 +521,11 @@ export default function MenuPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="font-medium text-gray-900 text-sm sm:text-base">{producto.nombre}</h4>
-                              {!producto.disponible && (
-                                <Badge variant="secondary" className="text-xs">No disponible</Badge>
-                              )}
+                              {(!producto.disponible || (producto.inventario != null && producto.inventario <= 0)) ? (
+                                <Badge className="text-xs bg-red-100 text-red-800 hover:bg-red-100" data-testid={`agotado-${producto.id}`}>Agotado</Badge>
+                              ) : producto.inventario != null && producto.inventarioMinimo != null && producto.inventario <= producto.inventarioMinimo ? (
+                                <Badge className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100" data-testid={`bajo-${producto.id}`}>Se está acabando</Badge>
+                              ) : null}
                             </div>
                             {producto.descripcion && (
                               <p className="text-xs sm:text-sm text-gray-500 line-clamp-1">{producto.descripcion}</p>
@@ -641,7 +647,21 @@ export default function MenuPage() {
                 placeholder="Sin límite"
                 data-testid="input-product-inventario"
               />
-              <p className="text-xs text-gray-500">Déjalo vacío para no controlar existencias. En una sucursal, este valor solo afecta esa ubicación.</p>
+              <p className="text-xs text-gray-500">Déjalo vacío para no controlar existencias. En una sucursal, este valor solo afecta esa ubicación. Las ventas de mostrador lo descuentan solas.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="inventario-minimo">Avisarme cuando queden (opcional)</Label>
+              <Input
+                id="inventario-minimo"
+                type="number"
+                min="0"
+                step="1"
+                value={productForm.inventarioMinimo}
+                onChange={(e) => setProductForm({ ...productForm, inventarioMinimo: e.target.value })}
+                placeholder="Ejemplo: 5"
+                data-testid="input-product-minimo"
+              />
+              <p className="text-xs text-gray-500">Cuando las existencias lleguen a este número, sale «Se está acabando» en Inicio. Con 0 existencias, el bot le dice al cliente que no hay.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="emoji">Emoji (figurita)</Label>

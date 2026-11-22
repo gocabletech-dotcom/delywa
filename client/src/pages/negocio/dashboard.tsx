@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { AvisosInicio } from "@/components/negocio/AvisosInicio";
 import {
   Truck,
   Package,
@@ -369,6 +370,7 @@ export default function Dashboard() {
             </div>
           </Link>
         )}
+        {colmadoId && <AvisosInicio colmadoId={colmadoId} />}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-4 mb-4 sm:mb-6">
           {stats.map((stat, i) => (
             <Card key={i} className={`border border-slate-200 shadow-none rounded-2xl ${i === 0 ? "col-span-2 lg:col-span-1" : ""}`} data-testid={`stat-${stat.title.toLowerCase().replace(" ", "-")}`}>

@@ -95,6 +95,7 @@ menuRoutes.post("/api/colmados/:id/menu", requireAuth, async (c) => {
     imagen: texto(body.imagen, 1000) ?? null,
     disponible: body.disponible !== false,
     inventario: parseInventario(body.inventario) ?? null,
+    inventarioMinimo: parseInventario(body.inventarioMinimo) ?? null,
     orden: Number.isInteger(Number(body.orden)) ? Number(body.orden) : 0,
   });
   return c.json(producto, 201);
@@ -147,6 +148,8 @@ menuRoutes.patch("/api/menu/:id", requireAuth, async (c) => {
   if (body.disponible !== undefined) data.disponible = Boolean(body.disponible);
   const inventario = parseInventario(body.inventario);
   if (inventario !== undefined) data.inventario = inventario;
+  const minimo = parseInventario(body.inventarioMinimo);
+  if (minimo !== undefined) data.inventarioMinimo = minimo;
   if (body.orden !== undefined && Number.isInteger(Number(body.orden))) data.orden = Number(body.orden);
   if (Object.keys(data).length === 0) return c.json(producto);
   const actualizado = await updateMenuProducto(db, producto.id, data);
