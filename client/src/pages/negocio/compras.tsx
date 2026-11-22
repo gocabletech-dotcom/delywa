@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, Plus, Trash2, Truck, X } from "lucide-react";
+import { AlertTriangle, Camera, Loader2, Plus, ScanText, Trash2, Truck, X } from "lucide-react";
+import { reducirImagen } from "@/lib/imagen";
 import NegocioLayout from "@/components/negocio/NegocioLayout";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -11,7 +12,15 @@ import { useToast } from "@/hooks/use-toast";
 type Suplidor = { id: number; nombre: string; rnc: string | null; telefono: string | null; vendedor: string | null; diasCredito: number | null; debo: number; vencido: number };
 type Producto = { id: number; nombre: string; precio: string; categoria: string; inventario: number | null };
 type CompraFila = { id: number; suplidor: string; suplidorId: number; factura: string | null; ncf: string | null; fecha: string; total: number; saldo: number; formaPago: string; vence: string | null; estado: string };
-type Linea = { clave: string; descripcion: string; cantidad: string; unidades: string; costo: string; productoId: string; nuevoNombre: string; nuevoPrecio: string; auto?: boolean };
+type Linea = { clave: string; descripcion: string; cantidad: string; unidades: string; costo: string; productoId: string; nuevoNombre: string; nuevoPrecio: string; auto?: boolean; como?: "aprendido" | "parecido" | "nuevo" | null };
+type Borrador = {
+  suplidor: { nombre: string | null; rnc: string | null; telefono: string | null; id: number | null };
+  factura: string | null; ncf: string | null; fecha: string | null; formaPago: "credito" | "contado" | null;
+  subtotal: number | null; itbis: number | null; descuento: number | null; total: number | null; revisar: boolean;
+  lineas: Array<{ descripcion: string; cantidad: number; unidadesPorPaquete: number; costo: number; menuProductoId: number | null; como: "aprendido" | "parecido" | null }>;
+};
+const titulo = (t: string) => t.toLowerCase().replace(/(^|\s)\S/g, (x) => x.toUpperCase());
+const aDataUrl = (f: File) => new Promise<string>((ok, mal) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => mal(new Error("No se pudo leer la foto")); r.readAsDataURL(f); });
 
 const dinero = (n: number) => `RD$${n.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const campo = "w-full h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#17804F]/40";
@@ -62,9 +71,9 @@ function useSuplidores(colmadoId: number) {
   return useQuery<{ suplidores: Suplidor[] }>({ queryKey: ["suplidores", colmadoId], queryFn: () => pedir(`/api/colmados/${colmadoId}/suplidores`) });
 }
 
-function FormSuplidor({ colmadoId, onListo, onCancelar }: { colmadoId: number; onListo: (s: Suplidor) => void; onCancelar?: () => void }) {
+function FormSuplidor({ colmadoId, onListo, onCancelar, inicial }: { colmadoId: number; onListo: (s: Suplidor) => void; onCancelar?: () => void; inicial?: { nombre?: string | null; rnc?: string | null; telefono?: string | null } }) {
   const { toast } = useToast();
-  const [f, setF] = useState({ nombre: "", rnc: "", telefono: "", vendedor: "", diasCredito: "" });
+  const [f, setF] = useState({ nombre: inicial?.nombre ?? "", rnc: inicial?.rnc ?? "", telefono: inicial?.telefono ?? "", vendedor: "", diasCredito: "" });
   const [ocupado, setOcupado] = useState(false);
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2" data-testid="form-suplidor">
@@ -101,6 +110,37 @@ function NuevaCompra({ colmadoId, alGuardar }: { colmadoId: number; alGuardar: (
   const [lineas, setLineas] = useState<Linea[]>([lineaVacia()]);
   const [ocupado, setOcupado] = useState(false);
   const [resultado, setResultado] = useState<{ id: number; avisos: string[]; nuevos: string[] } | null>(null);
+  // Foto de la factura → la IA llena esta pantalla.
+  const [fotos, setFotos] = useState<string[]>([]);
+  const [fotosGuardadas, setFotosGuardadas] = useState<string[]>([]);
+  const [leyendo, setLeyendo] = useState(false);
+  const [leida, setLeida] = useState<{ revisar: boolean; suplidorNuevo: Borrador["suplidor"] | null } | null>(null);
+  const agregarFotos = async (lista: FileList | null) => {
+    if (!lista) return;
+    try {
+      const nuevas: string[] = [];
+      for (const f of Array.from(lista).slice(0, 3 - fotos.length)) nuevas.push(await aDataUrl(await reducirImagen(f, { max: 1800, tipo: "image/jpeg" })));
+      setFotos((x) => [...x, ...nuevas].slice(0, 3));
+    } catch (e: any) { toast({ title: "No se pudo abrir la foto", description: e.message, variant: "destructive" }); }
+  };
+  const leer = async () => {
+    setLeyendo(true);
+    try {
+      const { borrador: b, fotos: urls } = await pedir<{ borrador: Borrador; fotos: string[] }>(`/api/colmados/${colmadoId}/compras/leer-factura`, "POST", { fotos });
+      setFotosGuardadas(urls);
+      if (b.suplidor.id) { setSuplidorId(String(b.suplidor.id)); setNuevoSuplidor(false); }
+      else if (b.suplidor.nombre) setNuevoSuplidor(true);
+      setCab((c0) => ({ ...c0, factura: b.factura ?? "", ncf: b.ncf ?? "", fecha: b.fecha ?? c0.fecha, itbis: b.itbis ? String(b.itbis) : "", descuento: b.descuento ? String(b.descuento) : "",
+        totalFactura: b.total ? String(b.total) : "", formaPago: b.formaPago === "credito" ? "credito" : b.formaPago === "contado" ? "efectivo" : c0.formaPago }));
+      setLineas(b.lineas.map((l) => ({
+        ...lineaVacia(), descripcion: l.descripcion, cantidad: String(l.cantidad), unidades: String(l.unidadesPorPaquete), costo: l.costo ? String(l.costo) : "",
+        productoId: l.menuProductoId ? String(l.menuProductoId) : "nuevo", nuevoNombre: l.menuProductoId ? "" : titulo(l.descripcion), auto: l.como === "aprendido", como: l.menuProductoId ? l.como : "nuevo",
+      })));
+      setLeida({ revisar: b.revisar, suplidorNuevo: b.suplidor.id ? null : b.suplidor });
+      toast({ title: `Leí ${b.lineas.length} producto${b.lineas.length === 1 ? "" : "s"}. Revísalos antes de guardar.` });
+    } catch (e: any) { toast({ title: "No se pudo leer la factura", description: e.message, variant: "destructive" }); }
+    setLeyendo(false);
+  };
   const suplidor = sup?.suplidores.find((s) => String(s.id) === suplidorId);
 
   const cambiar = (clave: string, cambios: Partial<Linea>) => setLineas((ls) => ls.map((l) => (l.clave === clave ? { ...l, ...cambios } : l)));
@@ -119,10 +159,12 @@ function NuevaCompra({ colmadoId, alGuardar }: { colmadoId: number; alGuardar: (
 
   const guardar = async () => {
     if (!suplidorId) { toast({ title: "Elige el suplidor", variant: "destructive" }); return; }
+    const sinPrecio = lineas.find((l) => l.productoId === "nuevo" && !(num(l.nuevoPrecio) > 0));
+    if (sinPrecio) { toast({ title: "Falta el precio de venta", description: `Ponle precio a «${sinPrecio.nuevoNombre || sinPrecio.descripcion}» o elige un producto que ya tengas.`, variant: "destructive" }); return; }
     setOcupado(true);
     try {
       const r = await pedir(`/api/colmados/${colmadoId}/compras`, "POST", {
-        ...cab, suplidorId: Number(suplidorId),
+        ...cab, suplidorId: Number(suplidorId), fotos: fotosGuardadas,
         lineas: lineas.filter((l) => l.descripcion.trim() || l.costo).map((l) => ({
           descripcion: l.descripcion, cantidad: num(l.cantidad), unidadesPorPaquete: Math.round(num(l.unidades)) || 1, costo: num(l.costo),
           ...(l.productoId === "nuevo" ? { nuevo: { nombre: l.nuevoNombre || l.descripcion, precio: num(l.nuevoPrecio) } } : l.productoId ? { menuProductoId: Number(l.productoId) } : {}),
@@ -142,13 +184,46 @@ function NuevaCompra({ colmadoId, alGuardar }: { colmadoId: number; alGuardar: (
       {resultado.avisos.map((a) => <p key={a} className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2 flex gap-2 text-left"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />{a} Cambia el precio en Productos e inventario si hace falta.</p>)}
       <div className="flex justify-center gap-2">
         <button type="button" className={`${boton} border border-slate-300`} onClick={() => alGuardar(resultado.id)}>Ver la compra</button>
-        <button type="button" className={`${boton} bg-[#17804F] text-white`} onClick={() => { setResultado(null); setLineas([lineaVacia()]); setCab({ ...cab, factura: "", ncf: "", itbis: "", descuento: "", totalFactura: "", abonoInicial: "", notas: "" }); }}>Otra compra</button>
+        <button type="button" className={`${boton} bg-[#17804F] text-white`} onClick={() => { setResultado(null); setFotos([]); setFotosGuardadas([]); setLeida(null); setLineas([lineaVacia()]); setCab({ ...cab, factura: "", ncf: "", itbis: "", descuento: "", totalFactura: "", abonoInicial: "", notas: "" }); }}>Otra compra</button>
       </div>
     </div>
   );
 
   return (
     <div className="space-y-4" data-testid="nueva-compra">
+      <section className="rounded-2xl bg-white border-2 border-dashed border-[#17804F]/40 p-4 space-y-3" data-testid="foto-factura">
+        <h2 className="font-bold text-slate-900 flex items-center gap-2"><ScanText className="w-5 h-5 text-[#17804F]" />Tómale foto a la factura</h2>
+        <p className="text-sm text-slate-600">De frente, con buena luz y que se vea completa. Si es larga, hasta 3 fotos. La IA llena todo abajo y tú lo revisas antes de guardar. Es gratis, con un cupo por día; si se acaba, escríbela a mano abajo.</p>
+        {fotos.length > 0 && (
+          <div className="flex gap-2 flex-wrap">
+            {fotos.map((f, i) => (
+              <div key={i} className="relative">
+                <img src={f} alt={`Foto ${i + 1} de la factura`} className="w-20 h-28 object-cover rounded-lg border border-slate-200" />
+                <button type="button" aria-label="Quitar foto" className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white border border-slate-300 grid place-items-center" onClick={() => setFotos((x) => x.filter((_, j) => j !== i))}><X className="w-3 h-3" /></button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {fotos.length < 3 && (
+            <label className={`${boton} border border-[#17804F] text-[#0F5C39] cursor-pointer`} data-testid="tomar-foto-factura">
+              <Camera className="w-4 h-4" />{fotos.length ? "Otra foto" : "Tomar foto"}
+              <input type="file" accept="image/*" capture="environment" multiple className="sr-only" onChange={(e) => { agregarFotos(e.target.files); e.target.value = ""; }} />
+            </label>
+          )}
+          {fotos.length > 0 && (
+            <button type="button" disabled={leyendo} onClick={leer} className={`${boton} bg-[#17804F] text-white`} data-testid="leer-factura">
+              {leyendo ? <><Loader2 className="w-4 h-4 animate-spin" />Leyendo la factura…</> : <><ScanText className="w-4 h-4" />Leer la factura</>}
+            </button>
+          )}
+        </div>
+        {leida && (
+          <p className={`text-sm rounded-lg px-3 py-2 ${leida.revisar ? "bg-amber-50 text-amber-900" : "bg-[#E7F2EC] text-[#0F5C39]"}`} data-testid="factura-leida">
+            {leida.revisar ? "⚠️ La suma de las líneas no da el total de la factura. Revisa cantidades y costos." : "✅ Leída. Revisa cada línea, sobre todo las marcadas «nuevo» y «parecido»."}
+          </p>
+        )}
+      </section>
+
       <section className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
         <h2 className="font-bold text-slate-900 flex items-center gap-2"><Truck className="w-5 h-5 text-[#17804F]" />Suplidor y factura</h2>
         <div className="flex gap-2">
@@ -158,7 +233,7 @@ function NuevaCompra({ colmadoId, alGuardar }: { colmadoId: number; alGuardar: (
           </select>
           <button type="button" className={`${boton} border border-slate-300 shrink-0`} onClick={() => setNuevoSuplidor(true)} data-testid="nuevo-suplidor"><Plus className="w-4 h-4" />Nuevo</button>
         </div>
-        {nuevoSuplidor && <FormSuplidor colmadoId={colmadoId} onCancelar={() => setNuevoSuplidor(false)} onListo={(s) => { qc.invalidateQueries({ queryKey: ["suplidores", colmadoId] }); setSuplidorId(String(s.id)); setNuevoSuplidor(false); }} />}
+        {nuevoSuplidor && <FormSuplidor key={leida?.suplidorNuevo?.nombre ?? "vacio"} inicial={leida?.suplidorNuevo ?? undefined} colmadoId={colmadoId} onCancelar={() => setNuevoSuplidor(false)} onListo={(s) => { qc.invalidateQueries({ queryKey: ["suplidores", colmadoId] }); setSuplidorId(String(s.id)); setNuevoSuplidor(false); }} />}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <label className="text-xs font-semibold text-slate-600">Factura #<input className={campo} value={cab.factura} onChange={(e) => setCab({ ...cab, factura: e.target.value })} /></label>
           <label className="text-xs font-semibold text-slate-600">NCF (opcional)<input className={campo} value={cab.ncf} onChange={(e) => setCab({ ...cab, ncf: e.target.value.toUpperCase() })} placeholder="B0100000123" /></label>
@@ -200,6 +275,8 @@ function NuevaCompra({ colmadoId, alGuardar }: { colmadoId: number; alGuardar: (
                   {num(l.costo) > 0 && <>Total línea {dinero(num(l.cantidad) * num(l.costo))} · cada unidad te cuesta {dinero(costoUnidad)}</>}
                   {p && <> · entran {Math.round(num(l.cantidad) * (Math.round(num(l.unidades)) || 1))} a «{p.nombre}»{costoAntes != null ? ` (costaba ${dinero(costoAntes)})` : ""}</>}
                   {l.auto && <span className="text-[#0F5C39] font-semibold"> · reconocido de facturas anteriores</span>}
+                  {!l.auto && l.como === "parecido" && l.productoId && l.productoId !== "nuevo" && <span className="text-amber-700 font-semibold"> · parecido: revisa que sea ese producto</span>}
+                  {l.productoId === "nuevo" && <span className="text-[#0B57D0] font-semibold"> · producto nuevo: ponle nombre y precio de venta</span>}
                 </p>
               </div>
             );
@@ -322,6 +399,13 @@ function DetalleCompra({ colmadoId, id, onCerrar }: { colmadoId: number; id: num
               <p className="text-sm text-slate-500">{c.fecha}{c.factura ? ` · factura ${c.factura}` : ""}{c.ncf ? ` · NCF ${c.ncf}` : ""} · registró {c.usuario}</p>
               {c.estado === "anulada" && <p className="mt-1 text-sm font-semibold text-red-700">Anulada</p>}
             </div>
+            {c.fotoUrl && (
+              <div className="flex gap-2" data-testid="fotos-compra">
+                {String(c.fotoUrl).split(",").map((u: string, i: number) => (
+                  <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt={`Factura, foto ${i + 1}`} className="w-20 h-28 object-cover rounded-lg border border-slate-200" /></a>
+                ))}
+              </div>
+            )}
             <ul className="divide-y divide-slate-100 text-sm">
               {data.lineas.map((l: any) => (
                 <li key={l.id} className="py-2 flex justify-between gap-3">

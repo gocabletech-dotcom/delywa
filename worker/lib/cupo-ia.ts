@@ -44,7 +44,7 @@ export async function cupoDiario(db: Db): Promise<number> {
 
 export async function consumoDeHoy(db: Db) {
   const [fila] = await db.select().from(iaConsumo).where(eq(iaConsumo.dia, diaIa()));
-  return { dia: diaIa(), neuronas: fila?.neuronas ?? 0, llamadasTexto: fila?.llamadasTexto ?? 0, notasDeVoz: fila?.notasDeVoz ?? 0, sinCupo: fila?.sinCupo ?? 0 };
+  return { dia: diaIa(), neuronas: fila?.neuronas ?? 0, llamadasTexto: fila?.llamadasTexto ?? 0, notasDeVoz: fila?.notasDeVoz ?? 0, sinCupo: fila?.sinCupo ?? 0, facturas: fila?.facturas ?? 0, neuronasFacturas: Math.round(fila?.neuronasFacturas ?? 0) };
 }
 
 /** ¿Cabe esta llamada en el cupo de hoy? Si no cabe, lo anota (para verlo en Plataforma). */
@@ -68,4 +68,38 @@ export async function gastar(db: Db, tipo: "texto" | "voz", neuronas: number): P
         notasDeVoz: sql`${iaConsumo.notasDeVoz} + ${tipo === "voz" ? 1 : 0}`,
       },
     }).catch(() => undefined);
+}
+
+// ---------- Facturas de compra (Llama 4 Scout con visión) ----------
+// Decisión (2026-11-22): opción A, gratis. Las facturas tienen su propio tope dentro del cupo total,
+// para que nunca dejen al bot del chat sin IA: por defecto 3,000 neuronas al día (~15 facturas).
+
+export const CLAVE_CUPO_FACTURAS = "ia_neuronas_facturas_diarias";
+export const CUPO_FACTURAS_POR_DEFECTO = 3_000;
+const SCOUT = { entrada: 24_545 / 1_000_000, salida: 77_273 / 1_000_000 };
+/** Una foto de factura cuenta como ~1,600 tokens de entrada (estimado a la alta). */
+export function neuronasFactura(fotos: number, tokensEntrada?: number, tokensSalida?: number): number {
+  return (tokensEntrada ?? fotos * 1_600 + 900) * SCOUT.entrada + (tokensSalida ?? 2_000) * SCOUT.salida;
+}
+
+export async function cupoFacturas(db: Db): Promise<number> {
+  const crudo = (await getConfiguracion(db, CLAVE_CUPO_FACTURAS).catch(() => undefined))?.valor;
+  const v = crudo != null && crudo.trim() !== "" ? Number(crudo) : NaN;
+  return Number.isFinite(v) && v >= 0 ? Math.min(v, NEURONAS_GRATIS) : CUPO_FACTURAS_POR_DEFECTO;
+}
+
+export async function hayCupoFactura(db: Db, estimado: number): Promise<boolean> {
+  const [total, facturas] = await Promise.all([cupoDiario(db), cupoFacturas(db)]);
+  const [fila] = await db.select().from(iaConsumo).where(eq(iaConsumo.dia, diaIa()));
+  const ok = (fila?.neuronasFacturas ?? 0) + estimado <= facturas && (fila?.neuronas ?? 0) + estimado <= total;
+  if (!ok) await db.insert(iaConsumo).values({ dia: diaIa(), sinCupo: 1 })
+    .onConflictDoUpdate({ target: iaConsumo.dia, set: { sinCupo: sql`${iaConsumo.sinCupo} + 1` } }).catch(() => undefined);
+  return ok;
+}
+
+export async function gastarFactura(db: Db, neuronas: number): Promise<void> {
+  const n = Math.max(0, neuronas);
+  await db.insert(iaConsumo).values({ dia: diaIa(), neuronas: n, neuronasFacturas: n, facturas: 1 })
+    .onConflictDoUpdate({ target: iaConsumo.dia, set: { neuronas: sql`${iaConsumo.neuronas} + ${n}`, neuronasFacturas: sql`${iaConsumo.neuronasFacturas} + ${n}`, facturas: sql`${iaConsumo.facturas} + 1` } })
+    .catch(() => undefined);
 }

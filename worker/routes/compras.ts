@@ -9,6 +9,9 @@ import { negocioPrincipalId } from "../lib/certificacion";
 import { anularCompra, claveDescripcion, CompraInvalida, FORMAS_PAGO, pagarCompra, registrarCompra, validarLineas, type FormaPago } from "../lib/compras";
 import { getColmado } from "../storage/colmados";
 import { getMenuProductos } from "../storage/menu";
+import { permitirEvento } from "../lib/rate-limit";
+import { CupoAgotado } from "../bot/ia";
+import { FacturaIlegible, leerFactura, productoParecido, suplidorParecido, type Borrador } from "../lib/leer-factura";
 
 // Compras y suplidores (mejora «cargo de mercancía»). Solo dueño y colmadero: el despachador no ve costos.
 
@@ -135,6 +138,8 @@ comprasRoutes.post("/api/colmados/:id/compras", async (c) => {
       colmado, suplidorId: suplidor.id, factura: texto(body.factura, 40), ncf: typeof body.ncf === "string" ? body.ncf.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 13) || null : null,
       fecha, itbis: num(body.itbis, "el ITBIS"), descuento: num(body.descuento, "el descuento"), formaPago, vence, abonoInicial: num(body.abonoInicial, "el abono"),
       notas: texto(body.notas, 300), usuario: nombreUsuario(c.var.user), lineas: validarLineas(body.lineas),
+      // Solo fotos de facturas de esta sucursal que subió la lectura con IA.
+      fotoUrl: (Array.isArray(body.fotos) ? body.fotos : []).filter((u: unknown) => typeof u === "string" && new RegExp(`^/uploads/facturas/${colmadoId}/[0-9a-f-]{36}\\.jpg$`).test(u)).slice(0, 3).join(",") || null,
     });
     return c.json({ compra: { ...r.compra, total: Number(r.compra.total), saldo: Number(r.compra.saldo) }, avisos: r.avisos, nuevos: r.nuevos }, 201);
   } catch (e) {
@@ -186,6 +191,52 @@ comprasRoutes.post("/api/colmados/:id/compras/:cid{[0-9]+}/anular", async (c) =>
     throw e;
   }
   return c.json({ ok: true });
+});
+
+// ---------- Foto de la factura (fase B) ----------
+
+/** Lee la foto (hasta 3) con la IA y devuelve el borrador para revisar. No guarda la compra. */
+comprasRoutes.post("/api/colmados/:id/compras/leer-factura", async (c) => {
+  const db = getDb(c.env.DB);
+  const colmadoId = Number(c.req.param("id"));
+  const negocioId = await principal(c);
+  const body = (await c.req.json().catch(() => null)) || {};
+  const fotos = (Array.isArray(body.fotos) ? body.fotos : []).slice(0, 3).map((f: unknown) => (typeof f === "string" ? f.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/)?.[1] : null));
+  if (!fotos.length || fotos.some((f: string | null) => !f)) return c.json({ error: "Manda la foto de la factura (JPEG)." }, 400);
+  if (fotos.some((f: string) => f.length > 3_000_000)) return c.json({ error: "La foto es muy grande. Toma otra." }, 413);
+  // 15 lecturas al día por negocio: el cupo gratis de IA es de toda la plataforma.
+  if (!(await permitirEvento(db, `factura-ia:${negocioId}`, 15, 24 * 3600_000))) return c.json({ error: "Ya leíste 15 facturas hoy con la IA. Escríbela a mano o espera a mañana." }, 429);
+  let leido;
+  try { leido = await leerFactura(c.env, db, fotos as string[]); } catch (e) {
+    if (e instanceof CupoAgotado) return c.json({ error: "Se acabó la lectura gratis de facturas de hoy. Escríbela a mano (abajo) o vuelve a intentar mañana.", sinCupo: true }, 429);
+    if (e instanceof FacturaIlegible) return c.json({ error: e.message }, 422);
+    throw e;
+  }
+  // Las fotos quedan para verlas en la compra (privadas: solo dueño y colmadero).
+  const urls: string[] = [];
+  if (c.env.UPLOADS) {
+    for (const f of fotos as string[]) {
+      const clave = `facturas/${colmadoId}/${crypto.randomUUID()}.jpg`;
+      await c.env.UPLOADS.put(clave, Uint8Array.from(atob(f), (ch) => ch.charCodeAt(0)), { httpMetadata: { contentType: "image/jpeg", cacheControl: "private, no-store" } }).catch(() => undefined);
+      urls.push(`/uploads/${clave}`);
+    }
+  }
+  const lista = await db.select().from(suplidores).where(and(eq(suplidores.colmadoId, negocioId), eq(suplidores.activo, true)));
+  const suplidorId = suplidorParecido(leido.suplidor, lista);
+  const memoria = suplidorId ? await db.select().from(suplidorEquivalencias).where(eq(suplidorEquivalencias.suplidorId, suplidorId)) : [];
+  const porClave = new Map(memoria.map((m) => [m.descripcion, m]));
+  const menu = await getMenuProductos(db, colmadoId);
+  const enMenu = new Set(menu.map((p) => p.id));
+  const borrador: Borrador = {
+    ...leido, suplidor: { ...leido.suplidor, id: suplidorId },
+    lineas: leido.lineas.map((l) => {
+      const m = porClave.get(claveDescripcion(l.descripcion));
+      if (m && enMenu.has(m.menuProductoId)) return { ...l, menuProductoId: m.menuProductoId, unidadesPorPaquete: m.unidadesPorPaquete, como: "aprendido" as const };
+      const p = productoParecido(l.descripcion, menu);
+      return { ...l, menuProductoId: p, como: p ? "parecido" as const : null };
+    }),
+  };
+  return c.json({ borrador, fotos: urls });
 });
 
 /** Costos de los productos (solo dueño y colmadero), para la pantalla de compras y de productos. */

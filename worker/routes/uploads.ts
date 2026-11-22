@@ -122,7 +122,16 @@ uploadRoutes.post("/api/colmados/:id/logo", requireAuth, async (c) => {
 
 uploadRoutes.get("/uploads/*", sessionMiddleware, async (c) => {
   const clave = decodeURIComponent(new URL(c.req.url).pathname.slice("/uploads/".length));
-  if (!/^(productos|logos|comprobantes|audios)\/[A-Za-z0-9/_.-]+$/.test(clave) || clave.includes("..")) return c.notFound();
+  if (!/^(productos|logos|comprobantes|audios|facturas)\/[A-Za-z0-9/_.-]+$/.test(clave) || clave.includes("..")) return c.notFound();
+
+  // Fotos de facturas de compra: solo el dueño y el colmadero de ese negocio (facturas/<negocio>/…).
+  const factura = clave.match(/^facturas\/(\d+)\/[0-9a-f-]{36}\.jpg$/);
+  if (clave.startsWith("facturas/")) {
+    if (!factura) return c.notFound();
+    const user = await usuarioOpcional(c);
+    if (!user) return c.json({ error: "No autenticado" }, 401);
+    if (!(await puedeOperar(getDb(c.env.DB), user, Number(factura[1]), ADMINISTRADORES))) return c.json({ error: "No tienes permiso para ver este archivo" }, 403);
+  }
 
   // Las notas de voz del chat solo las oye el personal del negocio (audios/<negocio>/…).
   const audio = clave.match(/^audios\/(\d+)\/[0-9a-f-]{36}\.[a-z0-9]{2,4}$/);
@@ -133,7 +142,7 @@ uploadRoutes.get("/uploads/*", sessionMiddleware, async (c) => {
     if (!(await puedeOperar(getDb(c.env.DB), user, Number(audio[1])))) return c.json({ error: "No tienes permiso para ver este archivo" }, 403);
   }
   // Un comprobante de pago solo lo ve el personal del negocio al que pertenece el pedido.
-  const privado = clave.startsWith("comprobantes/") || Boolean(audio);
+  const privado = clave.startsWith("comprobantes/") || Boolean(audio) || Boolean(factura);
   if (clave.startsWith("comprobantes/")) {
     const user = await usuarioOpcional(c);
     if (!user) return c.json({ error: "No autenticado" }, 401);

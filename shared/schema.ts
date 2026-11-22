@@ -1152,6 +1152,9 @@ export const iaConsumo = sqliteTable("ia_consumo", {
   llamadasTexto: integer("llamadas_texto").notNull().default(0),
   notasDeVoz: integer("notas_de_voz").notNull().default(0),
   sinCupo: integer("sin_cupo").notNull().default(0),
+  /** Facturas de compra leídas con la IA (tienen su propio cupo dentro del total). */
+  neuronasFacturas: real("neuronas_facturas").notNull().default(0),
+  facturas: integer("facturas").notNull().default(0),
 });
 
 /**

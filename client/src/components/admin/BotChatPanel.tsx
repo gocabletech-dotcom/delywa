@@ -13,7 +13,7 @@ import { pedirJSON } from "./IntegracionesSection";
 type Datos = {
   dias: Array<{ dia: string; mensajes: number; conIa: number; sinEntender: number; notasDeVoz: number }>;
   frases: Array<{ id: number; texto: string; resueltoConIa: boolean; fecha: string; colmado: string | null }>;
-  ia?: { dia: string; neuronas: number; llamadasTexto: number; notasDeVoz: number; sinCupo: number; cupo: number; gratis: number };
+  ia?: { dia: string; neuronas: number; llamadasTexto: number; notasDeVoz: number; sinCupo: number; cupo: number; gratis: number; facturas?: number; neuronasFacturas?: number };
 };
 
 export function BotChatPanel({ onEnsenar }: { onEnsenar?: (frase: string) => void }) {
@@ -44,7 +44,7 @@ export function BotChatPanel({ onEnsenar }: { onEnsenar?: (frase: string) => voi
             <p className="flex items-center gap-2 font-semibold text-slate-800"><Cpu className="w-4 h-4 text-emerald-600" />IA de Cloudflare hoy (gratis hasta {ia.gratis.toLocaleString("es-DO")} neuronas al día)</p>
             <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-emerald-600" style={{ width: `${Math.min(100, (ia.neuronas / Math.max(1, ia.cupo)) * 100)}%` }} /></div>
             <p className="text-sm text-slate-600">
-              {ia.neuronas.toLocaleString("es-DO")} de {ia.cupo.toLocaleString("es-DO")} neuronas · {ia.llamadasTexto} mensajes con IA · {ia.notasDeVoz} notas de voz
+              {ia.neuronas.toLocaleString("es-DO")} de {ia.cupo.toLocaleString("es-DO")} neuronas · {ia.llamadasTexto} mensajes con IA · {ia.notasDeVoz} notas de voz · {ia.facturas ?? 0} facturas de compra ({(ia.neuronasFacturas ?? 0).toLocaleString("es-DO")} neuronas, tope 3,000)
               {ia.sinCupo > 0 && <> · <span className="text-amber-700">{ia.sinCupo} veces sin cupo (le llegó al colmado)</span></>}
             </p>
             <p className="text-xs text-slate-500">El bot se detiene antes del cupo para que nunca cueste: el texto usa hasta el 80 % y el resto queda para las notas de voz. Se reinicia a las 8:00 p. m. (hora de RD).</p>

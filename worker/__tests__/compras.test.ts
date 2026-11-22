@@ -5,6 +5,10 @@ import { eq } from "drizzle-orm";
 import { colmados, menuProductos, menuProductoSucursales, productoCostos, suplidorEquivalencias } from "@shared/schema";
 import { createTestApp } from "./helpers";
 import { createUser } from "../storage/users";
+import { workersAI } from "../bot/ia";
+import { productoParecido, unidadesDe } from "../lib/leer-factura";
+import { upsertConfiguracion } from "../storage/catalogos";
+import { CLAVE_CUPO_FACTURAS } from "../lib/cupo-ia";
 
 let t: Awaited<ReturnType<typeof createTestApp>>;
 type Client = ReturnType<Awaited<ReturnType<typeof createTestApp>>["client"]>;
@@ -123,5 +127,65 @@ describe("compras", () => {
     expect(mal.status).toBe(400);
     expect(mal.json.error).toContain("Línea 1");
     expect((await dueno.request("POST", `/api/colmados/${negocio.id}/compras`, { suplidorId: 999, formaPago: "efectivo", lineas: [{ descripcion: "X", cantidad: 1, costo: 5 }] })).json.error).toBe("Elige el suplidor.");
+  });
+});
+
+describe("foto de la factura (IA simulada)", () => {
+  const runOriginal = workersAI.run;
+  let respuesta: any = null;
+  let entrada: any = null;
+  const foto = `data:image/jpeg;base64,${btoa("foto-de-prueba")}`;
+  beforeAll(() => {
+    workersAI.simulada = true;
+    workersAI.run = async (_env, modelo, e: any) => { entrada = { modelo, e }; return { response: respuesta, usage: { prompt_tokens: 2500, completion_tokens: 900 } }; };
+  });
+  afterAll(() => { workersAI.run = runOriginal; workersAI.simulada = false; });
+
+  it("adivina unidades por paquete y productos parecidos", () => {
+    expect(unidadesDe("PRES GDE 24/650")).toBe(24);
+    expect(unidadesDe("ACEITE CRISOL CJ 12")).toBe(12);
+    expect(unidadesDe("ARROZ SACO 20LB")).toBe(20);
+    expect(unidadesDe("QUESO DE FREIR")).toBeNull();
+    expect(productoParecido("ARROZ SELECTO 1LB", [{ id: 1, nombre: "Arroz (libra)" }, { id: 2, nombre: "Aceite Crisol" }])).toBe(1);
+    expect(productoParecido("ACEIT CRISOL 32OZ", [{ id: 1, nombre: "Arroz (libra)" }, { id: 2, nombre: "Aceite Crisol" }])).toBe(2);
+    expect(productoParecido("SALAMI INDUVECA", [{ id: 1, nombre: "Arroz (libra)" }])).toBeNull();
+  });
+
+  it("lee la factura: reconoce el suplidor por RNC y lo aprendido; lo demás queda para revisar", async () => {
+    respuesta = {
+      esFactura: true, suplidor: { nombre: "DISTRIBUIDORA CARIBE SRL", rnc: "101-23456-7", telefono: null }, factura: "A-2002", ncf: "B0100000999", fecha: "2026-11-22",
+      lineas: [
+        { descripcion: "ARROZ SELECTO SACO 20LB", cantidad: 2, unidadesPorPaquete: null, costo: 800, total: 1600 },
+        { descripcion: "LECHE RICA 1LT CJ 12", cantidad: 1, unidadesPorPaquete: null, costo: 900, total: 900 },
+      ],
+      subtotal: 2500, itbis: 0, descuento: 0, total: 2500, formaPago: "credito",
+    };
+    const r = await dueno.request("POST", `/api/colmados/${negocio.id}/compras/leer-factura`, { fotos: [foto] });
+    expect(r.status).toBe(200);
+    expect(entrada.modelo).toContain("llama-4-scout");
+    expect(entrada.e.messages[1].content[1]).toMatchObject({ type: "image_url" });
+    const b = r.json.borrador;
+    expect(b.suplidor.id).toBeGreaterThan(0);
+    expect(b).toMatchObject({ factura: "A-2002", ncf: "B0100000999", formaPago: "credito", revisar: false });
+    expect(b.lineas[0]).toMatchObject({ menuProductoId: arroz.id, unidadesPorPaquete: 20, como: "aprendido" });
+    expect(b.lineas[1]).toMatchObject({ menuProductoId: null, unidadesPorPaquete: 12, como: null });
+    expect(r.json.fotos[0]).toMatch(new RegExp(`^/uploads/facturas/${negocio.id}/[0-9a-f-]{36}\\.jpg$`));
+    // La foto queda en la compra al guardar.
+    const g = await dueno.request("POST", `/api/colmados/${negocio.id}/compras`, { suplidorId: b.suplidor.id, formaPago: "efectivo", fotos: [...r.json.fotos, "/uploads/facturas/999/x.jpg"],
+      lineas: [{ descripcion: b.lineas[0].descripcion, cantidad: 2, unidadesPorPaquete: 20, costo: 800, menuProductoId: arroz.id }] });
+    expect(g.json.compra.fotoUrl).toBe(r.json.fotos[0]);
+    // Solo el dueño o el colmadero ven la foto.
+    expect((await despachador.request("GET", r.json.fotos[0])).status).toBe(403);
+  });
+
+  it("no es una factura, o se acabó el cupo de facturas: lo dice y no inventa", async () => {
+    respuesta = { esFactura: false, lineas: [] };
+    const r = await dueno.request("POST", `/api/colmados/${negocio.id}/compras/leer-factura`, { fotos: [foto] });
+    expect(r.status).toBe(422);
+    await upsertConfiguracion(t.db, CLAVE_CUPO_FACTURAS, "0");
+    const sin = await dueno.request("POST", `/api/colmados/${negocio.id}/compras/leer-factura`, { fotos: [foto] });
+    expect(sin.status).toBe(429);
+    expect(sin.json.sinCupo).toBe(true);
+    expect((await despachador.request("POST", `/api/colmados/${negocio.id}/compras/leer-factura`, { fotos: [foto] })).status).toBe(403);
   });
 });
