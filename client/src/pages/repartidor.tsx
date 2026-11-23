@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Ganancias } from "@/components/repartidor/Ganancias";
+import { Ganancias, PreguntaPropina } from "@/components/repartidor/Ganancias";
 import { useParams } from "wouter";
 import { VERSION_APP } from "@/version";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -467,14 +467,18 @@ export default function RepartidorPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_r, vars) => {
       queryClient.invalidateQueries({ queryKey: ["portal-repartidor-pedidos"] });
+      queryClient.invalidateQueries({ queryKey: ["portal-ganancias"] });
       toast({ title: "Pedido actualizado" });
+      // Al entregar: «¿Te dieron propina?» (es suya, no entra en la caja).
+      if (vars.estado === "entregado") setPropinaDe(vars.pedidoId);
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
+  const [propinaDe, setPropinaDe] = useState<number | null>(null);
 
   const crearCuadreMutation = useMutation({
     mutationFn: async ({ pedidoIds, notasRepartidor }: { pedidoIds: number[]; notasRepartidor?: string }) => {
@@ -1342,6 +1346,7 @@ export default function RepartidorPage() {
       )}
 
       {activeTab === "ganancias" && <Ganancias />}
+      {propinaDe && <PreguntaPropina pedidoId={propinaDe} onCerrar={() => { setPropinaDe(null); queryClient.invalidateQueries({ queryKey: ["portal-ganancias"] }); }} />}
 
       {/* Espacio para el menú de abajo y el botón de cuadrar */}
       <div className={pedidosSinCuadre.length > 0 ? "h-40" : "h-24"} />

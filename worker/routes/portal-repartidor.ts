@@ -1,8 +1,10 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
-import { cobraEl, periodoQueContiene, resumenDe, saldoDeCuadres } from "../lib/ganancias-delivery";
+import { ajustesDe, cobraEl, periodoQueContiene, resumenDe, saldoDeCuadres } from "../lib/ganancias-delivery";
 import { rangoDiaLocal } from "../lib/fechas";
-import { pagosDelivery, type Delivery } from "@shared/schema";
-import { desc, eq } from "drizzle-orm";
+import { pagosDelivery, pedidos, type Delivery } from "@shared/schema";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { guardarSuscripcion, leerSuscripcion } from "./push";
+import { avisarNegocio } from "../lib/tiempo-real";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { sesionPortalVencida, turnoTerminadoHoy, ventanaDeGracia } from "../lib/turno-repartidor";
@@ -167,18 +169,56 @@ portalRepartidorRoutes.get("/api/portal-repartidor/ganancias", requirePortal, as
     saldoDeCuadres(db, d),
   ]);
   const sinVentas = ({ ventas: _v, ...resto }: { ventas: number } & Record<string, unknown>) => resto;
+  const ajustes = await ajustesDe(db, pagos.map((p) => p.id));
   return c.json({
     moneda,
-    forma: { modelo: d.modeloPago, periodo: d.periodoPago, salario: Number(d.salarioMonto) || 0, porEntrega: Number(d.comisionFija) || 0, porcentaje: Number(d.comisionPorcentaje) || 0 },
+    forma: { modelo: d.modeloPago, periodo: d.periodoPago, salario: Number(d.salarioMonto) || 0, porEntrega: Number(d.comisionFija) || 0, porcentaje: Number(d.comisionPorcentaje) || 0, envio: d.envioEsDelDelivery },
+    colmado: colmado?.nombre ?? "",
     hoy: sinVentas(hoy),
     periodo: { ...sinVentas(enCurso), desde: periodo.desde, hasta: periodo.hasta, tipo: periodo.tipo, cobraEl: cobraEl(periodo) },
     pagos: pagos.map((p) => ({
       id: p.id, desde: p.periodoInicio, hasta: p.periodoFin, entregas: p.totalPedidos, salario: Number(p.salarioCalculado), comision: Number(p.comisionCalculada),
       total: Number(p.montoTotal), estado: p.estado, fechaPago: p.fechaPago, pagadoPor: p.pagadoPor, notas: p.notas,
+      envio: Number(p.envioCalculado), metodo: p.metodoPago, comprobante: p.comprobanteUrl, recibido: p.recibidoAt,
+      ajustes: ajustes.filter((a) => a.pagoId === p.id).map((a) => ({ id: a.id, tipo: a.tipo, monto: Number(a.monto), motivo: a.motivo })),
     })),
     // Negativo: faltó dinero en sus cuadres (lo debe). Positivo: entregó de más (se le debe).
     saldoCuadres: saldo,
   });
+});
+
+/** «Recibí mi pago»: constancia para el repartidor y el colmado. */
+portalRepartidorRoutes.post("/api/portal-repartidor/pagos/:id/recibido", requirePortal, async (c) => {
+  const db = getDb(c.env.DB);
+  const [p] = await db.update(pagosDelivery).set({ recibidoAt: new Date() })
+    .where(and(eq(pagosDelivery.id, Number(c.req.param("id"))), eq(pagosDelivery.deliveryId, c.var.repartidor.id), eq(pagosDelivery.estado, "pagado"), isNull(pagosDelivery.recibidoAt)))
+    .returning();
+  if (!p) return c.json({ error: "Ese pago todavía no está marcado como pagado o ya lo confirmaste." }, 409);
+  await avisarNegocio(c.env, p.colmadoId, ["deliveries"]).catch(() => undefined);
+  return c.json({ ok: true, recibido: p.recibidoAt });
+});
+
+/** Propina que le dio el cliente (después de entregar, hasta 24 horas). Es suya. */
+portalRepartidorRoutes.post("/api/portal-repartidor/pedidos/:pedidoId/propina", requirePortal, async (c) => {
+  const db = getDb(c.env.DB);
+  const { monto } = await cuerpo(c);
+  const n = Math.round(Number(monto) * 100) / 100;
+  if (!Number.isFinite(n) || n < 0 || n > 10_000) return c.json({ error: "Revisa el monto de la propina." }, 400);
+  const [p] = await db.update(pedidos).set({ propina: n.toFixed(2) })
+    .where(and(eq(pedidos.id, Number(c.req.param("pedidoId"))), eq(pedidos.deliveryId, c.var.repartidor.id), eq(pedidos.estado, "entregado"), gt(pedidos.fechaEntrega, new Date(Date.now() - 24 * 3600_000))))
+    .returning({ id: pedidos.id });
+  if (!p) return c.json({ error: "Solo puedes anotar la propina de una entrega tuya de las últimas 24 horas." }, 404);
+  return c.json({ ok: true });
+});
+
+/** Avisos en el celular del repartidor: pedido asignado, pago listo, pago hecho. */
+portalRepartidorRoutes.post("/api/portal-repartidor/push", requirePortal, async (c) => {
+  const db = getDb(c.env.DB);
+  const { suscripcion } = await cuerpo(c);
+  const sus = leerSuscripcion(suscripcion);
+  if (!sus) return c.json({ error: "Tu navegador no permitió los avisos." }, 400);
+  await guardarSuscripcion(db, sus, { tipo: "delivery", colmadoId: c.var.repartidor.colmadoId, userId: `delivery:${c.var.repartidor.id}` });
+  return c.json({ ok: true });
 });
 
 portalRepartidorRoutes.post("/api/portal-repartidor/activar", requirePortal, async (c) => {

@@ -1,16 +1,22 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Loader2, Wallet } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { BellRing, CheckCircle2, ChevronDown, Loader2, Printer, Wallet } from "lucide-react";
+import { imprimirTicket } from "@/lib/ticket";
+import { activarPush, esIphoneSinInstalar, pushSoportado, suscripcionActual } from "@/lib/push";
 
 // Portal de delivery → «Ganancias»: lo que lleva ganado, cuándo le pagan, sus pagos y lo que debe.
 // Solo lo suyo: nunca las ventas del colmado.
 
 type Datos = {
   moneda: string;
-  forma: { modelo: "salario" | "comision" | "mixto"; periodo: string; salario: number; porEntrega: number; porcentaje: number };
-  hoy: { entregas: number; comision: number; total: number };
-  periodo: { entregas: number; salario: number; comision: number; total: number; desde: string; hasta: string; tipo: string; cobraEl: string };
-  pagos: Array<{ id: number; desde: string; hasta: string; entregas: number; salario: number; comision: number; total: number; estado: string; fechaPago: string | null; pagadoPor: string | null; notas: string | null }>;
+  colmado: string;
+  forma: { modelo: "salario" | "comision" | "mixto"; periodo: string; salario: number; porEntrega: number; porcentaje: number; envio: boolean };
+  hoy: { entregas: number; comision: number; envio: number; propinas: number; total: number };
+  periodo: { entregas: number; salario: number; comision: number; envio: number; propinas: number; total: number; desde: string; hasta: string; tipo: string; cobraEl: string };
+  pagos: Array<{
+    id: number; desde: string; hasta: string; entregas: number; salario: number; comision: number; envio: number; total: number; estado: string; fechaPago: string | null; pagadoPor: string | null; notas: string | null;
+    metodo: string | null; comprobante: string | null; recibido: string | null; ajustes: Array<{ id: number; tipo: string; monto: number; motivo: string | null }>;
+  }>;
   saldoCuadres: number;
 };
 
@@ -25,6 +31,14 @@ export function Ganancias() {
     refetchInterval: 60_000,
   });
   const [abierto, setAbierto] = useState<number | null>(null);
+  const qc = useQueryClient();
+  const [confirmando, setConfirmando] = useState<number | null>(null);
+  const recibi = async (id: number) => {
+    setConfirmando(id);
+    await fetch(`/api/portal-repartidor/pagos/${id}/recibido`, { method: "POST", credentials: "include" }).catch(() => undefined);
+    setConfirmando(null);
+    qc.invalidateQueries({ queryKey: ["portal-ganancias"] });
+  };
   if (isLoading) return <div className="px-4 py-10 grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
   if (error || !data) return <p className="px-4 py-6 text-red-700">{(error as Error)?.message || "No se pudo cargar"}</p>;
   const m = (n: number) => `${data.moneda}${n.toLocaleString("es-DO", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -33,7 +47,20 @@ export function Ganancias() {
     (f.modelo === "salario" || f.modelo === "mixto") && f.salario > 0 && `${m(f.salario)} de salario por ${f.periodo === "mensual" ? "mes" : f.periodo === "quincenal" ? "quincena" : "semana"}`,
     (f.modelo === "comision" || f.modelo === "mixto") && f.porEntrega > 0 && `${m(f.porEntrega)} por entrega`,
     (f.modelo === "comision" || f.modelo === "mixto") && f.porcentaje > 0 && `${f.porcentaje} % de lo que entregas`,
+    f.envio && "el envío de cada entrega",
   ].filter(Boolean) as string[];
+  const ETIQUETA: Record<string, string> = { bono: "Bono", descuento: "Descuento", cuadre: "Cuadres", adelanto: "Adelanto" };
+  const recibo = (x: Datos["pagos"][number]) => imprimirTicket({
+    negocio: { nombre: data.colmado || "Colmado" }, titulo: `Recibo de pago · ${fechaCorta(x.desde)} – ${fechaCorta(x.hasta)}`, fecha: new Date(x.fechaPago ?? Date.now()),
+    lineas: [
+      ...(x.salario ? [{ nombre: "Salario", cantidad: 1, precio: x.salario }] : []),
+      ...(x.comision ? [{ nombre: `Comisiones (${x.entregas} entregas)`, cantidad: 1, precio: x.comision }] : []),
+      ...(x.envio ? [{ nombre: "Envíos", cantidad: 1, precio: x.envio }] : []),
+      ...x.ajustes.map((a) => ({ nombre: `${ETIQUETA[a.tipo] ?? a.tipo}${a.motivo ? `: ${a.motivo}` : ""}`, cantidad: 1, precio: a.monto })),
+    ],
+    total: x.total, pago: { metodo: x.metodo }, moneda: data.moneda,
+    pie: x.recibido ? `Recibido por el repartidor el ${new Date(x.recibido).toLocaleString("es-DO")}` : x.pagadoPor ? `Pagado por ${x.pagadoPor}` : "Pendiente de pago",
+  });
   const p = data.periodo;
   return (
     <div className="px-4 pt-4 space-y-3" data-testid="ganancias">
@@ -45,9 +72,12 @@ export function Ganancias() {
           <div className="mt-3 rounded-xl bg-white/15 px-3 py-2 text-sm space-y-0.5">
             {p.salario > 0 && <p className="flex justify-between"><span>Salario</span><span>{m(p.salario)}</span></p>}
             {p.comision > 0 && <p className="flex justify-between"><span>Comisiones</span><span>{m(p.comision)}</span></p>}
+            {p.envio > 0 && <p className="flex justify-between"><span>Envíos</span><span>{m(p.envio)}</span></p>}
           </div>
         )}
+        {p.propinas > 0 && <p className="text-sm mt-2 opacity-90">Además, tus propinas: {m(p.propinas)} (son tuyas).</p>}
       </section>
+      <AvisosRepartidor />
 
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl bg-white border border-slate-200 p-3">
@@ -74,7 +104,7 @@ export function Ganancias() {
                 <button type="button" className="w-full px-4 py-3 flex items-center gap-3 text-left" onClick={() => setAbierto(abierto === x.id ? null : x.id)} aria-expanded={abierto === x.id}>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900">{fechaCorta(x.desde)} – {fechaCorta(x.hasta)}</p>
-                    <p className={`text-xs ${x.estado === "pagado" ? "text-emerald-700" : "text-amber-700"}`}>{x.estado === "pagado" ? `Pagado${x.fechaPago ? ` el ${fechaCorta(x.fechaPago)}` : ""}` : "Pendiente de pago"}</p>
+                    <p className={`text-xs ${x.estado === "pagado" ? "text-emerald-700" : "text-amber-700"}`}>{x.estado === "pagado" ? `Pagado${x.fechaPago ? ` el ${fechaCorta(x.fechaPago)}` : ""}${x.recibido ? " · recibido ✓" : " · toca para confirmar"}` : "Pendiente de pago"}</p>
                   </div>
                   <span className="font-bold text-slate-900">{m(x.total)}</span>
                   <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${abierto === x.id ? "rotate-180" : ""}`} />
@@ -84,9 +114,23 @@ export function Ganancias() {
                     <p className="flex justify-between"><span>Entregas</span><span>{x.entregas}</span></p>
                     {x.salario > 0 && <p className="flex justify-between"><span>Salario</span><span>{m(x.salario)}</span></p>}
                     {x.comision > 0 && <p className="flex justify-between"><span>Comisiones</span><span>{m(x.comision)}</span></p>}
+                    {x.envio > 0 && <p className="flex justify-between"><span>Envíos</span><span>{m(x.envio)}</span></p>}
+                    {x.ajustes.map((a) => (
+                      <p key={a.id} className={`flex justify-between ${a.monto < 0 ? "text-red-700" : "text-emerald-700"}`}><span>{ETIQUETA[a.tipo] ?? a.tipo}{a.motivo ? ` · ${a.motivo}` : ""}</span><span>{a.monto < 0 ? "−" : "+"}{m(Math.abs(a.monto))}</span></p>
+                    ))}
                     <p className="flex justify-between font-semibold text-slate-900"><span>Total</span><span>{m(x.total)}</span></p>
-                    {x.pagadoPor && <p className="text-xs">Te pagó: {x.pagadoPor}</p>}
+                    {x.pagadoPor && <p className="text-xs">Te pagó: {x.pagadoPor}{x.metodo ? ` · ${x.metodo}` : ""}</p>}
                     {x.notas && <p className="text-xs">Nota: {x.notas}</p>}
+                    {x.comprobante && <a href={x.comprobante} target="_blank" rel="noreferrer" className="text-xs font-semibold text-primary underline">Ver foto de la transferencia</a>}
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      <button type="button" className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl border border-slate-300 text-sm font-semibold text-slate-700" onClick={() => recibo(x)} data-testid={`recibo-${x.id}`}><Printer className="w-4 h-4" />Recibo</button>
+                      {x.estado === "pagado" && !x.recibido && (
+                        <button type="button" disabled={confirmando === x.id} className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold" onClick={() => recibi(x.id)} data-testid={`recibi-${x.id}`}>
+                          {confirmando === x.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}Recibí mi pago
+                        </button>
+                      )}
+                      {x.recibido && <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="w-4 h-4" />Confirmaste que lo recibiste</span>}
+                    </div>
                   </div>
                 )}
               </li>
@@ -95,6 +139,62 @@ export function Ganancias() {
         )}
       </section>
       <p className="text-xs text-slate-500 px-1">Si algo no te cuadra, habla con el colmado. Lo de hoy y del período se actualiza solo con cada entrega.</p>
+    </div>
+  );
+}
+
+/** Avisos en el celular: pedido asignado, pago listo y pago hecho. */
+function AvisosRepartidor() {
+  const [ver, setVer] = useState(false);
+  const [estado, setEstado] = useState("");
+  useEffect(() => {
+    if (!pushSoportado() || esIphoneSinInstalar() || Notification.permission === "denied") return;
+    suscripcionActual().then((s) => setVer(!s)).catch(() => undefined);
+  }, []);
+  if (!ver) return null;
+  if (estado === "listo") return <p className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800">🔔 Listo: te avisamos cuando te asignen un pedido y cuando te paguen.</p>;
+  return (
+    <div className="rounded-2xl bg-white border border-slate-200 p-4 flex items-center gap-3" data-testid="avisos-repartidor">
+      <BellRing className="w-6 h-6 text-primary shrink-0" />
+      <p className="flex-1 text-sm text-slate-700">Que te avise el celular cuando te asignen un pedido y cuando te paguen.{estado && estado !== "ocupado" ? <span className="block text-red-700">{estado}</span> : null}</p>
+      <button type="button" disabled={estado === "ocupado"} className="min-h-[40px] px-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold shrink-0"
+        onClick={async () => {
+          setEstado("ocupado");
+          try {
+            const suscripcion = await activarPush();
+            const r = await fetch("/api/portal-repartidor/push", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ suscripcion }) });
+            if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "No se pudo");
+            setEstado("listo");
+          } catch (e: any) { setEstado(e.message || "No se pudo activar"); }
+        }} data-testid="activar-avisos-repartidor">Activar</button>
+    </div>
+  );
+}
+
+/** Después de entregar: «¿Te dieron propina?». */
+export function PreguntaPropina({ pedidoId, onCerrar }: { pedidoId: number; onCerrar: () => void }) {
+  const [otra, setOtra] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const guardar = async (monto: number) => {
+    setOcupado(true);
+    await fetch(`/api/portal-repartidor/pedidos/${pedidoId}/propina`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ monto }) }).catch(() => undefined);
+    setOcupado(false);
+    onCerrar();
+  };
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-3" role="dialog" aria-modal="true" aria-label="Propina" data-testid="pregunta-propina">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 space-y-3">
+        <p className="text-lg font-bold text-slate-900">¿Te dieron propina en el pedido #{pedidoId}?</p>
+        <p className="text-sm text-slate-600">Es tuya. Se anota para que veas lo que te ganas, pero no entra en la caja del colmado.</p>
+        <div className="grid grid-cols-4 gap-2">
+          {[25, 50, 100, 200].map((n) => <button key={n} type="button" disabled={ocupado} className="min-h-[48px] rounded-xl border border-slate-300 font-semibold" onClick={() => guardar(n)}>{n}</button>)}
+        </div>
+        <div className="flex gap-2">
+          <input className="flex-1 h-11 rounded-xl border border-slate-300 px-3" inputMode="decimal" placeholder="Otra cantidad" value={otra} onChange={(e) => setOtra(e.target.value.replace(/[^\d.]/g, ""))} />
+          <button type="button" disabled={ocupado || !(Number(otra) > 0)} className="min-h-[44px] px-4 rounded-xl bg-primary text-primary-foreground font-semibold" onClick={() => guardar(Number(otra))}>Guardar</button>
+        </div>
+        <button type="button" className="w-full min-h-[44px] rounded-xl text-slate-600 font-semibold" onClick={onCerrar} data-testid="sin-propina">No me dieron</button>
+      </div>
     </div>
   );
 }

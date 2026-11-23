@@ -34,7 +34,7 @@ import { mostradorRoutes } from "./routes/mostrador";
 import { fiadoRoutes } from "./routes/fiado";
 import { pushRoutes } from "./routes/push";
 import { comprasRoutes } from "./routes/compras";
-import { repartirOfertas } from "./lib/push";
+import { avisarAlRepartidor, repartirOfertas } from "./lib/push";
 import { cerrarPeriodosVencidos } from "./lib/ganancias-delivery";
 import { getColmado, getColmadoTimezone } from "./storage/colmados";
 import { enlaceChat } from "@shared/subdominio";
@@ -138,6 +138,9 @@ export default {
         await cerrarPeriodosVencidos(db, async (id) => {
           if (!zonas.has(id)) { const col = await getColmado(db, id); zonas.set(id, col ? await getColmadoTimezone(db, col) : "America/Santo_Domingo"); }
           return zonas.get(id)!;
+        }, new Date(), async (d, monto, pagoId) => {
+          const col = await getColmado(db, d.colmadoId);
+          return avisarAlRepartidor(env, db, d.id, { titulo: "🧾 Tu pago está listo", texto: `Cerró tu período: RD$${monto.toLocaleString("es-DO")}. El colmado te lo paga pronto.`, url: `/repartidor/${col?.slug ?? ""}`, etiqueta: `pago-${pagoId}` });
         });
       }
       // 14:00 UTC (10:00 a.m. en RD): aviso de fin de prueba gratis.

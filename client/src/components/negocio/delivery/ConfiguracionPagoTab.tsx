@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Wallet, Calculator, CheckCircle2, ChevronDown, ChevronUp, Truck } from "lucide-react";
+import { Wallet, Calculator, CheckCircle2, ChevronDown, ChevronUp, Truck, Loader2 } from "lucide-react";
+import { reducirImagen } from "@/lib/imagen";
 
 interface Delivery {
   id: number;
@@ -17,6 +18,7 @@ interface Delivery {
   comisionFija: string;
   comisionPorcentaje: string;
   periodoPago: string;
+  envioEsDelDelivery?: boolean;
 }
 
 interface PagoDelivery {
@@ -31,6 +33,12 @@ interface PagoDelivery {
   montoTotal: string;
   estado: "pendiente" | "pagado";
   fechaPago: string | null;
+  envioCalculado?: string;
+  ajustesTotal?: string;
+  metodoPago?: string | null;
+  comprobanteUrl?: string | null;
+  recibidoAt?: string | null;
+  pagadoPor?: string | null;
 }
 
 function rangoSugerido(periodo: string): { desde: string; hasta: string } {
@@ -51,6 +59,7 @@ function DeliveryConfigCard({ delivery }: { delivery: Delivery }) {
     comisionFija: delivery.comisionFija,
     comisionPorcentaje: delivery.comisionPorcentaje,
     periodoPago: delivery.periodoPago,
+    envioEsDelDelivery: Boolean(delivery.envioEsDelDelivery),
   });
   const [rango, setRango] = useState(rangoSugerido(delivery.periodoPago));
 
@@ -196,6 +205,11 @@ function DeliveryConfigCard({ delivery }: { delivery: Delivery }) {
           </div>
         )}
 
+        <label className="flex items-start gap-2 text-sm text-gray-700 my-3">
+          <input type="checkbox" className="mt-1" checked={form.envioEsDelDelivery} onChange={(e) => setForm({ ...form, envioEsDelDelivery: e.target.checked })} data-testid={`envio-del-delivery-${delivery.id}`} />
+          <span><b>El envío es del delivery:</b> el costo de envío de cada entrega se le suma a su pago.</span>
+        </label>
+
         <Button
           size="sm"
           className="bg-primary w-full sm:w-auto"
@@ -241,35 +255,7 @@ function DeliveryConfigCard({ delivery }: { delivery: Delivery }) {
                 <p className="text-xs text-gray-400">Todavía no hay pagos calculados</p>
               ) : (
                 <div className="space-y-2">
-                  {historial.map((p) => (
-                    <div key={p.id} className="flex items-center justify-between text-sm bg-gray-50 rounded-lg px-3 py-2">
-                      <div>
-                        <p className="font-medium text-gray-700">
-                          {new Date(p.periodoInicio).toLocaleDateString("es-DO")} — {new Date(p.periodoFin).toLocaleDateString("es-DO")}
-                        </p>
-                        <p className="text-xs text-gray-400">{p.totalPedidos} entregas · RD${parseFloat(p.totalVentas).toFixed(2)} vendidos</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-800">RD${parseFloat(p.montoTotal).toFixed(2)}</span>
-                        {p.estado === "pagado" ? (
-                          <Badge className="bg-green-500 text-white flex items-center gap-1">
-                            <CheckCircle2 size={12} /> Pagado
-                          </Badge>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
-                            onClick={() => marcarPagado.mutate(p.id)}
-                            disabled={marcarPagado.isPending}
-                            data-testid={`button-marcar-pagado-${p.id}`}
-                          >
-                            Marcar pagado
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                  {historial.map((p) => <PagoFila key={p.id} pago={p} deliveryId={delivery.id} />)}
                 </div>
               )}
             </div>
@@ -294,6 +280,114 @@ export default function ConfiguracionPagoTab({ deliveries }: { deliveries: Deliv
       {deliveries.map((d) => (
         <DeliveryConfigCard key={d.id} delivery={d} />
       ))}
+    </div>
+  );
+}
+
+type Ajuste = { id: number; tipo: string; monto: string; motivo: string | null; usuario: string | null };
+const ETIQUETA: Record<string, string> = { bono: "Bono", descuento: "Descuento", cuadre: "Cuadres", adelanto: "Adelanto" };
+const rd = (n: number) => `${n < 0 ? "−" : ""}RD$${Math.abs(n).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+async function pedir(url: string, metodo: string, cuerpo?: unknown) {
+  const r = await fetch(url, { method: metodo, credentials: "include", headers: { "Content-Type": "application/json" }, body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "No se pudo");
+  return j;
+}
+
+/** Un pago del historial: bonos, descuentos, saldo de cuadres y marcar pagado con forma y foto. */
+function PagoFila({ pago, deliveryId }: { pago: PagoDelivery; deliveryId: number }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [abierto, setAbierto] = useState(false);
+  const { data, refetch } = useQuery<{ pago: PagoDelivery; ajustes: Ajuste[]; saldoCuadres: number; propinas: number }>({
+    queryKey: ["pago-delivery", pago.id], queryFn: () => pedir(`/api/pagos-delivery/${pago.id}`, "GET"), enabled: abierto,
+  });
+  const [nuevo, setNuevo] = useState({ tipo: "bono", monto: "", motivo: "" });
+  const [metodo, setMetodo] = useState("efectivo");
+  const [ocupado, setOcupado] = useState(false);
+  const hacer = async (f: () => Promise<unknown>, aviso: string) => {
+    setOcupado(true);
+    try { await f(); toast({ title: aviso }); await refetch(); qc.invalidateQueries({ queryKey: ["pagos-delivery", deliveryId] }); }
+    catch (e: any) { toast({ title: "No se pudo", description: e.message, variant: "destructive" }); }
+    setOcupado(false);
+  };
+  const p = data?.pago ?? pago;
+  const pendiente = p.estado === "pendiente";
+  return (
+    <div className="bg-gray-50 rounded-lg text-sm" data-testid={`pago-fila-${p.id}`}>
+      <button type="button" className="w-full flex items-center justify-between px-3 py-2 text-left" onClick={() => setAbierto(!abierto)} aria-expanded={abierto}>
+        <div>
+          <p className="font-medium text-gray-700">{new Date(p.periodoInicio).toLocaleDateString("es-DO")} — {new Date(p.periodoFin).toLocaleDateString("es-DO")}</p>
+          <p className="text-xs text-gray-400">{p.totalPedidos} entregas · {rd(parseFloat(p.totalVentas))} vendidos{p.recibidoAt ? " · ✓ el repartidor confirmó que lo recibió" : ""}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-gray-800">{rd(parseFloat(p.montoTotal))}</span>
+          {pendiente ? <Badge variant="outline" className="text-amber-700 border-amber-300">Pendiente</Badge> : <Badge className="bg-green-500 text-white flex items-center gap-1"><CheckCircle2 size={12} /> Pagado</Badge>}
+        </div>
+      </button>
+      {abierto && (
+        <div className="px-3 pb-3 space-y-2 border-t border-gray-200 pt-2">
+          {!data ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+            <>
+              <div className="space-y-0.5 text-gray-600">
+                {parseFloat(p.salarioCalculado) > 0 && <p className="flex justify-between"><span>Salario</span><span>{rd(parseFloat(p.salarioCalculado))}</span></p>}
+                {parseFloat(p.comisionCalculada) > 0 && <p className="flex justify-between"><span>Comisiones</span><span>{rd(parseFloat(p.comisionCalculada))}</span></p>}
+                {parseFloat(p.envioCalculado ?? "0") > 0 && <p className="flex justify-between"><span>Envíos</span><span>{rd(parseFloat(p.envioCalculado!))}</span></p>}
+                {data.ajustes.map((a) => (
+                  <p key={a.id} className={`flex justify-between items-center ${parseFloat(a.monto) < 0 ? "text-red-700" : "text-emerald-700"}`}>
+                    <span>{ETIQUETA[a.tipo] ?? a.tipo}{a.motivo ? ` · ${a.motivo}` : ""}</span>
+                    <span className="flex items-center gap-2">{rd(parseFloat(a.monto))}{pendiente && <button type="button" className="text-xs text-gray-500 underline" disabled={ocupado} onClick={() => hacer(() => pedir(`/api/pagos-delivery/${p.id}/ajustes/${a.id}`, "DELETE"), "Ajuste quitado")}>quitar</button>}</span>
+                  </p>
+                ))}
+                <p className="flex justify-between font-semibold text-gray-900"><span>Total a pagar</span><span>{rd(parseFloat(p.montoTotal))}</span></p>
+                {data.propinas > 0 && <p className="text-xs text-gray-500">Propinas del período (son del repartidor, no se pagan): {rd(data.propinas)}</p>}
+              </div>
+              {pendiente && (
+                <>
+                  {Math.abs(data.saldoCuadres) >= 0.01 && (
+                    <div className={`rounded-lg px-3 py-2 flex items-center justify-between gap-2 ${data.saldoCuadres < 0 ? "bg-red-50" : "bg-emerald-50"}`}>
+                      <span className="text-xs">{data.saldoCuadres < 0 ? `Le faltaron ${rd(-data.saldoCuadres)} en sus cuadres.` : `Le sobraron ${rd(data.saldoCuadres)} en sus cuadres.`}</span>
+                      <Button size="sm" variant="outline" className="h-7 text-xs" disabled={ocupado} onClick={() => hacer(() => pedir(`/api/pagos-delivery/${p.id}/ajustes`, "POST", { tipo: "cuadre" }), data.saldoCuadres < 0 ? "Faltante descontado" : "Sobrante sumado")} data-testid={`aplicar-cuadre-${p.id}`}>
+                        {data.saldoCuadres < 0 ? "Descontar" : "Sumar al pago"}
+                      </Button>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    <select className="h-8 rounded-md border border-gray-300 text-xs px-2" value={nuevo.tipo} onChange={(e) => setNuevo({ ...nuevo, tipo: e.target.value })} aria-label="Tipo de ajuste">
+                      <option value="bono">Bono (+)</option><option value="descuento">Descuento (−)</option>
+                    </select>
+                    <Input className="h-8 w-24 text-xs" inputMode="decimal" placeholder="Monto" value={nuevo.monto} onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })} data-testid={`monto-ajuste-${p.id}`} />
+                    <Input className="h-8 flex-1 min-w-[120px] text-xs" placeholder="Motivo (sale en el recibo)" value={nuevo.motivo} onChange={(e) => setNuevo({ ...nuevo, motivo: e.target.value })} />
+                    <Button size="sm" variant="outline" className="h-8 text-xs" disabled={ocupado || !(Number(nuevo.monto) > 0)} onClick={() => hacer(async () => { await pedir(`/api/pagos-delivery/${p.id}/ajustes`, "POST", { tipo: nuevo.tipo, monto: Number(nuevo.monto), motivo: nuevo.motivo }); setNuevo({ tipo: "bono", monto: "", motivo: "" }); }, "Ajuste agregado")} data-testid={`agregar-ajuste-${p.id}`}>Agregar</Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 items-center pt-1">
+                    <select className="h-8 rounded-md border border-gray-300 text-xs px-2" value={metodo} onChange={(e) => setMetodo(e.target.value)} aria-label="Cómo le pagaste">
+                      <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="cheque">Cheque</option>
+                    </select>
+                    <label className="h-8 inline-flex items-center px-2 rounded-md border border-gray-300 text-xs cursor-pointer">
+                      {p.comprobanteUrl ? "📎 Foto lista" : "Foto (opcional)"}
+                      <input type="file" accept="image/*" className="sr-only" onChange={async (e) => {
+                        const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+                        await hacer(async () => {
+                          const chica = await reducirImagen(f, { max: 1600, tipo: "image/jpeg" });
+                          const foto = await new Promise<string>((ok, mal) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = mal; r.readAsDataURL(chica); });
+                          await pedir(`/api/pagos-delivery/${p.id}/foto`, "POST", { foto });
+                        }, "Foto guardada");
+                      }} />
+                    </label>
+                    <Button size="sm" className="h-8 text-xs bg-primary" disabled={ocupado} onClick={() => hacer(() => pedir(`/api/pagos-delivery/${p.id}/marcar-pagado`, "PATCH", { metodo }), "Marcado como pagado. Le avisamos al repartidor.")} data-testid={`button-marcar-pagado-${p.id}`}>Marcar pagado</Button>
+                  </div>
+                </>
+              )}
+              {!pendiente && (
+                <p className="text-xs text-gray-500">Pagado{p.fechaPago ? ` el ${new Date(p.fechaPago).toLocaleDateString("es-DO")}` : ""}{p.pagadoPor ? ` por ${p.pagadoPor}` : ""}{p.metodoPago ? ` · ${p.metodoPago}` : ""}
+                  {p.comprobanteUrl && <> · <a className="underline" href={p.comprobanteUrl} target="_blank" rel="noreferrer">ver foto</a></>}
+                  {p.recibidoAt ? ` · el repartidor confirmó que lo recibió el ${new Date(p.recibidoAt).toLocaleDateString("es-DO")}` : " · el repartidor todavía no confirma que lo recibió"}</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

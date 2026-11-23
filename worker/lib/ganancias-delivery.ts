@@ -1,5 +1,5 @@
-import { and, eq, gt, lte, ne } from "drizzle-orm";
-import { deliveries, pagosDelivery, pedidos, saldosDelivery, type Delivery } from "@shared/schema";
+import { and, eq, gt, inArray, lte, ne, sql } from "drizzle-orm";
+import { deliveries, pagoDeliveryAjustes, pagosDelivery, pedidos, saldosDelivery, type Delivery } from "@shared/schema";
 import type { Db } from "../db";
 import { fechaLocal, inicioDiaLocal } from "./fechas";
 
@@ -48,18 +48,22 @@ export function periodoAnterior(periodoPago: string, tz: string, fecha: Date = n
   return periodoQueContiene(periodoPago, tz, new Date(periodoQueContiene(periodoPago, tz, fecha).inicio.getTime() - 1));
 }
 
-export type Resumen = { entregas: number; ventas: number; salario: number; comision: number; total: number };
+export type Resumen = { entregas: number; ventas: number; salario: number; comision: number; envio: number; propinas: number; total: number };
 
 /** Lo que gana el repartidor en un rango, según su forma de pago (salario, comisión o mixto). */
 export async function resumenDe(db: Db, delivery: Delivery, inicio: Date, fin: Date, conSalario = true): Promise<Resumen> {
-  const entregas = await db.select({ total: pedidos.total }).from(pedidos).where(and(
+  const entregas = await db.select({ total: pedidos.total, envio: pedidos.costoDeliveryAplicado, tipo: pedidos.tipoEntrega, propina: pedidos.propina }).from(pedidos).where(and(
     eq(pedidos.deliveryId, delivery.id), eq(pedidos.estado, "entregado"), gt(pedidos.fechaEntrega, inicio), lte(pedidos.fechaEntrega, fin),
   ));
   const ventas = entregas.reduce((s, p) => s + num(p.total), 0);
   const modelo = delivery.modeloPago || "comision";
   const salario = conSalario && (modelo === "salario" || modelo === "mixto") ? num(delivery.salarioMonto) : 0;
   const comision = modelo === "comision" || modelo === "mixto" ? num(delivery.comisionFija) * entregas.length + (ventas * num(delivery.comisionPorcentaje)) / 100 : 0;
-  return { entregas: entregas.length, ventas: r2(ventas), salario: r2(salario), comision: r2(comision), total: r2(salario + comision) };
+  // «El envío es del delivery»: el costo de envío de cada entrega se le suma.
+  const envio = delivery.envioEsDelDelivery ? entregas.filter((p) => p.tipo !== "pickup").reduce((s, p) => s + num(p.envio), 0) : 0;
+  // Las propinas son suyas: se muestran, pero no las paga el colmado.
+  const propinas = entregas.reduce((s, p) => s + num(p.propina), 0);
+  return { entregas: entregas.length, ventas: r2(ventas), salario: r2(salario), comision: r2(comision), envio: r2(envio), propinas: r2(propinas), total: r2(salario + comision + envio) };
 }
 
 /**
@@ -70,12 +74,13 @@ export async function guardarPagoDelPeriodo(db: Db, delivery: Delivery, inicio: 
   const r = await resumenDe(db, delivery, inicio, fin);
   const valores = {
     totalPedidos: r.entregas, totalVentas: r.ventas.toFixed(2), modeloPago: delivery.modeloPago || "comision",
-    salarioCalculado: r.salario.toFixed(2), comisionCalculada: r.comision.toFixed(2), montoTotal: r.total.toFixed(2),
+    salarioCalculado: r.salario.toFixed(2), comisionCalculada: r.comision.toFixed(2), envioCalculado: r.envio.toFixed(2), montoTotal: r.total.toFixed(2),
   };
   const [existente] = await db.select().from(pagosDelivery).where(and(eq(pagosDelivery.deliveryId, delivery.id), eq(pagosDelivery.periodoInicio, inicio), eq(pagosDelivery.periodoFin, fin)));
   if (existente) {
     if (existente.estado === "pagado") return existente;
-    const [act] = await db.update(pagosDelivery).set(valores).where(eq(pagosDelivery.id, existente.id)).returning();
+    // Los bonos y descuentos ya puestos se conservan.
+    const [act] = await db.update(pagosDelivery).set({ ...valores, montoTotal: r2(r.total + num(existente.ajustesTotal)).toFixed(2) }).where(eq(pagosDelivery.id, existente.id)).returning();
     return act;
   }
   const [nuevo] = await db.insert(pagosDelivery).values({ deliveryId: delivery.id, colmadoId: delivery.colmadoId, periodoInicio: inicio, periodoFin: fin, ...valores }).returning();
@@ -86,7 +91,7 @@ export async function guardarPagoDelPeriodo(db: Db, delivery: Delivery, inicio: 
  * Cron: al terminar la semana, quincena o mes de cada repartidor, deja su pago pendiente (una vez).
  * Solo el período que acaba de terminar (no rellena meses viejos), y solo si trabajó o tiene salario.
  */
-export async function cerrarPeriodosVencidos(db: Db, tzDe: (colmadoId: number) => Promise<string>, ahora = new Date()): Promise<number> {
+export async function cerrarPeriodosVencidos(db: Db, tzDe: (colmadoId: number) => Promise<string>, ahora = new Date(), alCrear?: (d: Delivery, monto: number, pagoId: number) => Promise<unknown>): Promise<number> {
   const lista = await db.select().from(deliveries).where(ne(deliveries.periodoPago, "personalizado"));
   let creados = 0;
   for (const d of lista) {
@@ -98,8 +103,9 @@ export async function cerrarPeriodosVencidos(db: Db, tzDe: (colmadoId: number) =
     const r = await resumenDe(db, d, p.inicio, p.fin);
     if (!r.entregas && !r.salario) continue;
     if (d.estado === "inactivo" && !r.entregas) continue;
-    await guardarPagoDelPeriodo(db, d, p.inicio, p.fin);
+    const pago = await guardarPagoDelPeriodo(db, d, p.inicio, p.fin);
     creados++;
+    if (alCrear) await alCrear(d, num(pago.montoTotal), pago.id).catch(() => undefined);
   }
   return creados;
 }
@@ -116,3 +122,59 @@ export function cobraEl(p: Periodo): string {
   return ymd(y, m, d + 1);
 }
 
+
+// ---------- Ajustes del pago (bonos, descuentos y cuadres) ----------
+
+export class AjusteInvalido extends Error {}
+
+/** Vuelve a sumar los ajustes y el total del pago. */
+export async function recalcularTotal(db: Db, pagoId: number) {
+  const ajustes = await db.select({ monto: pagoDeliveryAjustes.monto }).from(pagoDeliveryAjustes).where(eq(pagoDeliveryAjustes.pagoId, pagoId));
+  const suma = r2(ajustes.reduce((s, a) => s + num(a.monto), 0));
+  const [p] = await db.select().from(pagosDelivery).where(eq(pagosDelivery.id, pagoId));
+  const base = num(p.salarioCalculado) + num(p.comisionCalculada) + num(p.envioCalculado);
+  const [act] = await db.update(pagosDelivery).set({ ajustesTotal: suma.toFixed(2), montoTotal: Math.max(0, r2(base + suma)).toFixed(2) }).where(eq(pagosDelivery.id, pagoId)).returning();
+  return act;
+}
+
+/**
+ * Agrega un bono (+), un descuento (−) o el saldo de cuadres al pago pendiente.
+ * «cuadre» toma todo el saldo abierto del repartidor (faltante = descuento, sobrante = bono) y lo deja en 0.
+ */
+export async function agregarAjuste(db: Db, pagoId: number, tipo: string, montoPedido: number, motivo: string | null, usuario: string) {
+  const [p] = await db.select().from(pagosDelivery).where(eq(pagosDelivery.id, pagoId));
+  if (!p) throw new AjusteInvalido("Pago no encontrado");
+  if (p.estado === "pagado") throw new AjusteInvalido("Ese pago ya se hizo; no se puede cambiar.");
+  let monto: number;
+  if (tipo === "cuadre") {
+    const [s] = await db.select().from(saldosDelivery).where(and(eq(saldosDelivery.deliveryId, p.deliveryId), eq(saldosDelivery.colmadoId, p.colmadoId), eq(saldosDelivery.estado, "pendiente")));
+    monto = r2(num(s?.saldoPendiente));
+    if (!s || Math.abs(monto) < 0.005) throw new AjusteInvalido("No tiene saldo de cuadres pendiente.");
+    await db.update(saldosDelivery).set({ saldoPendiente: "0", estado: "saldado", fechaSaldado: new Date() }).where(eq(saldosDelivery.id, s.id));
+    motivo = motivo || (monto < 0 ? "Faltante de cuadres" : "Sobrante de cuadres");
+  } else if (tipo === "bono" || tipo === "descuento" || tipo === "adelanto") {
+    if (!Number.isFinite(montoPedido) || montoPedido <= 0 || montoPedido > 1_000_000) throw new AjusteInvalido("Escribe el monto.");
+    monto = tipo === "bono" ? r2(montoPedido) : -r2(montoPedido);
+  } else throw new AjusteInvalido("Tipo de ajuste inválido.");
+  await db.insert(pagoDeliveryAjustes).values({ pagoId, tipo, monto: monto.toFixed(2), motivo: motivo?.slice(0, 200) ?? null, usuario });
+  return recalcularTotal(db, pagoId);
+}
+
+/** Quita un ajuste de un pago pendiente; si era de cuadres, el saldo vuelve a quedar abierto. */
+export async function quitarAjuste(db: Db, pagoId: number, ajusteId: number) {
+  const [p] = await db.select().from(pagosDelivery).where(eq(pagosDelivery.id, pagoId));
+  if (!p || p.estado === "pagado") throw new AjusteInvalido("Ese pago ya se hizo; no se puede cambiar.");
+  const [a] = await db.select().from(pagoDeliveryAjustes).where(and(eq(pagoDeliveryAjustes.id, ajusteId), eq(pagoDeliveryAjustes.pagoId, pagoId)));
+  if (!a) throw new AjusteInvalido("Ajuste no encontrado");
+  if (a.tipo === "cuadre") {
+    await db.insert(saldosDelivery).values({ deliveryId: p.deliveryId, colmadoId: p.colmadoId, saldoPendiente: num(a.monto).toFixed(2), estado: "pendiente" })
+      .onConflictDoUpdate({ target: [saldosDelivery.deliveryId, saldosDelivery.colmadoId], targetWhere: sql`estado = 'pendiente'`, set: { saldoPendiente: sql`round(${saldosDelivery.saldoPendiente} + ${num(a.monto)}, 2)` } });
+  }
+  await db.delete(pagoDeliveryAjustes).where(eq(pagoDeliveryAjustes.id, a.id));
+  return recalcularTotal(db, pagoId);
+}
+
+export async function ajustesDe(db: Db, pagoIds: number[]) {
+  if (!pagoIds.length) return [];
+  return db.select().from(pagoDeliveryAjustes).where(inArray(pagoDeliveryAjustes.pagoId, pagoIds)).orderBy(pagoDeliveryAjustes.id);
+}

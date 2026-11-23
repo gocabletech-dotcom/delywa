@@ -123,3 +123,9 @@ export async function avisarPedidoNuevo(env: Env, db: Db, pedido: { id: number; 
     return 0;
   }
 }
+
+/** Al repartidor (portal de delivery): pedido asignado, pago listo, pago hecho. */
+export async function avisarAlRepartidor(env: Env, db: Db, deliveryId: number, aviso: AvisoPush): Promise<number> {
+  const subs = await db.select().from(pushSuscripciones).where(and(eq(pushSuscripciones.tipo, "delivery"), eq(pushSuscripciones.userId, `delivery:${deliveryId}`))).limit(5);
+  return enviarPush(env, db, subs, aviso).catch(() => 0);
+}

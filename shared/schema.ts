@@ -236,6 +236,8 @@ export const deliveries = sqliteTable("deliveries", {
   comisionFija: numeric("comision_fija").notNull().default("0"),
   comisionPorcentaje: numeric("comision_porcentaje").notNull().default("0"),
   periodoPago: text("periodo_pago").notNull().default("semanal"), // semanal | quincenal | mensual | personalizado
+  /** DELYWA: el costo de envío de cada entrega es del repartidor (se suma a su pago). */
+  envioEsDelDelivery: integer("envio_es_del_delivery", { mode: "boolean" }).notNull().default(false),
   // ── GPS en tiempo real ──
   ultimaLatitud: numeric("ultima_latitud"),
   ultimaLongitud: numeric("ultima_longitud"),
@@ -421,6 +423,8 @@ export const pedidos = sqliteTable("pedidos", {
   comprobanteUrl: text("comprobante_url"),
   comprobanteConfirmado: integer("comprobante_confirmado", { mode: "boolean" }).default(false),
   notas: text("notas"),
+  /** DELYWA: propina que el cliente le dio al repartidor (es suya; no entra en la caja). */
+  propina: numeric("propina"),
   /** DELYWA: de dónde salió el pedido. null = chat, WhatsApp o menú; «mostrador» = venta en el colmado. */
   origen: text("origen"),
   ultimoRecordatorioCobro: integer("ultimo_recordatorio_cobro", { mode: "timestamp_ms" }),
@@ -554,6 +558,13 @@ export const pagosDelivery = sqliteTable("pagos_delivery", {
   salarioCalculado: numeric("salario_calculado").notNull().default("0"),
   comisionCalculada: numeric("comision_calculada").notNull().default("0"),
   montoTotal: numeric("monto_total").notNull(),
+  /** DELYWA: envíos del período (si el envío es del delivery) y suma de bonos (+) y descuentos (−). */
+  envioCalculado: numeric("envio_calculado").notNull().default("0"),
+  ajustesTotal: numeric("ajustes_total").notNull().default("0"),
+  /** DELYWA: cómo se le pagó, foto de la transferencia y cuándo el repartidor confirmó que lo recibió. */
+  metodoPago: text("metodo_pago"),
+  comprobanteUrl: text("comprobante_url"),
+  recibidoAt: integer("recibido_at", { mode: "timestamp_ms" }),
   estado: text("estado").notNull().default("pendiente"), // pendiente | pagado
   fechaPago: integer("fecha_pago", { mode: "timestamp_ms" }),
   pagadoPor: text("pagado_por"),
@@ -562,6 +573,19 @@ export const pagosDelivery = sqliteTable("pagos_delivery", {
 }, (t) => [
   index("pagos_delivery_colmado_delivery_idx").on(t.colmadoId, t.deliveryId),
 ]);
+
+/** DELYWA: bonos, descuentos y faltantes/sobrantes de cuadre de un pago (salen en el recibo). */
+export const pagoDeliveryAjustes = sqliteTable("pago_delivery_ajustes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  pagoId: integer("pago_id").notNull().references(() => pagosDelivery.id, { onDelete: "cascade" }),
+  /** bono | descuento | cuadre | adelanto */
+  tipo: text("tipo").notNull(),
+  /** Con signo: positivo suma al pago, negativo lo resta. */
+  monto: numeric("monto").notNull(),
+  motivo: text("motivo"),
+  usuario: text("usuario"),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (t) => [index("pago_delivery_ajustes_pago_idx").on(t.pagoId)]);
 
 export const insertPagoDeliverySchema = createInsertSchema(pagosDelivery).omit({
   id: true,

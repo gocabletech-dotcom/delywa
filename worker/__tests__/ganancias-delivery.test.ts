@@ -90,3 +90,59 @@ describe("portal → Ganancias", () => {
     expect((await t.client().request("GET", "/api/portal-repartidor/ganancias")).status).toBe(401);
   });
 });
+
+describe("v2.60: ajustes, envío, propinas, pago y recibo", () => {
+  let pagoId = 0;
+  let portal: Client;
+  it("bonos, descuentos y el faltante de cuadres cambian el total; el faltante queda saldado", async () => {
+    [{ id: pagoId }] = await t.db.select({ id: pagosDelivery.id }).from(pagosDelivery).where(eq(pagosDelivery.deliveryId, pedro.id));
+    let r = await dueno.request("GET", `/api/pagos-delivery/${pagoId}`);
+    expect(r.json.saldoCuadres).toBe(-75);
+    r = await dueno.request("POST", `/api/pagos-delivery/${pagoId}/ajustes`, { tipo: "bono", monto: 300, motivo: "Semana sin fallas" });
+    expect(Number(r.json.pago.montoTotal)).toBe(2450);
+    r = await dueno.request("POST", `/api/pagos-delivery/${pagoId}/ajustes`, { tipo: "cuadre" });
+    expect(Number(r.json.pago.montoTotal)).toBe(2375);
+    expect(r.json.ajustes.map((a: any) => `${a.tipo}:${Number(a.monto)}`)).toEqual(["bono:300", "cuadre:-75"]);
+    expect((await dueno.request("GET", `/api/pagos-delivery/${pagoId}`)).json.saldoCuadres).toBe(0);
+    // Quitar el de cuadres vuelve a abrir el faltante.
+    const cuadre = r.json.ajustes.find((a: any) => a.tipo === "cuadre");
+    r = await dueno.request("DELETE", `/api/pagos-delivery/${pagoId}/ajustes/${cuadre.id}`);
+    expect(Number(r.json.pago.montoTotal)).toBe(2450);
+    expect((await dueno.request("GET", `/api/pagos-delivery/${pagoId}`)).json.saldoCuadres).toBe(-75);
+    await dueno.request("POST", `/api/pagos-delivery/${pagoId}/ajustes`, { tipo: "descuento", monto: 50, motivo: "Uniforme" });
+    // Recalcular conserva los ajustes.
+    const semana = periodoAnterior("semanal", TZ, new Date());
+    const rc = await dueno.request("POST", `/api/deliveries/${pedro.id}/pagos/calcular`, { periodoInicio: semana.inicio.toISOString(), periodoFin: semana.fin.toISOString() });
+    expect(rc.json.id).toBe(pagoId);
+    expect(Number(rc.json.montoTotal)).toBe(2400);
+  });
+
+  it("el envío es del delivery: se suma el costo de envío de sus entregas", async () => {
+    expect((await dueno.request("PATCH", `/api/deliveries/${pedro.id}/config-pago`, { envioEsDelDelivery: true })).status).toBe(200);
+    await t.db.update(pedidos).set({ costoDeliveryAplicado: "60", tipoEntrega: "delivery" }).where(eq(pedidos.deliveryId, pedro.id));
+    const semana = periodoAnterior("semanal", TZ, new Date());
+    const rc = await dueno.request("POST", `/api/deliveries/${pedro.id}/pagos/calcular`, { periodoInicio: semana.inicio.toISOString(), periodoFin: semana.fin.toISOString() });
+    expect(Number(rc.json.envioCalculado)).toBe(180);
+    expect(Number(rc.json.montoTotal)).toBe(2580);
+  });
+
+  it("propina de su entrega, marcar pagado con forma, aviso y «Recibí mi pago»", async () => {
+    portal = t.client();
+    expect((await portal.request("POST", "/api/portal-repartidor/login", { slug: "colmado-ganancias", whatsappNumero: "18095550101", codigoAcceso: "ABC234" }, { "CF-Connecting-IP": "10.0.0.32" })).status).toBe(200);
+    const [hoy] = await t.db.select().from(pedidos).where(eq(pedidos.clienteNombre, "Hoy"));
+    expect((await portal.request("POST", `/api/portal-repartidor/pedidos/${hoy.id}/propina`, { monto: 100 })).status).toBe(200);
+    // No antes de pagar.
+    expect((await portal.request("POST", `/api/portal-repartidor/pagos/${pagoId}/recibido`)).status).toBe(409);
+    const pagado = await dueno.request("PATCH", `/api/pagos-delivery/${pagoId}/marcar-pagado`, { metodo: "transferencia" });
+    expect(pagado.json).toMatchObject({ estado: "pagado", metodoPago: "transferencia" });
+    expect((await dueno.request("POST", `/api/pagos-delivery/${pagoId}/ajustes`, { tipo: "bono", monto: 10 })).status).toBe(400);
+    expect((await portal.request("POST", `/api/portal-repartidor/pagos/${pagoId}/recibido`)).status).toBe(200);
+    const g = await portal.request("GET", "/api/portal-repartidor/ganancias");
+    const p = g.json.pagos.find((x: any) => x.id === pagoId);
+    expect(p).toMatchObject({ estado: "pagado", metodo: "transferencia", envio: 180, total: 2580 });
+    expect(p.recibido).toBeTruthy();
+    expect(p.ajustes.map((a: any) => a.tipo)).toEqual(["bono", "descuento"]);
+    expect(g.json.hoy.propinas).toBe(100);
+    expect(g.json.forma.envio).toBe(true);
+  });
+});

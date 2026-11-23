@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, eq, gt, lt, sql } from "drizzle-orm";
-import { pedidos, subidasPendientes } from "@shared/schema";
+import { pagosDelivery, pedidos, subidasPendientes } from "@shared/schema";
 import type { AppEnv, Env } from "../env";
 import { getDb } from "../db";
 import { requireAuth, usuarioOpcional } from "../lib/auth";
@@ -122,7 +122,7 @@ uploadRoutes.post("/api/colmados/:id/logo", requireAuth, async (c) => {
 
 uploadRoutes.get("/uploads/*", sessionMiddleware, async (c) => {
   const clave = decodeURIComponent(new URL(c.req.url).pathname.slice("/uploads/".length));
-  if (!/^(productos|logos|comprobantes|audios|facturas)\/[A-Za-z0-9/_.-]+$/.test(clave) || clave.includes("..")) return c.notFound();
+  if (!/^(productos|logos|comprobantes|audios|facturas|nomina)\/[A-Za-z0-9/_.-]+$/.test(clave) || clave.includes("..")) return c.notFound();
 
   // Fotos de facturas de compra: solo el dueño y el colmadero de ese negocio (facturas/<negocio>/…).
   const factura = clave.match(/^facturas\/(\d+)\/[0-9a-f-]{36}\.jpg$/);
@@ -141,8 +141,22 @@ uploadRoutes.get("/uploads/*", sessionMiddleware, async (c) => {
     if (!user) return c.json({ error: "No autenticado" }, 401);
     if (!(await puedeOperar(getDb(c.env.DB), user, Number(audio[1])))) return c.json({ error: "No tienes permiso para ver este archivo" }, 403);
   }
+  // Foto de la transferencia de un pago de nómina: el dueño o colmadero, o el repartidor de ese pago (portal).
+  const nomina = clave.match(/^nomina\/(\d+)\/[0-9a-f-]{36}\.jpg$/);
+  if (clave.startsWith("nomina/")) {
+    if (!nomina) return c.notFound();
+    const db = getDb(c.env.DB);
+    const portalId = c.var.session?.data?.portalDeliveryId;
+    const [pago] = await db.select({ deliveryId: pagosDelivery.deliveryId }).from(pagosDelivery).where(eq(pagosDelivery.comprobanteUrl, `/uploads/${clave}`)).limit(1);
+    const delRepartidor = Boolean(portalId && pago && pago.deliveryId === portalId);
+    if (!delRepartidor) {
+      const user = await usuarioOpcional(c);
+      if (!user) return c.json({ error: "No autenticado" }, 401);
+      if (!(await puedeOperar(db, user, Number(nomina[1]), ADMINISTRADORES))) return c.json({ error: "No tienes permiso para ver este archivo" }, 403);
+    }
+  }
   // Un comprobante de pago solo lo ve el personal del negocio al que pertenece el pedido.
-  const privado = clave.startsWith("comprobantes/") || Boolean(audio) || Boolean(factura);
+  const privado = clave.startsWith("comprobantes/") || Boolean(audio) || Boolean(factura) || Boolean(nomina);
   if (clave.startsWith("comprobantes/")) {
     const user = await usuarioOpcional(c);
     if (!user) return c.json({ error: "No autenticado" }, 401);

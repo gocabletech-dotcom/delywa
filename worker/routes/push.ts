@@ -25,7 +25,7 @@ export function leerSuscripcion(v: any): { endpoint: string; p256dh: string; aut
   return { endpoint, p256dh, auth };
 }
 
-export async function guardarSuscripcion(db: Db, s: { endpoint: string; p256dh: string; auth: string }, datos: { tipo: "negocio" | "cliente"; colmadoId: number; userId?: string | null; telefono?: string | null; ofertas?: boolean }) {
+export async function guardarSuscripcion(db: Db, s: { endpoint: string; p256dh: string; auth: string }, datos: { tipo: "negocio" | "cliente" | "delivery"; colmadoId: number; userId?: string | null; telefono?: string | null; ofertas?: boolean }) {
   await db.insert(pushSuscripciones).values({ ...s, ...datos, ofertas: datos.ofertas ?? true })
     .onConflictDoUpdate({ target: pushSuscripciones.endpoint, set: { p256dh: s.p256dh, auth: s.auth, tipo: datos.tipo, colmadoId: datos.colmadoId, userId: datos.userId ?? null, telefono: datos.telefono ?? null, ofertas: datos.ofertas ?? true, fallos: 0 } });
 }

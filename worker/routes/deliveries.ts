@@ -12,6 +12,11 @@ import { coordenadasDelPedido, enriquecerDirecciones, simboloMoneda } from "../l
 import { calcularMetricasDistanciaPedidoConRutas, parseCoordinatePair } from "../lib/orderDistance";
 import { soloDigitos } from "../lib/telefono";
 import { getColmado, getColmadoTimezone } from "../storage/colmados";
+import { pagosDelivery } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { AjusteInvalido, agregarAjuste, ajustesDe, quitarAjuste, resumenDe, saldoDeCuadres } from "../lib/ganancias-delivery";
+import { inicioDiaLocal, rangoDiaLocal } from "../lib/fechas";
+import { avisarAlRepartidor } from "../lib/push";
 import { getAccessibleColmadoIds, updateUserRole } from "../storage/users";
 import { getConfiguracion, getPlan, upsertConfiguracion } from "../storage/catalogos";
 import { getPedidoById, getPedidosByColmado } from "../storage/pedidos";
@@ -188,6 +193,7 @@ const configPagoSchema = z.object({
   comisionFija: z.coerce.number().min(0).optional(),
   comisionPorcentaje: z.coerce.number().min(0).max(100).optional(),
   periodoPago: z.enum(PERIODOS_PAGO as [string, ...string[]]).optional(),
+  envioEsDelDelivery: z.boolean().optional(),
 });
 
 deliveryRoutes.patch("/api/deliveries/:id/config-pago", requireAuth, async (c) => {
@@ -203,6 +209,7 @@ deliveryRoutes.patch("/api/deliveries/:id/config-pago", requireAuth, async (c) =
     ...(d.comisionFija !== undefined ? { comisionFija: d.comisionFija.toFixed(2) } : {}),
     ...(d.comisionPorcentaje !== undefined ? { comisionPorcentaje: d.comisionPorcentaje.toFixed(2) } : {}),
     ...(d.periodoPago !== undefined ? { periodoPago: d.periodoPago } : {}),
+    ...(d.envioEsDelDelivery !== undefined ? { envioEsDelDelivery: d.envioEsDelDelivery } : {}),
   };
   if (!Object.keys(config).length) return c.json(r.delivery);
   return c.json(await updateDeliveryConfigPago(db, r.delivery.id, config));
@@ -235,7 +242,12 @@ deliveryRoutes.post("/api/deliveries/:id/pagos/calcular", requireAuth, async (c)
   const fin = fecha(body.periodoFin);
   if (!inicio || !fin) return c.json({ error: "Se requiere periodoInicio y periodoFin" }, 400);
   if (inicio > fin) return c.json({ error: "El inicio del período debe ser anterior al fin" }, 400);
-  return c.json(await calcularPagoDelivery(db, r.delivery, inicio, fin));
+  // Días completos en la hora del negocio: así coincide con el pago que deja el cierre automático.
+  const colmado = await getColmado(db, r.delivery.colmadoId);
+  const tz = colmado ? await getColmadoTimezone(db, colmado) : "America/Santo_Domingo";
+  const desde = inicioDiaLocal(tz, inicio);
+  const hasta = new Date(rangoDiaLocal(tz, fin).hasta.getTime() - 1);
+  return c.json(await calcularPagoDelivery(db, r.delivery, desde, hasta));
 });
 
 // El original no verificaba a quién pertenecía el repartidor en estas dos rutas.
@@ -251,9 +263,70 @@ deliveryRoutes.patch("/api/pagos-delivery/:id/marcar-pagado", requireAuth, async
   const pago = await getPagoDeliveryById(db, Number(c.req.param("id")));
   if (!pago) return c.json({ error: "Pago no encontrado" }, 404);
   if (!(await puedeOperar(db, c.var.user, pago.colmadoId, ADMINISTRADORES))) return c.json({ error: "Sin permiso" }, 403);
-  const { pagadoPor } = await cuerpo(c);
+  const { pagadoPor, metodo, notas } = await cuerpo(c);
   const nombre = typeof pagadoPor === "string" && pagadoPor.trim() ? pagadoPor.trim().slice(0, 120) : nombreUsuario(c.var.user);
-  return c.json(await marcarPagoDeliveryComoPagado(db, pago.id, nombre));
+  const act = await marcarPagoDeliveryComoPagado(db, pago.id, nombre);
+  const forma = ["efectivo", "transferencia", "cheque"].includes(metodo) ? metodo : "efectivo";
+  const [conForma] = await db.update(pagosDelivery).set({ metodoPago: forma, ...(typeof notas === "string" && notas.trim() ? { notas: notas.trim().slice(0, 300) } : {}) })
+    .where(eq(pagosDelivery.id, pago.id)).returning();
+  await avisarAlRepartidor(c.env, db, pago.deliveryId, { titulo: "💵 Te pagaron", texto: `Recibiste RD$${Number(conForma.montoTotal).toLocaleString("es-DO")} (${forma}). Toca para ver tu recibo y confirmar.`, url: `/repartidor/${(await getColmado(db, pago.colmadoId))?.slug ?? ""}`, etiqueta: `pago-${pago.id}` });
+  return c.json(conForma ?? act);
+});
+
+/** Un pago con sus bonos y descuentos, el saldo de cuadres del repartidor y sus propinas (información). */
+async function pagoAdministrable(c: Context<AppEnv>) {
+  const db = getDb(c.env.DB);
+  const pago = await getPagoDeliveryById(db, Number(c.req.param("id")));
+  if (!pago) return { error: c.json({ error: "Pago no encontrado" }, 404) };
+  if (!(await puedeOperar(db, c.var.user, pago.colmadoId, ADMINISTRADORES))) return { error: c.json({ error: "Sin permiso" }, 403) };
+  return { db, pago };
+}
+
+deliveryRoutes.get("/api/pagos-delivery/:id", requireAuth, async (c) => {
+  const r = await pagoAdministrable(c);
+  if (r.error) return r.error;
+  const delivery = await getDeliveryById(r.db, r.pago.deliveryId);
+  const resumen = delivery ? await resumenDe(r.db, delivery, r.pago.periodoInicio, r.pago.periodoFin) : null;
+  return c.json({ pago: r.pago, ajustes: await ajustesDe(r.db, [r.pago.id]), saldoCuadres: delivery ? await saldoDeCuadres(r.db, delivery) : 0, propinas: resumen?.propinas ?? 0 });
+});
+
+deliveryRoutes.post("/api/pagos-delivery/:id/ajustes", requireAuth, async (c) => {
+  const r = await pagoAdministrable(c);
+  if (r.error) return r.error;
+  const { tipo, monto, motivo } = await cuerpo(c);
+  try {
+    const pago = await agregarAjuste(r.db, r.pago.id, String(tipo), Number(monto), typeof motivo === "string" ? motivo.trim() || null : null, nombreUsuario(c.var.user));
+    return c.json({ pago, ajustes: await ajustesDe(r.db, [pago.id]) });
+  } catch (e) {
+    if (e instanceof AjusteInvalido) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+
+deliveryRoutes.delete("/api/pagos-delivery/:id/ajustes/:aid", requireAuth, async (c) => {
+  const r = await pagoAdministrable(c);
+  if (r.error) return r.error;
+  try {
+    const pago = await quitarAjuste(r.db, r.pago.id, Number(c.req.param("aid")));
+    return c.json({ pago, ajustes: await ajustesDe(r.db, [pago.id]) });
+  } catch (e) {
+    if (e instanceof AjusteInvalido) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+
+/** Foto de la transferencia del pago (privada: el colmado y ese repartidor). */
+deliveryRoutes.post("/api/pagos-delivery/:id/foto", requireAuth, async (c) => {
+  const r = await pagoAdministrable(c);
+  if (r.error) return r.error;
+  const { foto } = await cuerpo(c);
+  const m = typeof foto === "string" ? foto.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/) : null;
+  if (!m || m[1].length > 3_000_000) return c.json({ error: "Manda la foto en JPEG." }, 400);
+  if (!c.env.UPLOADS) return c.json({ error: "No se pueden guardar fotos ahora." }, 503);
+  const clave = `nomina/${r.pago.colmadoId}/${crypto.randomUUID()}.jpg`;
+  await c.env.UPLOADS.put(clave, Uint8Array.from(atob(m[1]), (ch) => ch.charCodeAt(0)), { httpMetadata: { contentType: "image/jpeg", cacheControl: "private, no-store" } });
+  const [pago] = await r.db.update(pagosDelivery).set({ comprobanteUrl: `/uploads/${clave}` }).where(eq(pagosDelivery.id, r.pago.id)).returning();
+  return c.json(pago);
 });
 
 deliveryRoutes.get("/api/colmados/:id/deliveries/pagos", requireAuth, requireBusinessAccess(), async (c) => {
@@ -366,6 +439,7 @@ deliveryRoutes.patch("/api/pedidos/:id/asignar", requireAuth, async (c) => {
       const simbolo = await simboloMoneda(db, colmado);
       mensajeParaEnviar = await mensajeParaRepartidor(db, colmado, actualizado, simbolo);
       whatsappEnviado = await enviarWhatsApp(c.env, colmado, delivery.whatsappNumero, mensajeParaEnviar);
+      await avisarAlRepartidor(c.env, db, delivery.id, { titulo: `🛵 Te asignaron el pedido #${pedidoId}`, texto: `${actualizado.clienteNombre || "Cliente"} · ${actualizado.clienteUbicacion || ""}`.slice(0, 160), url: `/repartidor/${colmado.slug}`, etiqueta: `asignado-${pedidoId}` });
       const total = Number(actualizado.totalConfirmado ?? actualizado.total) || 0;
       await notificarCliente(c.env, db, colmado, actualizado,
         `🛵 ¡Tu pedido #${pedidoId} ha sido asignado a un delivery!\n\n💰 Total: ${simbolo}${total.toLocaleString("es-DO")}\n\nPronto saldrá hacia tu ubicación. Te avisaremos cuando esté en camino. 🙌`,
