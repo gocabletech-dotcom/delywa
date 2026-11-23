@@ -651,7 +651,7 @@ export default function DeliveriesPage() {
             </TabsContent>
 
             <TabsContent value="configuracion">
-              <ConfiguracionPagoTab deliveries={deliveries || []} />
+              <ConfiguracionPagoTab deliveries={deliveries || []} colmadoId={colmadoId} />
             </TabsContent>
           </Tabs>
         </main>

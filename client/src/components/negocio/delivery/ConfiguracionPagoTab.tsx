@@ -266,7 +266,7 @@ function DeliveryConfigCard({ delivery }: { delivery: Delivery }) {
   );
 }
 
-export default function ConfiguracionPagoTab({ deliveries }: { deliveries: Delivery[] }) {
+export default function ConfiguracionPagoTab({ deliveries, colmadoId }: { deliveries: Delivery[]; colmadoId?: number }) {
   if (!deliveries || deliveries.length === 0) {
     return (
       <div className="text-center py-16 text-gray-400">
@@ -277,6 +277,7 @@ export default function ConfiguracionPagoTab({ deliveries }: { deliveries: Deliv
   }
   return (
     <div className="space-y-3">
+      {colmadoId && <AdelantosPendientes colmadoId={colmadoId} />}
       {deliveries.map((d) => (
         <DeliveryConfigCard key={d.id} delivery={d} />
       ))}
@@ -389,5 +390,50 @@ function PagoFila({ pago, deliveryId }: { pago: PagoDelivery; deliveryId: number
         </div>
       )}
     </div>
+  );
+}
+
+type Adelanto = { id: number; repartidor: string; monto: number; motivo: string | null; estado: string; fecha: string; resueltoPor: string | null; respuesta: string | null };
+
+/** Adelantos que pidieron los repartidores desde su portal: aprobar (le das el dinero) o rechazar. */
+export function AdelantosPendientes({ colmadoId }: { colmadoId: number }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data } = useQuery<{ adelantos: Adelanto[] }>({ queryKey: ["adelantos", colmadoId], queryFn: () => pedir(`/api/colmados/${colmadoId}/adelantos`, "GET") });
+  const [metodo, setMetodo] = useState<Record<number, string>>({});
+  const [ocupado, setOcupado] = useState<number | null>(null);
+  const pendientes = (data?.adelantos ?? []).filter((a) => a.estado === "pendiente");
+  if (!pendientes.length) return null;
+  const responder = async (a: Adelanto, accion: "aprobar" | "rechazar") => {
+    let respuesta: string | null = null;
+    if (accion === "rechazar") { respuesta = window.prompt(`¿Por qué no le das el adelanto a ${a.repartidor}? (opcional)`) ; if (respuesta === null) return; }
+    setOcupado(a.id);
+    try {
+      await pedir(`/api/adelantos/${a.id}/${accion}`, "POST", accion === "aprobar" ? { metodo: metodo[a.id] ?? "efectivo" } : { respuesta });
+      toast({ title: accion === "aprobar" ? "Adelanto aprobado: se descuenta de su próximo pago" : "Adelanto rechazado" });
+      qc.invalidateQueries({ queryKey: ["adelantos", colmadoId] });
+    } catch (e: any) { toast({ title: "No se pudo", description: e.message, variant: "destructive" }); }
+    setOcupado(null);
+  };
+  return (
+    <Card className="border-amber-300 bg-amber-50 shadow-sm" data-testid="adelantos-pendientes">
+      <CardContent className="p-4 space-y-2">
+        <p className="font-semibold text-amber-900">Adelantos pedidos ({pendientes.length})</p>
+        {pendientes.map((a) => (
+          <div key={a.id} className="flex flex-wrap items-center gap-2 bg-white rounded-lg px-3 py-2 text-sm">
+            <div className="flex-1 min-w-[160px]">
+              <p className="font-medium text-gray-900">{a.repartidor} · {rd(a.monto)}</p>
+              <p className="text-xs text-gray-500">{new Date(a.fecha).toLocaleString("es-DO", { dateStyle: "medium", timeStyle: "short" })}{a.motivo ? ` · ${a.motivo}` : ""}</p>
+            </div>
+            <select className="h-8 rounded-md border border-gray-300 text-xs px-2" value={metodo[a.id] ?? "efectivo"} onChange={(e) => setMetodo({ ...metodo, [a.id]: e.target.value })} aria-label="Cómo se lo das">
+              <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option>
+            </select>
+            <Button size="sm" className="h-8 text-xs bg-primary" disabled={ocupado === a.id} onClick={() => responder(a, "aprobar")} data-testid={`aprobar-adelanto-${a.id}`}>Aprobar</Button>
+            <Button size="sm" variant="outline" className="h-8 text-xs" disabled={ocupado === a.id} onClick={() => responder(a, "rechazar")} data-testid={`rechazar-adelanto-${a.id}`}>Rechazar</Button>
+          </div>
+        ))}
+        <p className="text-xs text-amber-900">Al aprobarlo, dale el dinero. Se descuenta solo del pago de su período.</p>
+      </CardContent>
+    </Card>
   );
 }

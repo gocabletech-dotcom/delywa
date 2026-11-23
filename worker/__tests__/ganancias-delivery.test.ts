@@ -2,7 +2,7 @@
 // Portal de delivery → Ganancias, pago del período sin duplicados y cierre automático. D1 local en memoria.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { colmados, deliveries, pagosDelivery, pedidos, saldosDelivery } from "@shared/schema";
+import { colmados, deliveries, deliveryAdelantos, pagosDelivery, pedidos, saldosDelivery } from "@shared/schema";
 import { createTestApp } from "./helpers";
 import { createUser } from "../storage/users";
 import { cerrarPeriodosVencidos, periodoAnterior, periodoQueContiene } from "../lib/ganancias-delivery";
@@ -144,5 +144,67 @@ describe("v2.60: ajustes, envío, propinas, pago y recibo", () => {
     expect(p.ajustes.map((a: any) => a.tipo)).toEqual(["bono", "descuento"]);
     expect(g.json.hoy.propinas).toBe(100);
     expect(g.json.forma.envio).toBe(true);
+  });
+});
+
+describe("v2.61: adelantos y mis números", () => {
+  let portal: Client;
+  beforeAll(async () => {
+    portal = t.client();
+    expect((await portal.request("POST", "/api/portal-repartidor/login", { slug: "colmado-ganancias", whatsappNumero: "18095550101", codigoAcceso: "ABC234" }, { "CF-Connecting-IP": "10.0.0.33" })).status).toBe(200);
+  });
+
+  it("pide hasta la mitad de lo ganado, uno a la vez; el colmado lo aprueba y se descuenta del pago", async () => {
+    const g = await portal.request("GET", "/api/portal-repartidor/ganancias");
+    const tope = g.json.adelantoDisponible;
+    expect(tope).toBe(Math.floor(g.json.periodo.total * 0.5));
+    expect((await portal.request("POST", "/api/portal-repartidor/adelantos", { monto: tope + 1 })).status).toBe(409);
+    expect((await portal.request("POST", "/api/portal-repartidor/adelantos", { monto: 20 })).status).toBe(400);
+    const r = await portal.request("POST", "/api/portal-repartidor/adelantos", { monto: 500, motivo: "Gomas de la moto" });
+    expect(r.status).toBe(201);
+    expect((await portal.request("POST", "/api/portal-repartidor/adelantos", { monto: 100 })).status).toBe(409);
+    const lista = await dueno.request("GET", `/api/colmados/${negocio.id}/adelantos`);
+    expect(lista.json.adelantos[0]).toMatchObject({ estado: "pendiente", monto: 500, repartidor: "Pedro Martínez" });
+    const ap = await dueno.request("POST", `/api/adelantos/${r.json.id}/aprobar`, { metodo: "efectivo" });
+    expect(ap.json.estado).toBe("aprobado");
+    expect((await dueno.request("POST", `/api/adelantos/${r.json.id}/rechazar`)).status).toBe(409);
+    // El pago del período actual lo descuenta.
+    const p = periodoQueContiene("semanal", TZ, new Date());
+    const pago = await dueno.request("POST", `/api/deliveries/${pedro.id}/pagos/calcular`, { periodoInicio: p.inicio.toISOString(), periodoFin: p.fin.toISOString() });
+    const det = await dueno.request("GET", `/api/pagos-delivery/${pago.json.id}`);
+    expect(det.json.ajustes.find((a: any) => a.tipo === "adelanto")).toMatchObject({ monto: "-500.00" });
+    const [a] = await t.db.select().from(deliveryAdelantos).where(eq(deliveryAdelantos.id, r.json.id));
+    expect(a).toMatchObject({ estado: "descontado", pagoId: pago.json.id });
+    // Recalcular no lo descuenta dos veces.
+    const otra = await dueno.request("POST", `/api/deliveries/${pedro.id}/pagos/calcular`, { periodoInicio: p.inicio.toISOString(), periodoFin: p.fin.toISOString() });
+    expect((await dueno.request("GET", `/api/pagos-delivery/${otra.json.id}`)).json.ajustes.filter((x: any) => x.tipo === "adelanto")).toHaveLength(1);
+    // Quitar el ajuste lo deja otra vez aprobado.
+    const aj = det.json.ajustes.find((x: any) => x.tipo === "adelanto");
+    await dueno.request("DELETE", `/api/pagos-delivery/${pago.json.id}/ajustes/${aj.id}`);
+    expect((await t.db.select().from(deliveryAdelantos).where(eq(deliveryAdelantos.id, r.json.id)))[0].estado).toBe("aprobado");
+    const g2 = await portal.request("GET", "/api/portal-repartidor/ganancias");
+    expect(g2.json.adelantos[0]).toMatchObject({ estado: "aprobado", monto: 500 });
+  });
+
+  it("el repartidor cancela uno pendiente; el colmado puede rechazar con motivo", async () => {
+    const r = await portal.request("POST", "/api/portal-repartidor/adelantos", { monto: 50 });
+    expect(r.status).toBe(201);
+    expect((await portal.request("POST", `/api/portal-repartidor/adelantos/${r.json.id}/cancelar`)).status).toBe(200);
+    const r2 = await portal.request("POST", "/api/portal-repartidor/adelantos", { monto: 50 });
+    const no = await dueno.request("POST", `/api/adelantos/${r2.json.id}/rechazar`, { respuesta: "Esta semana no" });
+    expect(no.json).toMatchObject({ estado: "rechazado", respuesta: "Esta semana no" });
+  });
+
+  it("mis números: entregas, fallidas, % sin fallar, minutos y por día", async () => {
+    await t.db.insert(pedidos).values({ colmadoId: negocio.id, clienteNombre: "Falla", clienteWhatsapp: "8095550000", clienteUbicacion: "Calle", productos: "[]", total: "100", montoPago: "100", estado: "retorno", deliveryId: pedro.id, motivoRetorno: "no_contesta" } as any);
+    const ahora = Date.now();
+    await t.db.insert(pedidos).values({ colmadoId: negocio.id, clienteNombre: "Rápido", clienteWhatsapp: "8095550000", clienteUbicacion: "Calle", productos: "[]", total: "100", montoPago: "100", estado: "entregado", deliveryId: pedro.id, cocinaListaAt: new Date(ahora - 20 * 60000), fechaEntrega: new Date(ahora) } as any);
+    const r = await portal.request("GET", "/api/portal-repartidor/estadisticas");
+    expect(r.status).toBe(200);
+    expect(r.json.dias30.fallidas).toBe(1);
+    expect(r.json.dias30.minutosPromedio).toBe(20);
+    expect(r.json.dias30.exito).toBeLessThan(100);
+    expect(r.json.porDia).toHaveLength(14);
+    expect(r.json.porDia.at(-1).entregas).toBeGreaterThanOrEqual(2);
   });
 });

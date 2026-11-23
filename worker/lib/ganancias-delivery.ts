@@ -1,5 +1,5 @@
 import { and, eq, gt, inArray, lte, ne, sql } from "drizzle-orm";
-import { deliveries, pagoDeliveryAjustes, pagosDelivery, pedidos, saldosDelivery, type Delivery } from "@shared/schema";
+import { deliveries, deliveryAdelantos, pagoDeliveryAjustes, pagosDelivery, pedidos, saldosDelivery, type Delivery } from "@shared/schema";
 import type { Db } from "../db";
 import { fechaLocal, inicioDiaLocal } from "./fechas";
 
@@ -80,11 +80,11 @@ export async function guardarPagoDelPeriodo(db: Db, delivery: Delivery, inicio: 
   if (existente) {
     if (existente.estado === "pagado") return existente;
     // Los bonos y descuentos ya puestos se conservan.
-    const [act] = await db.update(pagosDelivery).set({ ...valores, montoTotal: r2(r.total + num(existente.ajustesTotal)).toFixed(2) }).where(eq(pagosDelivery.id, existente.id)).returning();
-    return act;
+    await db.update(pagosDelivery).set({ ...valores, montoTotal: r2(r.total + num(existente.ajustesTotal)).toFixed(2) }).where(eq(pagosDelivery.id, existente.id));
+    return descontarAdelantos(db, existente.id, delivery.id, fin);
   }
   const [nuevo] = await db.insert(pagosDelivery).values({ deliveryId: delivery.id, colmadoId: delivery.colmadoId, periodoInicio: inicio, periodoFin: fin, ...valores }).returning();
-  return nuevo;
+  return descontarAdelantos(db, nuevo.id, delivery.id, fin);
 }
 
 /**
@@ -171,10 +171,34 @@ export async function quitarAjuste(db: Db, pagoId: number, ajusteId: number) {
       .onConflictDoUpdate({ target: [saldosDelivery.deliveryId, saldosDelivery.colmadoId], targetWhere: sql`estado = 'pendiente'`, set: { saldoPendiente: sql`round(${saldosDelivery.saldoPendiente} + ${num(a.monto)}, 2)` } });
   }
   await db.delete(pagoDeliveryAjustes).where(eq(pagoDeliveryAjustes.id, a.id));
+  // Si era un adelanto, vuelve a quedar aprobado y se descuenta en el próximo pago.
+  if (a.tipo === "adelanto") await db.update(deliveryAdelantos).set({ estado: "aprobado", pagoId: null, ajusteId: null }).where(eq(deliveryAdelantos.ajusteId, a.id));
   return recalcularTotal(db, pagoId);
 }
 
 export async function ajustesDe(db: Db, pagoIds: number[]) {
   if (!pagoIds.length) return [];
   return db.select().from(pagoDeliveryAjustes).where(inArray(pagoDeliveryAjustes.pagoId, pagoIds)).orderBy(pagoDeliveryAjustes.id);
+}
+
+// ---------- Adelantos ----------
+
+export const TOPE_ADELANTO = 0.5;
+
+/** Descuenta del pago (pendiente) los adelantos aprobados hasta el fin del período. */
+async function descontarAdelantos(db: Db, pagoId: number, deliveryId: number, fin: Date) {
+  const aprobados = await db.select().from(deliveryAdelantos).where(and(eq(deliveryAdelantos.deliveryId, deliveryId), eq(deliveryAdelantos.estado, "aprobado"), lte(deliveryAdelantos.resueltoAt, fin)));
+  for (const a of aprobados) {
+    const [aj] = await db.insert(pagoDeliveryAjustes).values({ pagoId, tipo: "adelanto", monto: (-num(a.monto)).toFixed(2), motivo: `Adelanto del ${a.resueltoAt ? a.resueltoAt.toLocaleDateString("es-DO") : ""}${a.motivo ? ` · ${a.motivo}` : ""}`.slice(0, 200), usuario: a.resueltoPor }).returning();
+    await db.update(deliveryAdelantos).set({ estado: "descontado", pagoId, ajusteId: aj.id }).where(eq(deliveryAdelantos.id, a.id));
+  }
+  return recalcularTotal(db, pagoId);
+}
+
+/** Cuánto puede pedir ahora: hasta el 50 % de lo ganado en el período, menos lo ya pedido o aprobado. */
+export async function disponibleParaAdelanto(db: Db, delivery: Delivery, ganadoPeriodo: number) {
+  const abiertos = await db.select({ monto: deliveryAdelantos.monto }).from(deliveryAdelantos)
+    .where(and(eq(deliveryAdelantos.deliveryId, delivery.id), inArray(deliveryAdelantos.estado, ["pendiente", "aprobado"])));
+  const usado = abiertos.reduce((s, a) => s + num(a.monto), 0);
+  return Math.max(0, Math.floor(ganadoPeriodo * TOPE_ADELANTO - usado));
 }

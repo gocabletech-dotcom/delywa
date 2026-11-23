@@ -587,6 +587,27 @@ export const pagoDeliveryAjustes = sqliteTable("pago_delivery_ajustes", {
   fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (t) => [index("pago_delivery_ajustes_pago_idx").on(t.pagoId)]);
 
+/**
+ * DELYWA: adelantos que pide el repartidor desde su portal. El colmadero los aprueba (le da el dinero)
+ * y se descuentan solos del pago del período (ajuste «adelanto»).
+ * estado: pendiente | aprobado | rechazado | descontado
+ */
+export const deliveryAdelantos = sqliteTable("delivery_adelantos", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  deliveryId: integer("delivery_id").notNull().references(() => deliveries.id, { onDelete: "cascade" }),
+  colmadoId: integer("colmado_id").notNull().references(() => colmados.id, { onDelete: "cascade" }),
+  monto: numeric("monto").notNull(),
+  motivo: text("motivo"),
+  estado: text("estado").notNull().default("pendiente"),
+  respuesta: text("respuesta"),
+  metodoPago: text("metodo_pago"),
+  resueltoPor: text("resuelto_por"),
+  resueltoAt: integer("resuelto_at", { mode: "timestamp_ms" }),
+  pagoId: integer("pago_id"),
+  ajusteId: integer("ajuste_id"),
+  fecha: integer("fecha", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (t) => [index("delivery_adelantos_delivery_idx").on(t.deliveryId, t.estado), index("delivery_adelantos_colmado_idx").on(t.colmadoId, t.estado)]);
+
 export const insertPagoDeliverySchema = createInsertSchema(pagosDelivery).omit({
   id: true,
   fechaCreacion: true,

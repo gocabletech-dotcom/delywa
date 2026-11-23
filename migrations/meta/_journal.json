@@ -211,6 +211,13 @@
       "when": 1795440809498,
       "tag": "0029_ganancias_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1795442018861,
+      "tag": "0030_adelantos_delivery",
+      "breakpoints": true
     }
   ]
 }

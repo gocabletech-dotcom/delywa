@@ -12,8 +12,8 @@ import { coordenadasDelPedido, enriquecerDirecciones, simboloMoneda } from "../l
 import { calcularMetricasDistanciaPedidoConRutas, parseCoordinatePair } from "../lib/orderDistance";
 import { soloDigitos } from "../lib/telefono";
 import { getColmado, getColmadoTimezone } from "../storage/colmados";
-import { pagosDelivery } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { deliveries, deliveryAdelantos, pagosDelivery } from "@shared/schema";
+import { and as andD, desc as descD, eq, eq as eqD } from "drizzle-orm";
 import { AjusteInvalido, agregarAjuste, ajustesDe, quitarAjuste, resumenDe, saldoDeCuadres } from "../lib/ganancias-delivery";
 import { inicioDiaLocal, rangoDiaLocal } from "../lib/fechas";
 import { avisarAlRepartidor } from "../lib/push";
@@ -327,6 +327,51 @@ deliveryRoutes.post("/api/pagos-delivery/:id/foto", requireAuth, async (c) => {
   await c.env.UPLOADS.put(clave, Uint8Array.from(atob(m[1]), (ch) => ch.charCodeAt(0)), { httpMetadata: { contentType: "image/jpeg", cacheControl: "private, no-store" } });
   const [pago] = await r.db.update(pagosDelivery).set({ comprobanteUrl: `/uploads/${clave}` }).where(eq(pagosDelivery.id, r.pago.id)).returning();
   return c.json(pago);
+});
+
+// ---------- Adelantos (los pide el repartidor desde su portal) ----------
+
+deliveryRoutes.get("/api/colmados/:id/adelantos", requireAuth, requireBusinessAccess(), async (c) => {
+  const db = getDb(c.env.DB);
+  const colmadoId = Number(c.req.param("id"));
+  if (!(await puedeOperar(db, c.var.user, colmadoId, ADMINISTRADORES))) return c.json({ error: "No tienes permiso para ver esto" }, 403);
+  const filas = await db.select({ a: deliveryAdelantos, nombre: deliveries.nombre }).from(deliveryAdelantos).innerJoin(deliveries, eqD(deliveries.id, deliveryAdelantos.deliveryId))
+    .where(eqD(deliveryAdelantos.colmadoId, colmadoId)).orderBy(descD(deliveryAdelantos.id)).limit(50);
+  return c.json({ adelantos: filas.map((f) => ({ ...f.a, monto: Number(f.a.monto), repartidor: f.nombre })) });
+});
+
+async function adelantoAdministrable(c: Context<AppEnv>) {
+  const db = getDb(c.env.DB);
+  const [a] = await db.select().from(deliveryAdelantos).where(eqD(deliveryAdelantos.id, Number(c.req.param("id"))));
+  if (!a) return { error: c.json({ error: "Adelanto no encontrado" }, 404) };
+  if (!(await puedeOperar(db, c.var.user, a.colmadoId, ADMINISTRADORES))) return { error: c.json({ error: "Sin permiso" }, 403) };
+  if (a.estado !== "pendiente") return { error: c.json({ error: "Ese adelanto ya fue respondido." }, 409) };
+  return { db, a };
+}
+
+deliveryRoutes.post("/api/adelantos/:id/aprobar", requireAuth, async (c) => {
+  const r = await adelantoAdministrable(c);
+  if (r.error) return r.error;
+  const { metodo } = await cuerpo(c);
+  const forma = ["efectivo", "transferencia"].includes(metodo) ? metodo : "efectivo";
+  const [a] = await r.db.update(deliveryAdelantos).set({ estado: "aprobado", metodoPago: forma, resueltoPor: nombreUsuario(c.var.user), resueltoAt: new Date() })
+    .where(andD(eqD(deliveryAdelantos.id, r.a.id), eqD(deliveryAdelantos.estado, "pendiente"))).returning();
+  if (!a) return c.json({ error: "Ese adelanto ya fue respondido." }, 409);
+  const col = await getColmado(r.db, a.colmadoId);
+  await avisarAlRepartidor(c.env, r.db, a.deliveryId, { titulo: "✅ Aprobaron tu adelanto", texto: `RD$${Number(a.monto).toLocaleString("es-DO")} (${forma}). Se descuenta de tu próximo pago.`, url: `/repartidor/${col?.slug ?? ""}`, etiqueta: `adelanto-${a.id}` });
+  return c.json({ ...a, monto: Number(a.monto) });
+});
+
+deliveryRoutes.post("/api/adelantos/:id/rechazar", requireAuth, async (c) => {
+  const r = await adelantoAdministrable(c);
+  if (r.error) return r.error;
+  const { respuesta } = await cuerpo(c);
+  const [a] = await r.db.update(deliveryAdelantos).set({ estado: "rechazado", respuesta: typeof respuesta === "string" ? respuesta.trim().slice(0, 200) || null : null, resueltoPor: nombreUsuario(c.var.user), resueltoAt: new Date() })
+    .where(andD(eqD(deliveryAdelantos.id, r.a.id), eqD(deliveryAdelantos.estado, "pendiente"))).returning();
+  if (!a) return c.json({ error: "Ese adelanto ya fue respondido." }, 409);
+  const col = await getColmado(r.db, a.colmadoId);
+  await avisarAlRepartidor(c.env, r.db, a.deliveryId, { titulo: "Tu adelanto no fue aprobado", texto: a.respuesta ? `Motivo: ${a.respuesta}` : "Habla con el colmado.", url: `/repartidor/${col?.slug ?? ""}`, etiqueta: `adelanto-${a.id}` });
+  return c.json({ ...a, monto: Number(a.monto) });
 });
 
 deliveryRoutes.get("/api/colmados/:id/deliveries/pagos", requireAuth, requireBusinessAccess(), async (c) => {

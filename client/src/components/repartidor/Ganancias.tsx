@@ -18,6 +18,8 @@ type Datos = {
     metodo: string | null; comprobante: string | null; recibido: string | null; ajustes: Array<{ id: number; tipo: string; monto: number; motivo: string | null }>;
   }>;
   saldoCuadres: number;
+  adelantos: Array<{ id: number; monto: number; motivo: string | null; estado: "pendiente" | "aprobado" | "rechazado" | "descontado"; respuesta: string | null; fecha: string; resueltoAt: string | null }>;
+  adelantoDisponible: number;
 };
 
 const NOMBRE_PERIODO: Record<string, string> = { semanal: "esta semana", quincenal: "esta quincena", mensual: "este mes", personalizado: "esta semana" };
@@ -138,6 +140,8 @@ export function Ganancias() {
           </ul>
         )}
       </section>
+      <Adelantos datos={data} m={m} />
+      <MisNumeros />
       <p className="text-xs text-slate-500 px-1">Si algo no te cuadra, habla con el colmado. Lo de hoy y del período se actualiza solo con cada entrega.</p>
     </div>
   );
@@ -196,5 +200,100 @@ export function PreguntaPropina({ pedidoId, onCerrar }: { pedidoId: number; onCe
         <button type="button" className="w-full min-h-[44px] rounded-xl text-slate-600 font-semibold" onClick={onCerrar} data-testid="sin-propina">No me dieron</button>
       </div>
     </div>
+  );
+}
+
+const ESTADO_ADELANTO: Record<string, [string, string]> = {
+  pendiente: ["Esperando al colmado", "text-amber-700"], aprobado: ["Aprobado · se descuenta del próximo pago", "text-emerald-700"],
+  rechazado: ["No aprobado", "text-red-700"], descontado: ["Descontado de tu pago", "text-slate-500"],
+};
+
+/** Pedir un adelanto: hasta la mitad de lo ganado en el período; el colmado lo aprueba. */
+function Adelantos({ datos, m }: { datos: Datos; m: (n: number) => string }) {
+  const qc = useQueryClient();
+  const [abierto, setAbierto] = useState(false);
+  const [monto, setMonto] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [estado, setEstado] = useState("");
+  const pendiente = datos.adelantos.find((a) => a.estado === "pendiente");
+  const pedir = async () => {
+    setEstado("ocupado");
+    const r = await fetch("/api/portal-repartidor/adelantos", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ monto: Number(monto), motivo }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { setEstado(j.error || "No se pudo"); return; }
+    setEstado(""); setAbierto(false); setMonto(""); setMotivo("");
+    qc.invalidateQueries({ queryKey: ["portal-ganancias"] });
+  };
+  const cancelar = async (id: number) => {
+    await fetch(`/api/portal-repartidor/adelantos/${id}/cancelar`, { method: "POST", credentials: "include" }).catch(() => undefined);
+    qc.invalidateQueries({ queryKey: ["portal-ganancias"] });
+  };
+  return (
+    <section className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3" data-testid="adelantos">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="font-semibold text-slate-900">Adelanto</p>
+          <p className="text-xs text-slate-500">Puedes pedir hasta {m(datos.adelantoDisponible)} ahora (la mitad de lo que llevas ganado). Se descuenta de tu próximo pago.</p>
+        </div>
+        {!pendiente && !abierto && datos.adelantoDisponible >= 50 && (
+          <button type="button" className="min-h-[40px] px-3 rounded-xl border border-primary text-primary text-sm font-semibold shrink-0" onClick={() => setAbierto(true)} data-testid="pedir-adelanto">Pedir</button>
+        )}
+      </div>
+      {abierto && (
+        <div className="space-y-2">
+          <input className="w-full h-11 rounded-xl border border-slate-300 px-3" inputMode="numeric" placeholder={`Monto (hasta ${m(datos.adelantoDisponible)})`} value={monto} onChange={(e) => setMonto(e.target.value.replace(/\D/g, ""))} data-testid="monto-adelanto" />
+          <input className="w-full h-11 rounded-xl border border-slate-300 px-3" placeholder="Para qué (opcional)" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+          {estado && estado !== "ocupado" && <p className="text-sm text-red-700">{estado}</p>}
+          <div className="flex gap-2">
+            <button type="button" disabled={estado === "ocupado" || !(Number(monto) >= 50)} className="flex-1 min-h-[44px] rounded-xl bg-primary text-primary-foreground font-semibold" onClick={pedir} data-testid="enviar-adelanto">Pedir adelanto</button>
+            <button type="button" className="min-h-[44px] px-4 rounded-xl border border-slate-300 font-semibold" onClick={() => setAbierto(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {datos.adelantos.length > 0 && (
+        <ul className="divide-y divide-slate-100 text-sm">
+          {datos.adelantos.map((a) => (
+            <li key={a.id} className="py-2 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-slate-900">{m(a.monto)} · {fechaCorta(a.fecha)}{a.motivo ? ` · ${a.motivo}` : ""}</p>
+                <p className={`text-xs ${ESTADO_ADELANTO[a.estado]?.[1] ?? ""}`}>{ESTADO_ADELANTO[a.estado]?.[0] ?? a.estado}{a.respuesta ? ` · ${a.respuesta}` : ""}</p>
+              </div>
+              {a.estado === "pendiente" && <button type="button" className="text-xs font-semibold text-red-700" onClick={() => cancelar(a.id)}>Cancelar</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Mis números de los últimos 30 días. */
+function MisNumeros() {
+  const { data } = useQuery<{ dias30: { entregas: number; fallidas: number; exito: number | null; minutosPromedio: number | null }; porDia: Array<{ dia: string; entregas: number }> }>({
+    queryKey: ["portal-estadisticas"],
+    queryFn: async () => { const r = await fetch("/api/portal-repartidor/estadisticas", { credentials: "include" }); if (!r.ok) throw new Error(); return r.json(); },
+  });
+  if (!data) return null;
+  const max = Math.max(1, ...data.porDia.map((d) => d.entregas));
+  const c = data.dias30;
+  return (
+    <section className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3" data-testid="mis-numeros">
+      <p className="font-semibold text-slate-900">Mis números (30 días)</p>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div><p className="text-xl font-bold text-slate-900">{c.entregas}</p><p className="text-[11px] text-slate-500">entregas</p></div>
+        <div><p className={`text-xl font-bold ${c.exito != null && c.exito < 90 ? "text-amber-700" : "text-slate-900"}`}>{c.exito != null ? `${c.exito} %` : "—"}</p><p className="text-[11px] text-slate-500">sin fallar ({c.fallidas} no entregadas)</p></div>
+        <div><p className="text-xl font-bold text-slate-900">{c.minutosPromedio != null ? `${c.minutosPromedio} min` : "—"}</p><p className="text-[11px] text-slate-500">de listo a entregado</p></div>
+      </div>
+      <div>
+        <div className="flex items-end gap-1 h-20" aria-label="Entregas por día, últimas 2 semanas">
+          {data.porDia.map((d) => (
+            <div key={d.dia} className="flex-1 flex flex-col items-center justify-end h-full" title={`${d.dia}: ${d.entregas}`}>
+              <div className="w-full rounded-t bg-primary/80" style={{ height: `${(d.entregas / max) * 100}%`, minHeight: d.entregas ? 4 : 1 }} />
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-slate-500 mt-1">Entregas por día, últimas 2 semanas.</p>
+      </div>
+    </section>
   );
 }

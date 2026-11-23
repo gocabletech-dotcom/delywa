@@ -1,7 +1,8 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
-import { ajustesDe, cobraEl, periodoQueContiene, resumenDe, saldoDeCuadres } from "../lib/ganancias-delivery";
-import { rangoDiaLocal } from "../lib/fechas";
-import { pagosDelivery, pedidos, type Delivery } from "@shared/schema";
+import { ajustesDe, cobraEl, disponibleParaAdelanto, periodoQueContiene, resumenDe, saldoDeCuadres } from "../lib/ganancias-delivery";
+import { avisarAlNegocio } from "../lib/push";
+import { fechaLocal, rangoDiaLocal } from "../lib/fechas";
+import { deliveryAdelantos, pagosDelivery, pedidos, type Delivery } from "@shared/schema";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { guardarSuscripcion, leerSuscripcion } from "./push";
 import { avisarNegocio } from "../lib/tiempo-real";
@@ -14,7 +15,6 @@ import { borrarEventos, contarEventos, registrarEvento } from "../lib/rate-limit
 export const PORTAL = { esperaPorFalloMs: 250 };
 import { cambiarEstadoPedido, coordenadasDelPedido, enriquecerDirecciones } from "../lib/pedido-servicio";
 import { extraerCoordenadas, optimizarRutaEntregaPorCarretera, type PuntoEntrega } from "../lib/routeOptimizer";
-import { fechaLocal } from "../lib/fechas";
 import { soloDigitos } from "../lib/telefono";
 import { enrichColmadoWithMoneda, getColmado, getColmadoTimezone } from "../storage/colmados";
 import { getPedidoById } from "../storage/pedidos";
@@ -170,6 +170,8 @@ portalRepartidorRoutes.get("/api/portal-repartidor/ganancias", requirePortal, as
   ]);
   const sinVentas = ({ ventas: _v, ...resto }: { ventas: number } & Record<string, unknown>) => resto;
   const ajustes = await ajustesDe(db, pagos.map((p) => p.id));
+  const adelantos = await db.select().from(deliveryAdelantos).where(eq(deliveryAdelantos.deliveryId, d.id)).orderBy(desc(deliveryAdelantos.id)).limit(10);
+  const disponible = await disponibleParaAdelanto(db, d, enCurso.total);
   return c.json({
     moneda,
     forma: { modelo: d.modeloPago, periodo: d.periodoPago, salario: Number(d.salarioMonto) || 0, porEntrega: Number(d.comisionFija) || 0, porcentaje: Number(d.comisionPorcentaje) || 0, envio: d.envioEsDelDelivery },
@@ -184,6 +186,57 @@ portalRepartidorRoutes.get("/api/portal-repartidor/ganancias", requirePortal, as
     })),
     // Negativo: faltó dinero en sus cuadres (lo debe). Positivo: entregó de más (se le debe).
     saldoCuadres: saldo,
+    adelantos: adelantos.map((a) => ({ id: a.id, monto: Number(a.monto), motivo: a.motivo, estado: a.estado, respuesta: a.respuesta, fecha: a.fecha, resueltoAt: a.resueltoAt })),
+    adelantoDisponible: disponible,
+  });
+});
+
+/** Pedir un adelanto: hasta el 50 % de lo ganado en el período; uno pendiente a la vez. */
+portalRepartidorRoutes.post("/api/portal-repartidor/adelantos", requirePortal, async (c) => {
+  const db = getDb(c.env.DB);
+  const d = c.var.repartidor;
+  const { monto, motivo } = await cuerpo(c);
+  const n = Math.round(Number(monto));
+  if (!Number.isFinite(n) || n < 50) return c.json({ error: "El adelanto mínimo es de RD$50." }, 400);
+  const [pend] = await db.select({ id: deliveryAdelantos.id }).from(deliveryAdelantos).where(and(eq(deliveryAdelantos.deliveryId, d.id), eq(deliveryAdelantos.estado, "pendiente"))).limit(1);
+  if (pend) return c.json({ error: "Ya tienes un adelanto esperando respuesta del colmado." }, 409);
+  const colmado = await getColmado(db, d.colmadoId);
+  const tz = colmado ? await getColmadoTimezone(db, colmado) : "America/Santo_Domingo";
+  const p = periodoQueContiene(d.periodoPago, tz);
+  const disponible = await disponibleParaAdelanto(db, d, (await resumenDe(db, d, p.inicio, p.fin)).total);
+  if (n > disponible) return c.json({ error: disponible > 0 ? `Ahora puedes pedir hasta RD$${disponible.toLocaleString("es-DO")} (la mitad de lo que llevas ganado).` : "Todavía no tienes ganado suficiente en este período para pedir un adelanto." }, 409);
+  const [a] = await db.insert(deliveryAdelantos).values({ deliveryId: d.id, colmadoId: d.colmadoId, monto: n.toFixed(2), motivo: typeof motivo === "string" ? motivo.trim().slice(0, 200) || null : null }).returning();
+  if (colmado) await avisarAlNegocio(c.env, db, colmado, { titulo: `💸 ${d.nombre.split(" ")[0]} pide un adelanto`, texto: `RD$${n.toLocaleString("es-DO")}${a.motivo ? ` · ${a.motivo}` : ""}. Apruébalo o recházalo en Repartidores.`, url: "/negocio/deliveries", etiqueta: `adelanto-${a.id}` }).catch(() => 0);
+  await avisarNegocio(c.env, d.colmadoId, ["deliveries"]).catch(() => undefined);
+  return c.json({ ok: true, id: a.id }, 201);
+});
+
+portalRepartidorRoutes.post("/api/portal-repartidor/adelantos/:id/cancelar", requirePortal, async (c) => {
+  const db = getDb(c.env.DB);
+  const r = await db.delete(deliveryAdelantos).where(and(eq(deliveryAdelantos.id, Number(c.req.param("id"))), eq(deliveryAdelantos.deliveryId, c.var.repartidor.id), eq(deliveryAdelantos.estado, "pendiente"))).returning({ id: deliveryAdelantos.id });
+  if (!r.length) return c.json({ error: "Ese adelanto ya fue respondido." }, 409);
+  return c.json({ ok: true });
+});
+
+/** Mis números (últimos 30 días): entregas por día, fallidas y tiempo promedio desde «listo» hasta entregado. */
+portalRepartidorRoutes.get("/api/portal-repartidor/estadisticas", requirePortal, async (c) => {
+  const db = getDb(c.env.DB);
+  const d = c.var.repartidor;
+  const colmado = await getColmado(db, d.colmadoId);
+  const tz = colmado ? await getColmadoTimezone(db, colmado) : "America/Santo_Domingo";
+  const desde = new Date(Date.now() - 30 * 86_400_000);
+  const filas = await db.select({ estado: pedidos.estado, fechaEntrega: pedidos.fechaEntrega, fechaCreacion: pedidos.fechaCreacion, listo: pedidos.cocinaListaAt, motivo: pedidos.motivoRetorno })
+    .from(pedidos).where(and(eq(pedidos.deliveryId, d.id), gt(pedidos.fechaCreacion, desde)));
+  const entregados = filas.filter((f) => f.estado === "entregado" && f.fechaEntrega);
+  const fallidas = filas.filter((f) => f.estado === "retorno" || (f.estado === "entregado" && f.motivo)).length;
+  const tiempos = entregados.map((f) => (f.listo ? (f.fechaEntrega!.getTime() - f.listo.getTime()) / 60000 : null)).filter((m): m is number => m != null && m > 0 && m < 240);
+  const porDia = new Map<string, number>();
+  for (let i = 13; i >= 0; i--) porDia.set(fechaLocal(tz, new Date(Date.now() - i * 86_400_000)), 0);
+  for (const f of entregados) { const k = fechaLocal(tz, f.fechaEntrega!); if (porDia.has(k)) porDia.set(k, porDia.get(k)! + 1); }
+  const total = entregados.length + fallidas;
+  return c.json({
+    dias30: { entregas: entregados.length, fallidas, exito: total ? Math.round((entregados.length / total) * 100) : null, minutosPromedio: tiempos.length ? Math.round(tiempos.reduce((s, x) => s + x, 0) / tiempos.length) : null },
+    porDia: [...porDia.entries()].map(([dia, entregas]) => ({ dia, entregas })),
   });
 });
 
