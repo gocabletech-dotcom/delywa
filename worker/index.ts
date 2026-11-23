@@ -35,6 +35,8 @@ import { fiadoRoutes } from "./routes/fiado";
 import { pushRoutes } from "./routes/push";
 import { comprasRoutes } from "./routes/compras";
 import { repartirOfertas } from "./lib/push";
+import { cerrarPeriodosVencidos } from "./lib/ganancias-delivery";
+import { getColmado, getColmadoTimezone } from "./storage/colmados";
 import { enlaceChat } from "@shared/subdominio";
 import { urlPublica } from "./lib/mensajeria";
 import { asistenteRoutes } from "./routes/asistente";
@@ -129,6 +131,15 @@ export default {
       // Avisos de ofertas a los clientes, de a 40 por vuelta.
       await repartirOfertas(env, getDb(env.DB), (c) => enlaceChat(c.slug, urlPublica(env)));
       if (hora === 3 && primeraVuelta) { await borrarComprobantesHuerfanos(env); await borrarAudiosViejos(env); await limpiarSeguridad(env); await borrarRespaldosViejos(env); await olvidarEquiposViejos(getDb(env.DB)); }
+      // Cada hora: deja pendiente el pago del período que terminó de cada repartidor (una sola vez).
+      if (primeraVuelta) {
+        const db = getDb(env.DB);
+        const zonas = new Map<number, string>();
+        await cerrarPeriodosVencidos(db, async (id) => {
+          if (!zonas.has(id)) { const col = await getColmado(db, id); zonas.set(id, col ? await getColmadoTimezone(db, col) : "America/Santo_Domingo"); }
+          return zonas.get(id)!;
+        });
+      }
       // 14:00 UTC (10:00 a.m. en RD): aviso de fin de prueba gratis.
       if (hora === 14 && primeraVuelta) await avisosFinDePrueba(env);
     })().catch((err) => console.error("[cron] Tarea diaria falló:", err instanceof Error ? err.message : err)));

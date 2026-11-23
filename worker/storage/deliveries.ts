@@ -1,4 +1,5 @@
 import { and, desc, eq, gt, inArray, isNull, lte, ne, not, sql } from "drizzle-orm";
+import { guardarPagoDelPeriodo } from "../lib/ganancias-delivery";
 import {
   cuadres, deliveries, pagosDelivery, paradasRuta, pedidos, rutas, saldosDelivery, users,
   type Cuadre, type Delivery, type PagoDelivery, type ParadaRuta, type Pedido, type Ruta, type SaldoDelivery,
@@ -169,24 +170,9 @@ export async function getReporteVentasDelivery(
   return [...grupos.values()].sort((a, b) => a.bucket.localeCompare(b.bucket) || a.deliveryId - b.deliveryId);
 }
 
+/** Calcula y guarda el pago del período (lo recalcula si ya existía pendiente; ver ganancias-delivery). */
 export async function calcularPagoDelivery(db: Db, delivery: Delivery, periodoInicio: Date, periodoFin: Date): Promise<PagoDelivery> {
-  const entregas = await db.select({ total: pedidos.total }).from(pedidos).where(and(
-    eq(pedidos.deliveryId, delivery.id), eq(pedidos.estado, "entregado"),
-    gt(pedidos.fechaEntrega, periodoInicio), lte(pedidos.fechaEntrega, periodoFin),
-  ));
-  const totalPedidos = entregas.length;
-  const totalVentas = entregas.reduce((s, p) => s + num(p.total), 0);
-  const modeloPago = delivery.modeloPago || "comision";
-  const salario = modeloPago === "salario" || modeloPago === "mixto" ? num(delivery.salarioMonto) : 0;
-  const comision = modeloPago === "comision" || modeloPago === "mixto"
-    ? num(delivery.comisionFija) * totalPedidos + (totalVentas * num(delivery.comisionPorcentaje)) / 100
-    : 0;
-  const [pago] = await db.insert(pagosDelivery).values({
-    deliveryId: delivery.id, colmadoId: delivery.colmadoId, periodoInicio, periodoFin, totalPedidos,
-    totalVentas: dinero(totalVentas), modeloPago, salarioCalculado: dinero(salario), comisionCalculada: dinero(comision),
-    montoTotal: dinero(salario + comision),
-  }).returning();
-  return pago;
+  return guardarPagoDelPeriodo(db, delivery, periodoInicio, periodoFin);
 }
 
 export async function getHistorialPagosDelivery(db: Db, deliveryId: number, limite = 50): Promise<PagoDelivery[]> {

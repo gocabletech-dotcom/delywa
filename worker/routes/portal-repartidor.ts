@@ -1,5 +1,8 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
-import type { Delivery } from "@shared/schema";
+import { cobraEl, periodoQueContiene, resumenDe, saldoDeCuadres } from "../lib/ganancias-delivery";
+import { rangoDiaLocal } from "../lib/fechas";
+import { pagosDelivery, type Delivery } from "@shared/schema";
+import { desc, eq } from "drizzle-orm";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { sesionPortalVencida, turnoTerminadoHoy, ventanaDeGracia } from "../lib/turno-repartidor";
@@ -142,6 +145,39 @@ portalRepartidorRoutes.get("/api/portal-repartidor/me", requirePortal, async (c)
     } : null,
     fueraDeHorario: gracia.enGracia,
     horaFinTurno: gracia.terminaEn ? new Date(gracia.terminaEn).toISOString() : null,
+  });
+});
+
+/**
+ * «Ganancias»: lo que lleva ganado hoy y en el período, sus pagos y lo que debe de los cuadres.
+ * Solo lo suyo y sin las ventas del colmado (si cobra por %, ve la comisión ya calculada).
+ */
+portalRepartidorRoutes.get("/api/portal-repartidor/ganancias", requirePortal, async (c) => {
+  const db = getDb(c.env.DB);
+  const d = c.var.repartidor;
+  const colmado = await getColmado(db, d.colmadoId);
+  const tz = colmado ? await getColmadoTimezone(db, colmado) : "America/Santo_Domingo";
+  const moneda = colmado ? (await enrichColmadoWithMoneda(db, colmado)).simboloMoneda || "RD$" : "RD$";
+  const { desde, hasta } = rangoDiaLocal(tz);
+  const periodo = periodoQueContiene(d.periodoPago, tz);
+  const [hoy, enCurso, pagos, saldo] = await Promise.all([
+    resumenDe(db, d, new Date(desde.getTime() - 1), new Date(hasta.getTime() - 1), false),
+    resumenDe(db, d, periodo.inicio, periodo.fin),
+    db.select().from(pagosDelivery).where(eq(pagosDelivery.deliveryId, d.id)).orderBy(desc(pagosDelivery.periodoInicio)).limit(30),
+    saldoDeCuadres(db, d),
+  ]);
+  const sinVentas = ({ ventas: _v, ...resto }: { ventas: number } & Record<string, unknown>) => resto;
+  return c.json({
+    moneda,
+    forma: { modelo: d.modeloPago, periodo: d.periodoPago, salario: Number(d.salarioMonto) || 0, porEntrega: Number(d.comisionFija) || 0, porcentaje: Number(d.comisionPorcentaje) || 0 },
+    hoy: sinVentas(hoy),
+    periodo: { ...sinVentas(enCurso), desde: periodo.desde, hasta: periodo.hasta, tipo: periodo.tipo, cobraEl: cobraEl(periodo) },
+    pagos: pagos.map((p) => ({
+      id: p.id, desde: p.periodoInicio, hasta: p.periodoFin, entregas: p.totalPedidos, salario: Number(p.salarioCalculado), comision: Number(p.comisionCalculada),
+      total: Number(p.montoTotal), estado: p.estado, fechaPago: p.fechaPago, pagadoPor: p.pagadoPor, notas: p.notas,
+    })),
+    // Negativo: faltó dinero en sus cuadres (lo debe). Positivo: entregó de más (se le debe).
+    saldoCuadres: saldo,
   });
 });
 

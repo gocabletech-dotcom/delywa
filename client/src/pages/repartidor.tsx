@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Ganancias } from "@/components/repartidor/Ganancias";
 import { useParams } from "wouter";
 import { VERSION_APP } from "@/version";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +25,7 @@ import {
   ExternalLink,
   Route as RouteIcon,
   HelpCircle,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,7 +180,7 @@ export default function RepartidorPage() {
   const [retornoMotivoPersonalizado, setRetornoMotivoPersonalizado] = useState("");
   const [retornoMostrarOtro, setRetornoMostrarOtro] = useState(false);
   const [scheduleEndedBanner, setScheduleEndedBanner] = useState(false);
-  const [activeTab, setActiveTab] = useState<"pedidos" | "rutas" | "cuadre" | "historial">("pedidos");
+  const [activeTab, setActiveTab] = useState<"pedidos" | "rutas" | "cuadre" | "historial" | "ganancias">("pedidos");
 
   const { data: session, isLoading: sessionLoading } = useQuery({
     queryKey: ["portal-repartidor-me"],
@@ -1339,6 +1341,8 @@ export default function RepartidorPage() {
         </div>
       )}
 
+      {activeTab === "ganancias" && <Ganancias />}
+
       {/* Espacio para el menú de abajo y el botón de cuadrar */}
       <div className={pedidosSinCuadre.length > 0 ? "h-40" : "h-24"} />
 
@@ -1349,6 +1353,7 @@ export default function RepartidorPage() {
           ["rutas", "Ruta", RouteIcon, 0],
           ["cuadre", "Cuadre", ClipboardList, pedidosSinCuadre.length],
           ["historial", "Historial", Clock, 0],
+          ["ganancias", "Ganancias", Wallet, 0],
         ] as const).map(([clave, texto, Icono, cuenta]) => (
           <button
             key={clave}
