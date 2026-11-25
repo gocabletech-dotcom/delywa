@@ -1,5 +1,5 @@
 ---
-name: lector-proyecto
+name: explorer
 description: Lee y explora el proyecto Delywa sin cambiar nada. Úsalo para encontrar dónde está algo, entender cómo funciona un módulo, listar rutas, tablas o pantallas, y resumir el código antes de cambiarlo.
 model: haiku
 tools: Read, Grep, Glob
