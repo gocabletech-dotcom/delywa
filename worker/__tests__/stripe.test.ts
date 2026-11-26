@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { colmados, planes, stripeFacturas, suscripciones } from "@shared/schema";
 import { createTestApp } from "./helpers";
 import { createUser } from "../storage/users";
-import { sincronizarSus, stripeHttp } from "../lib/stripe";
+import { precioCobro, sincronizarSus, stripeHttp } from "../lib/stripe";
 
 let t: Awaited<ReturnType<typeof createTestApp>>;
 type Client = ReturnType<Awaited<ReturnType<typeof createTestApp>>["client"]>;
@@ -240,5 +240,23 @@ describe("Plataforma → Planes", () => {
     expect(precios.get(antes.stripePrecio!)!.active).toBe(false);
     expect(precios.get(despues.stripePrecio!)!.unit_amount).toBe(3499);
     expect(despues.stripePrecioAnual).toBe(antes.stripePrecioAnual); // el anual no cambió
+  });
+});
+
+describe("sumar la comisión de Stripe", () => {
+  it("cobra lo necesario para que quede el precio del plan, y lo muestra", async () => {
+    expect(precioCobro("9.99", true)).toBe(10.6);
+    expect(precioCobro("29.99", true)).toBe(31.2);
+    expect(precioCobro("9.99", false)).toBe(9.99);
+    const r = await admin.request("PUT", "/api/admin/integraciones", { valores: { stripe_sumar_comision: "true" } });
+    expect(r.status).toBe(200);
+    expect(r.json.stripe.sumarComision).toBe(true);
+    const [colmado] = await t.db.select().from(planes).where(eq(planes.id, idColmado));
+    expect(precios.get(colmado.stripePrecio!)!.unit_amount).toBe(1060);
+    const pub = (await t.client().request("GET", "/api/planes?activos=true")).json.find((p: { id: number }) => p.id === idColmado);
+    expect([pub.precioMensual, pub.precioCobro]).toEqual(["9.99", "10.60"]);
+    await admin.request("PUT", "/api/admin/integraciones", { valores: { stripe_sumar_comision: "false" } });
+    const [otra] = await t.db.select().from(planes).where(eq(planes.id, idColmado));
+    expect(precios.get(otra.stripePrecio!)!.unit_amount).toBe(999);
   });
 });

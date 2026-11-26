@@ -1,8 +1,10 @@
 import { Hono, type Context } from "hono";
-import { metaWebhookEventos } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { avisosEnviados, colmados, metaWebhookEventos, type Colmado } from "@shared/schema";
 import type { AppEnv, Env } from "../env";
 import { getDb } from "../db";
-import { urlPublica } from "../lib/mensajeria";
+import { enviarWhatsApp, urlPublica } from "../lib/mensajeria";
+import { enModoLimitado, MENSAJE_LIMITADO } from "../lib/estado-plan";
 import { getColmadoPorInstancia } from "../storage/colmados";
 import { timingSafeEqual } from "../lib/password";
 import { credencialesEvolution, firmaWebhookEvolution, instanciaValida } from "../lib/whatsapp";
@@ -33,7 +35,35 @@ registrarWebhooks(registro);
 export const pausas = { enCola: [8000, 12000] as [number, number], sinCola: [500, 1500] as [number, number] };
 
 /** Atiende un aviso con el bot. Lo llaman la cola y, si no hay cola, el propio webhook. */
+/**
+ * Plan vencido (modo limitado): el bot de WhatsApp no atiende. Al cliente se le contesta una vez al día que el
+ * negocio no recibe pedidos por aquí. Se revisa antes de llamar al bot, sin tocar motor-whatsapp.
+ */
+async function enModoLimitadoWhatsApp(env: Env, aviso: AvisoWebhook): Promise<boolean> {
+  const db = getDb(env.DB);
+  const body = aviso.body as any;
+  let colmado: Colmado | undefined, cliente: string | undefined;
+  if (aviso.tipo === "meta") {
+    const valor = body?.entry?.[0]?.changes?.[0]?.value;
+    const id = valor?.metadata?.phone_number_id;
+    if (id) [colmado] = await db.select().from(colmados).where(eq(colmados.whatsappPhoneNumberId, String(id)));
+    cliente = valor?.messages?.[0]?.from;
+  } else {
+    colmado = await getColmadoPorInstancia(db, aviso.instancia);
+    const k = body?.data?.key;
+    if (k && !k.fromMe && typeof k.remoteJid === "string" && k.remoteJid.endsWith("@s.whatsapp.net")) cliente = k.remoteJid.split("@")[0];
+  }
+  if (!colmado || !(await enModoLimitado(db, colmado))) return false;
+  if (cliente) {
+    const dia = new Date().toISOString().slice(0, 10);
+    const nuevo = await db.insert(avisosEnviados).values({ clave: `wa-limitado:${colmado.id}:${String(cliente).replace(/\D/g, "")}:${dia}` }).onConflictDoNothing().returning();
+    if (nuevo.length) await enviarWhatsApp(env, colmado, String(cliente), MENSAJE_LIMITADO).catch(() => false);
+  }
+  return true;
+}
+
 export async function procesarAviso(env: Env, aviso: AvisoWebhook, demoraMs: [number, number] = pausas.enCola): Promise<void> {
+  if (await enModoLimitadoWhatsApp(env, aviso)) return;
   const base = { env, db: getDb(env.DB), origen: urlPublica(env), demoraMs };
   if (aviso.tipo === "meta") await ejecutar(base, manejadores, "POST /api/webhook/whatsapp", { body: aviso.body });
   else await ejecutar(base, manejadores, "POST /api/webhook/evolution/:instanceName", { body: aviso.body, params: { instanceName: aviso.instancia } });

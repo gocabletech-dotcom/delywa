@@ -32,3 +32,43 @@ INSERT INTO conocimiento_archivos (tipo_negocio, nombre, contenido, colmado_id) 
   ('colmado', '¿Venden gas?', 'Sí, cambiamos tanques de 25 y 50 libras. El delivery del gas cuesta RD$100.', 1),
   ('colmado', '¿Fían?', 'Solo a clientes conocidos del barrio, y hay que pagar el viernes.', 1);
 
+
+-- v2.65 · Datos para los temas nuevos del manual (mostrador, fiado, compras, ofertas, Mi plan, ganancias).
+-- La prueba gratis vence en 10 días a partir de hoy, para que el panel no quede en modo limitado.
+UPDATE colmados SET fecha_vencimiento = cast(unixepoch('now', '+10 days') * 1000 as integer), estado_suscripcion = 'activa' WHERE id = 1;
+INSERT INTO menu_productos (id, colmado_id, nombre, precio, categoria, inventario, inventario_minimo, orden) VALUES
+  (1, 1, 'Arroz (libra)', 45, 'Granos', 80, 20, 1),
+  (2, 1, 'Aceite Crisol (botella)', 280, 'Despensa', 12, 4, 2),
+  (3, 1, 'Huevo', 12, 'Despensa', 90, 30, 3),
+  (4, 1, 'Pan de agua', 10, 'Panadería', 40, 10, 4),
+  (5, 1, 'Salami Induveca (libra)', 220, 'Embutidos', 6, 3, 5),
+  (6, 1, 'Refresco Country Club 2L', 120, 'Bebidas', 24, 6, 6),
+  (7, 1, 'Cerveza Presidente grande', 250, 'Bebidas', 3, 12, 7),
+  (8, 1, 'Leche Rica (litro)', 95, 'Lácteos', 18, 6, 8),
+  (9, 1, 'Habichuela roja (libra)', 75, 'Granos', 30, 10, 9),
+  (10, 1, 'Hielo (funda)', 50, 'Bebidas', 15, 5, 10);
+INSERT INTO producto_costos (menu_producto_id, costo) VALUES (1, 36), (2, 235), (3, 9), (5, 175), (6, 92), (7, 205), (8, 78), (9, 58);
+INSERT INTO fiado_cuentas (id, colmado_id, nombre, telefono, limite, saldo, ultimo_movimiento) VALUES
+  (1, 1, 'Doña Carmen', '18095550011', 3000, 1450, cast(unixepoch('now', '-1 day') * 1000 as integer)),
+  (2, 1, 'Pedro el mecánico', '18095550012', 2000, 380, cast(unixepoch('now', '-3 days') * 1000 as integer)),
+  (3, 1, 'Yolanda Santos', '18095550013', NULL, 0, cast(unixepoch('now', '-10 days') * 1000 as integer));
+INSERT INTO fiado_movimientos (cuenta_id, colmado_id, tipo, monto, nota, usuario, fecha) VALUES
+  (1, 1, 'fiado', 950, 'Compra de la semana', 'Demo', cast(unixepoch('now', '-6 days') * 1000 as integer)),
+  (1, 1, 'fiado', 700, 'Arroz, aceite y salami', 'Demo', cast(unixepoch('now', '-2 days') * 1000 as integer)),
+  (1, 1, 'abono', 200, NULL, 'Demo', cast(unixepoch('now', '-1 day') * 1000 as integer)),
+  (2, 1, 'fiado', 380, 'Refresco y pan', 'Demo', cast(unixepoch('now', '-3 days') * 1000 as integer));
+INSERT INTO suplidores (id, colmado_id, nombre, rnc, telefono, vendedor, dias_credito) VALUES
+  (1, 1, 'Distribuidora La Fe', '130123456', '8095551200', 'Manuel', 15),
+  (2, 1, 'Cervecería Nacional Dominicana', '101001234', '8095551300', 'Rosa', 7);
+INSERT INTO compras (id, colmado_id, suplidor_id, factura, ncf, fecha, subtotal, itbis, descuento, total, forma_pago, vence, saldo, estado, usuario) VALUES
+  (1, 1, 1, 'F-20431', 'B0100004521', date('now', '-4 days'), 6200, 0, 0, 6200, 'credito', date('now', '+11 days'), 6200, 'registrada', 'Demo'),
+  (2, 1, 2, 'CND-88120', 'B0100009910', date('now', '-1 day'), 4100, 738, 0, 4838, 'efectivo', NULL, 0, 'registrada', 'Demo');
+INSERT INTO compra_lineas (compra_id, descripcion, menu_producto_id, cantidad, unidades_por_paquete, costo, total, unidades_sumadas, costo_unitario) VALUES
+  (1, 'ARROZ SELECTO SACO 100LB', 1, 1, 100, 3600, 3600, 100, 36),
+  (1, 'ACEITE CRISOL 12/1', 2, 1, 12, 2600, 2600, 12, 216.67),
+  (2, 'PRESIDENTE GDE CJ 12', 7, 2, 12, 2050, 4100, 24, 205);
+INSERT INTO ofertas (colmado_id, texto, hasta, activa, aviso, creado_por) VALUES
+  (1, '🍺 Jumbo Presidente a RD$230 hasta el domingo. ¡Pídela fría!', cast(unixepoch('now', '+3 days') * 1000 as integer), 1, 'enviado', 'Demo');
+UPDATE deliveries SET modelo_pago = 'mixto', salario_monto = 2500, comision_fija = 25, comision_porcentaje = 0, periodo_pago = 'semanal' WHERE id = 1;
+INSERT INTO pagos_delivery (delivery_id, colmado_id, periodo_inicio, periodo_fin, total_pedidos, total_ventas, modelo_pago, salario_calculado, comision_calculada, monto_total, estado, fecha_pago, pagado_por, metodo_pago) VALUES
+  (1, 1, cast(unixepoch('now', '-14 days') * 1000 as integer), cast(unixepoch('now', '-8 days') * 1000 as integer), 22, 0, 'mixto', 2500, 550, 3050, 'pagado', cast(unixepoch('now', '-7 days') * 1000 as integer), 'Demo', 'efectivo');

@@ -2,7 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import type { Plan } from "@shared/schema";
 import type { ClaveFuncion } from "@shared/funciones-plan";
 
-export type PlanPublico = Omit<Plan, "stripeProducto" | "stripePrecio" | "stripePrecioAnual" | "stripeProductoReal" | "stripePrecioReal" | "stripePrecioAnualReal">;
+export type PlanPublico = Omit<Plan, "stripeProducto" | "stripePrecio" | "stripePrecioAnual" | "stripeProductoReal" | "stripePrecioReal" | "stripePrecioAnualReal"> & {
+  /** Lo que de verdad se cobra (con la comisión de Stripe si la plataforma la suma). */
+  precioCobro?: string;
+  precioCobroAnual?: string | null;
+};
+
+export const cobroMensual = (p: PlanPublico) => p.precioCobro ?? p.precioMensual;
+export const cobroAnual = (p: PlanPublico) => (p.precioAnual ? p.precioCobroAnual ?? p.precioAnual : null);
 
 export type DatosPago = {
   activo: boolean;

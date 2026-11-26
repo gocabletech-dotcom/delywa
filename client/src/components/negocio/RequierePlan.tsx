@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { Lock } from "lucide-react";
 import { nombreFuncion, precioPlan, type ClaveFuncion } from "@shared/funciones-plan";
-import { planQueLaTrae, useSuscripcion } from "@/lib/plan";
+import { cobroMensual, planQueLaTrae, useSuscripcion } from "@/lib/plan";
 
 /** Pantalla con candado cuando el plan no incluye esta parte de Delywa. */
 export function SinFuncionEnPlan({ colmadoId, funcion, compacto }: { colmadoId: number | null | undefined; funcion: ClaveFuncion; compacto?: boolean }) {
@@ -13,7 +13,7 @@ export function SinFuncionEnPlan({ colmadoId, funcion, compacto }: { colmadoId: 
       <p className="text-lg font-extrabold text-slate-900">{nombreFuncion(funcion)}</p>
       <p className="text-slate-600">
         Tu plan {data?.vigente?.nombre ?? ""} no incluye esta parte.
-        {sugerido ? <> Está en el plan <b>{sugerido.nombre}</b> por {precioPlan(sugerido.precioMensual, sugerido.moneda)} al mes.</> : null}
+        {sugerido ? <> Está en el plan <b>{sugerido.nombre}</b> por {precioPlan(cobroMensual(sugerido), sugerido.moneda)} al mes.</> : null}
       </p>
       <Link href="/negocio/settings?seccion=plan" className="inline-flex items-center justify-center min-h-[44px] px-5 rounded-full bg-primary text-primary-foreground font-bold" data-testid="link-ver-planes">
         Ver los planes

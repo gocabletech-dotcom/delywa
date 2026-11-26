@@ -35,6 +35,7 @@ export const CAMPOS = {
   stripe_key_real: { secreto: true, etiqueta: "Llave secreta de Stripe · real (sk_live_…)" },
   stripe_webhook_real: { secreto: true, etiqueta: "Firma del webhook de Stripe · real (whsec_…)" },
   stripe_ambiente: { secreto: false, etiqueta: "Ambiente de Stripe que cobra" },
+  stripe_sumar_comision: { secreto: false, etiqueta: "Sumar la comisión de Stripe al precio" },
 } satisfies Record<string, Campo>;
 
 export type NombreCampo = keyof typeof CAMPOS;

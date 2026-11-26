@@ -3,7 +3,7 @@ import { fromZodError } from "zod-validation-error";
 import { insertPlanSchema, type Plan } from "@shared/schema";
 import { esClaveFuncion } from "@shared/funciones-plan";
 import { planDe } from "../lib/plan";
-import { cfgStripe, sincronizarPlanEnStripe, suscripcionDe } from "../lib/stripe";
+import { cfgStripe, conPrecioCobro, sincronizarPlanEnStripe, suscripcionDe } from "../lib/stripe";
 import { PUEDEN_PAGAR } from "./plan-pago";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
@@ -43,7 +43,7 @@ const planPublico = ({ stripeProducto, stripePrecio, stripePrecioAnual, stripePr
 catalogoRoutes.get("/api/planes", async (c) => {
   const db = getDb(c.env.DB);
   const filas = c.req.query("activos") === "true" ? await getPlanesActivos(db) : await getAllPlanes(db);
-  return c.json(filas.map(planPublico));
+  return c.json(filas.map((p) => conPrecioCobro(c.env, planPublico(p))));
 });
 
 catalogoRoutes.get("/api/planes/:id", async (c) => {
@@ -126,7 +126,7 @@ catalogoRoutes.get("/api/colmados/:colmadoId/suscripcion", requireAuth, requireB
   const diasRestantes = fechaFin ? Math.ceil((fechaFin.getTime() - Date.now()) / DIA_MS) : 0;
 
   const vigente = await planDe(db, colmado.id);
-  const disponibles = (await getPlanesActivos(db)).filter((p) => p.visible).map(planPublico);
+  const disponibles = (await getPlanesActivos(db)).filter((p) => p.visible).map((p) => conPrecioCobro(c.env, planPublico(p)));
   // Pago con Stripe (Mi plan): si está activo, la suscripción del ambiente que cobra y si este usuario puede pagar.
   const C = cfgStripe(c.env);
   const principalId = colmado.negocioPrincipalId ?? colmado.id;
@@ -145,7 +145,7 @@ catalogoRoutes.get("/api/colmados/:colmadoId/suscripcion", requireAuth, requireB
   return c.json({
     pago,
     suscripcion: { fechaInicio: colmado.fechaInicioPlan || colmado.fechaSuscripcion, fechaFin: colmado.fechaVencimiento },
-    plan: plan ? planPublico(plan) : null,
+    plan: plan ? conPrecioCobro(c.env, planPublico(plan)) : null,
     /** Lo que de verdad puede usar (la prueba y la cortesía lo incluyen todo). */
     vigente: vigente ? { nombre: vigente.nombre, funciones: vigente.funciones, todo: vigente.todo, cortesia: vigente.cortesia } : null,
     planes: disponibles,

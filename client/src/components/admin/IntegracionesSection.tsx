@@ -26,7 +26,7 @@ type Estado = {
   claveMaestra: boolean;
   campos: Campo[];
   meta: { webhookUrl: string; verifyToken: string | null; eliminacionDatosUrl: string };
-  stripe: { webhookUrl: string; eventos: string[]; ambiente: "prueba" | "real" };
+  stripe: { webhookUrl: string; eventos: string[]; ambiente: "prueba" | "real"; sumarComision: boolean };
   turnstile: { activo: boolean; siteKey: string | null };
   negociosConLlavePropia: number;
 };
@@ -278,6 +278,24 @@ export function IntegracionesSection() {
                       {data.stripe.ambiente === "real" ? "Volver a prueba" : "Cobrar de verdad"}
                     </Button>
                   </div>
+                  <label className="flex items-start gap-2 text-sm cursor-pointer pt-1">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      checked={data.stripe.sumarComision}
+                      disabled={guardar.isPending}
+                      onChange={(e) => {
+                        const si = e.target.checked;
+                        if (window.confirm(si
+                          ? "¿Sumar la comisión de Stripe al precio? El colmado pagará, por ejemplo, US$10.60 en vez de US$9.99 y a ti te quedan los US$9.99. Aplica a los pagos nuevos y a los cambios de plan."
+                          : "¿Dejar de sumar la comisión? El colmado pagará el precio del plan y la comisión de Stripe sale de lo que recibes.")) {
+                          guardar.mutate({ stripe_sumar_comision: si ? "true" : "false" });
+                        }
+                      }}
+                      data-testid="check-stripe-sumar-comision"
+                    />
+                    <span><b>Sumar la comisión de Stripe al precio</b> (2.9 % + US$0.30). El precio que ve y paga el colmado incluye la comisión, y a ti te queda el precio del plan.</span>
+                  </label>
                 </div>
               )}
 

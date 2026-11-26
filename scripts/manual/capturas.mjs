@@ -281,6 +281,11 @@ try {
   await rep.evaluate(() => document.querySelector('[data-testid="historial-abrir-7"]')?.click());
   await espera(800);
   await capturar(rep, "r-historial");
+  await rep.evaluate(() => window.scrollTo(0, 0));
+  await rep.click('[data-testid="tab-ganancias"]').catch(() => {});
+  await rep.waitForSelector('[data-testid="ganado-periodo"]', { visible: true, timeout: 15000 }).catch(() => {});
+  await espera(1200);
+  await capturar(rep, "r-ganancias");
 
   // ===================== NEGOCIO, parte 2: cuadres y ajustes =====================
   for (const [cap, ruta, sel] of [
@@ -295,14 +300,28 @@ try {
     ["sucursales", "/negocio/sucursales", '[data-testid="form-sucursal"]'],
     ["usuarios", "/negocio/usuarios", '[data-testid="descripcion-rol"]'],
     ["configuracion", "/negocio/settings", '[data-testid="seccion-datos"]'],
+    ["mostrador", "/negocio/mostrador", '[data-testid^="producto-"]'],
+    ["fiado", "/negocio/fiado", '[data-testid="total-fiado"]'],
+    ["compras", "/negocio/compras", '[data-testid^="compra-"]'],
+    ["ofertas", "/negocio/ofertas", '[data-testid="texto-oferta"]'],
+    ["mi-plan", "/negocio/settings?seccion=plan", '[data-testid="mi-plan"]'],
   ]) {
     await ir(neg, ruta, sel);
     // Algunas pantallas se preparan antes de la foto para que se vea lo que explica el tema.
-    const prep = cap === "usuarios" ? (page) => verAlCentro(page, '[data-testid="descripcion-rol"]')
+    // Mostrador: una venta empezada (arroz, aceite y pan) para que se vea el total y la devuelta.
+    const venta = async (page) => {
+      for (const id of [1, 1, 2, 4]) await page.evaluate((i) => document.querySelector(`[data-testid="producto-${i}"]`)?.click(), id);
+      await espera(500);
+      const r = await page.$('[data-testid="recibido"]');
+      if (r && (await r.boundingBox())) { await r.evaluate((el) => { el.focus(); el.select?.(); }); await r.type("500"); await page.evaluate(() => document.activeElement?.blur()); }
+    };
+    const prep = cap === "mostrador" ? venta
+      : cap === "usuarios" ? (page) => verAlCentro(page, '[data-testid="descripcion-rol"]')
       : cap === "factura" ? (page) => page.evaluate(() => { const b = document.querySelector('[data-testid="fe-paso-datos"] button[aria-expanded="true"]'); if (b) b.click(); })
       : null;
     if (prep) { await prep(neg); await espera(600); }
-    await ambas(neg, cap, prep ? async (page) => { await prep(page); await espera(600); } : undefined);
+    // El mostrador conserva la venta al pasar al celular: no se vuelve a agregar.
+    await ambas(neg, cap, prep && cap !== "mostrador" ? async (page) => { await prep(page); await espera(600); } : undefined);
     if (cap === "cuadres") {
       await neg.evaluate(() => document.querySelector('[data-testid^="ver-cuadre-"]')?.click());
       await neg.waitForSelector('[data-testid^="input-monto-recibido-"]', { visible: true, timeout: 8000 }).catch(() => {});

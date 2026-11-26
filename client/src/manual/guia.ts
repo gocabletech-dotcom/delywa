@@ -49,12 +49,12 @@ export const GUIA: Record<ClaveManual, Manual> = {
     empieza: ["moverte", "configuracion", "chat-pagina", "repartidores", "pedidos", "confirmar"],
     grupos: [
       ["Empieza aquí", ["moverte"]],
-      ["El día a día", ["inicio", "pedidos", "confirmar", "preparar", "asignar", "devuelta", "transferencia", "retorno", "historial"]],
+      ["El día a día", ["inicio", "pedidos", "confirmar", "preparar", "asignar", "devuelta", "transferencia", "retorno", "historial", "mostrador"]],
       ["Chats", ["chats", "chat-abierto"]],
       ["Reparto", ["repartidores", "cuadres", "confirmar-cuadre"]],
-      ["Dinero", ["ventas", "reportes", "factura"]],
-      ["Mi negocio", ["clientes", "empleados"]],
-      ["Ajustes", ["configuracion", "chat-pagina", "preguntas", "whatsapp", "sucursales", "usuarios", "mi-clave"]],
+      ["Dinero", ["ventas", "fiado", "compras", "reportes", "factura"]],
+      ["Mi negocio", ["clientes", "ofertas", "empleados"]],
+      ["Ajustes", ["mi-plan", "configuracion", "chat-pagina", "preguntas", "whatsapp", "sucursales", "usuarios", "mi-clave"]],
     ],
     modulos: [
       {
@@ -495,6 +495,108 @@ export const GUIA: Record<ClaveManual, Manual> = {
         ],
       },
       {
+        id: "mostrador", icono: "cart", titulo: "Venta de mostrador", ruta: "mostrador", cap: "mostrador",
+        que: "Para lo que vendes ahí mismo en el colmado, sin chat ni delivery. Toca los productos, cobra en efectivo, tarjeta, transferencia o fiado, y la venta suma en Ventas y descuenta de tus existencias.",
+        spots: [
+          ['[data-testid="buscar-producto"]', "Busca un producto por su nombre."],
+          ['[data-testid^="producto-"]', "Toca un producto para agregarlo. Cada toque suma uno."],
+          ['[data-testid="suelto-nombre"], [data-testid="ver-carrito"]', "¿No está en la lista? Agrégalo suelto con su nombre y su precio."],
+          ['[data-testid="venta-lista"], [data-testid="ver-carrito"]', "Lo que lleva el cliente y el total."],
+          ['[data-testid^="metodo-"]', "Cómo paga: efectivo, tarjeta, transferencia o fiado."],
+          ['[data-testid="recibido"]', "En efectivo escribe con cuánto paga: te dice la devuelta."],
+          ['[data-testid="cobrar"]', "Cobrar: guarda la venta. Después puedes imprimir el ticket."],
+        ],
+        pasos: [
+          "Abre «Venta de mostrador» en el menú.",
+          "Toca los productos que lleva el cliente (o búscalos por nombre).",
+          "Elige cómo paga. En efectivo escribe con cuánto paga y mira la devuelta.",
+          "Pulsa «Cobrar». Si quieres, imprime el ticket.",
+        ],
+        tips: [
+          "Las ventas de mostrador no salen en el tablero de Pedidos: ya están entregadas.",
+          "Si cobras «fiado», elige el cliente y se le suma a su cuenta en Fiado.",
+        ],
+      },
+      {
+        id: "fiado", icono: "clipboard", titulo: "Fiado", ruta: "fiado", cap: "fiado",
+        que: "Las cuentas de los clientes a quienes les fías: cuánto debe cada uno, su límite, lo que se le fió y lo que abonó.",
+        spots: [
+          ['[data-testid="total-fiado"]', "Lo que te deben entre todos."],
+          ['[data-testid="buscar-fiado"]', "Busca un cliente por su nombre o teléfono."],
+          ['[data-testid^="cuenta-"]', "Cada cliente con lo que debe. Tócalo para ver sus movimientos."],
+          ['[data-testid="nuevo-cliente-fiado"]', "Abrir la cuenta de un cliente nuevo, con su límite y lo que ya debía."],
+          ['[data-testid="registrar-abono"]', "Registrar un abono cuando te paga."],
+          ['[data-testid="recordar-whatsapp"]', "Recordarle por WhatsApp lo que debe (gratis, abre WhatsApp con el mensaje escrito)."],
+        ],
+        pasos: [
+          "Abre «Fiado» y toca «Nuevo cliente». Pon el nombre, el teléfono y el límite.",
+          "Para fiarle, usa «Fiado» en la Venta de mostrador o «Anotar fiado» en su cuenta.",
+          "Cuando pague, abre su cuenta y toca «Registrar abono».",
+        ],
+        tips: [
+          "Si una venta pasa del límite, Delywa no la deja anotar.",
+          "El límite y cerrar una cuenta los cambian solo el dueño y el colmadero.",
+        ],
+      },
+      {
+        id: "compras", icono: "receipt", titulo: "Compras y suplidores", ruta: "compras", cap: "compras",
+        que: "Lo que le compras a tus suplidores. Al guardar una compra, se suma a tu inventario, se actualiza el costo de cada producto y queda lo que debes si fue a crédito. Puedes tomarle una foto a la factura y Delywa la lee.",
+        spots: [
+          ['[data-testid="tab-lista"]', "Tus compras del mes."],
+          ['[data-testid^="compra-"]', "Cada compra con su suplidor, factura, total y si está pagada o a crédito."],
+          ['[data-testid="nueva-compra"], [data-testid="tab-nueva"]', "Nueva compra: a mano o con la foto de la factura."],
+          ['[data-testid="tab-pagar"]', "Por pagar: lo que debes a cada suplidor y cuándo vence."],
+          ['[data-testid="tab-suplidores"]', "Tus suplidores, con su RNC y sus días de crédito."],
+          ['[data-testid="tab-reporte"]', "Reporte del mes: lo comprado, el ITBIS, lo que debes y la ganancia aproximada."],
+        ],
+        pasos: [
+          "Toca «Nueva compra» y elige el suplidor (o créalo).",
+          "Toma la foto de la factura o escribe cada línea: cantidad, unidades por caja y costo.",
+          "Revisa a qué producto va cada línea; lo que no exista se crea con su precio de venta.",
+          "Elige cómo pagaste o «A crédito» y guarda.",
+        ],
+        tips: [
+          "El costo nunca lo ven tus clientes ni el despachador.",
+          "Si la ganancia de un producto queda por debajo de 10 %, Delywa te avisa.",
+          "Esta parte está en el plan Full.",
+        ],
+      },
+      {
+        id: "ofertas", icono: "money", titulo: "Ofertas", ruta: "ofertas", cap: "ofertas",
+        que: "Publica una oferta y sale arriba del chat de tu colmado y en el saludo del bot. A los clientes que aceptaron avisos les llega al celular.",
+        spots: [
+          ['[data-testid="texto-oferta"]', "Escribe la oferta, corta y clara."],
+          ['[data-testid="publicar-oferta"]', "Publicar: elige si dura hoy, 3 días o una semana."],
+          ['[data-testid^="oferta-"]', "Tus ofertas vigentes y a cuántos clientes se les avisó."],
+        ],
+        pasos: ["Abre «Ofertas».", "Escribe la oferta y elige cuánto dura.", "Pulsa «Publicar»."],
+        tips: ["Se avisa una vez al día como máximo, para no cansar a tus clientes.", "Esta parte está en el plan Full."],
+      },
+      {
+        id: "mi-plan", icono: "card", titulo: "Mi plan", ruta: "settings?seccion=plan", cap: "mi-plan",
+        que: "Tu plan de Delywa, los días que te quedan y la comparación de los planes. Desde aquí el dueño elige su plan y lo paga con tarjeta, en dólares.",
+        spots: [
+          ['[data-testid="text-mi-plan"]', "Tu plan de ahora y cuántos días te quedan."],
+          ['[data-testid="plan-basico"]', "Colmado: lo del día a día, con inteligencia artificial, mostrador y fiado."],
+          ['[data-testid="plan-profesional"]', "Full: todo Delywa, sin límites."],
+        ],
+        pasos: [
+          "Abre Configuración → Mi plan.",
+          "En el plan que quieres toca «Elegir este plan» (o «Pagar el año» con 1 mes gratis).",
+          "Paga con tu tarjeta en la página de Stripe. Al volver, tu plan ya está activo.",
+        ],
+        tips: [
+          "Puedes cambiar de plan cuando quieras: se cobra o se abona la diferencia de los días que faltan.",
+          "«Cambiar tarjeta o ver facturas» abre tus recibos. «Cancelar plan» no te vuelve a cobrar y lo usas hasta el final de lo pagado.",
+          "Cuando termina tu plan tienes 3 días de gracia. Después la tienda y el chat no reciben pedidos hasta que elijas un plan; tus datos no se borran.",
+          "Solo el dueño puede pagar el plan. Las sucursales usan el plan del negocio principal.",
+        ],
+        faq: [
+          ["¿Me cobran solo al terminar la prueba?", "No. Al terminar la prueba no se cobra nada: tienes que elegir un plan."],
+          ["¿Me devuelven lo pagado si cancelo?", "Lo pagado de un período que ya empezó no se devuelve, pero no se te vuelve a cobrar."],
+        ],
+      },
+      {
         id: "mi-clave", icono: "lock", titulo: "Mi contraseña", ruta: "dashboard", cap: "mi-clave",
         que: "Cada persona cambia su propia contraseña. Al cambiarla se cierra su sesión en los demás teléfonos y computadoras.",
         spots: [
@@ -521,7 +623,7 @@ export const GUIA: Record<ClaveManual, Manual> = {
     grupos: [
       ["Empieza aquí", ["entrar", "disponible"]],
       ["Entregar", ["entregas", "entregar", "transferencia", "ruta", "no-entregado", "devolver"]],
-      ["Al terminar", ["cuadre", "historial"]],
+      ["Al terminar", ["cuadre", "historial", "ganancias"]],
     ],
     modulos: [
       {
@@ -632,6 +734,20 @@ export const GUIA: Record<ClaveManual, Manual> = {
           ['[data-testid^="historial-abrir-"]', "Toca un pedido para abrirlo."],
           ['[data-testid^="historial-detalle-"]', "El detalle: productos, forma de pago, lo cobrado, la devuelta, la dirección y el motivo si no se entregó."],
         ],
+      },
+      {
+        id: "ganancias", icono: "money", titulo: "Mis ganancias y pagos", cap: "r-ganancias",
+        que: "Lo que llevas ganado en el período, cuándo te pagan, tus pagos y adelantos. Nunca ves las ventas del colmado: solo lo tuyo.",
+        spots: [
+          ['[data-testid="ganado-periodo"]', "Lo ganado en el período: salario, comisiones y envíos."],
+          ['[data-testid="ganado-hoy"]', "Lo de hoy."],
+          ['[data-testid="saldo-cuadres"]', "Tu saldo de cuadres: si sale negativo, le debes al colmado."],
+          ['[data-testid="adelantos"]', "Pedir un adelanto: hasta la mitad de lo que llevas ganado."],
+          ['[data-testid^="pago-"]', "Tus pagos: tócalo para ver el detalle y el recibo, y confirma «Recibí mi pago»."],
+          ['[data-testid="mis-numeros"]', "Mis números: entregas, % sin fallar y minutos promedio."],
+        ],
+        pasos: ["Abre la pestaña «Ganancias».", "Mira lo ganado y el día de pago.", "Cuando te paguen, abre el pago y toca «Recibí mi pago»."],
+        tips: ["Las propinas son tuyas y salen aparte.", "Esta pestaña sale si el plan del colmado la incluye."],
       },
     ],
   },

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, Clock, CreditCard, Crown, Loader2, Lock, Sparkles } from "lucide-react";
 import { FUNCIONES_PLAN, INCLUIDO_SIEMPRE, precioPlan } from "@shared/funciones-plan";
-import { useSuscripcion, type DatosSuscripcion, type PlanPublico } from "@/lib/plan";
+import { cobroAnual, cobroMensual, useSuscripcion, type DatosSuscripcion, type PlanPublico } from "@/lib/plan";
 import { useToast } from "@/hooks/use-toast";
 
 async function pedir<T>(url: string, cuerpo?: unknown): Promise<T> {
@@ -52,7 +52,7 @@ export default function MiPlan({ colmadoId }: { colmadoId: number | null | undef
 
   const elegir = (plan: PlanPublico, periodo: "mes" | "anio") => accion(`${plan.id}-${periodo}`, async () => {
     if (pagaConStripe) {
-      const precio = periodo === "anio" ? plan.precioAnual : plan.precioMensual;
+      const precio = periodo === "anio" ? cobroAnual(plan) : cobroMensual(plan);
       const ok = window.confirm(`¿Cambiar a ${plan.nombre} por ${precioPlan(precio, plan.moneda)} ${periodo === "anio" ? "al año" : "al mes"}? Stripe te cobra o te abona la diferencia de los días que faltan.`);
       if (!ok) return;
     }
@@ -151,7 +151,7 @@ function Encabezado({ data }: { data: DatosSuscripcion }) {
           </p>
         ) : actual ? (
           <p className="text-sm text-slate-600">
-            {sus?.periodo === "anio" && actual.precioAnual ? `${precioPlan(actual.precioAnual, actual.moneda)} al año` : `${precioPlan(actual.precioMensual, actual.moneda)} al mes`}
+            {sus?.periodo === "anio" && actual.precioAnual ? `${precioPlan(cobroAnual(actual), actual.moneda)} al año` : `${precioPlan(cobroMensual(actual), actual.moneda)} al mes`}
             {data.fechaVencimiento ? ` · ${sus?.cancelaAlFinal ? "termina" : sus ? "se renueva" : "vence"} el ${fechaLarga(data.fechaVencimiento)}` : ""}
           </p>
         ) : null}
@@ -174,7 +174,7 @@ function TarjetaPlan({ plan, esActual, periodoActual, botones, ocupado, alElegir
   alElegir: (p: PlanPublico, periodo: "mes" | "anio") => void; cambiando: boolean;
 }) {
   const funciones = plan.funciones ?? [];
-  const anual = plan.precioAnual ? Number(plan.precioAnual) : null;
+  const anual = cobroAnual(plan) ? Number(cobroAnual(plan)) : null;
   const boton = (periodo: "mes" | "anio", texto: string, principal: boolean) => {
     const esEste = periodoActual === periodo;
     return (
@@ -198,7 +198,7 @@ function TarjetaPlan({ plan, esActual, periodoActual, botones, ocupado, alElegir
         {esActual && <span className="text-xs font-bold rounded-full bg-primary text-primary-foreground px-2.5 py-1 shrink-0">Tu plan</span>}
       </div>
       <p className="text-3xl font-extrabold text-slate-900">
-        {precioPlan(plan.precioMensual, plan.moneda)}<span className="text-base font-semibold text-slate-500">/mes</span>
+        {precioPlan(cobroMensual(plan), plan.moneda)}<span className="text-base font-semibold text-slate-500">/mes</span>
       </p>
       {anual ? <p className="text-sm text-emerald-700 font-semibold -mt-2"><Sparkles size={14} className="inline -mt-0.5" /> O {precioPlan(anual, plan.moneda)} al año: 1 mes gratis</p> : null}
       {botones && (

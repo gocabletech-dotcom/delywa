@@ -6,8 +6,8 @@ import { ArrowLeft } from "lucide-react";
 // Si cambias el texto, cambia también VERSION_LEGAL (aquí y en worker/data/legal.ts):
 // cada negocio que se registra deja constancia de la versión que aceptó.
 
-export const VERSION_LEGAL = "2026-11-12.2";
-const FECHA = "12 de noviembre de 2026";
+export const VERSION_LEGAL = "2026-11-26";
+const FECHA = "26 de noviembre de 2026";
 const OPERADOR = "WRMA Developer";
 const CONTACTO = "soporte@delywa.com";
 const SITIO = "delywa.com";
@@ -21,6 +21,8 @@ const SUBENCARGADOS = [
   "Meta Platforms, Inc. (WhatsApp Business Platform) — envío y recepción de mensajes de WhatsApp, cuando el negocio conecta su número oficial.",
   "Proveedor de Evolution API que el propio negocio elija — solo si el negocio conecta WhatsApp por esa vía.",
   "OpenStreetMap / Nominatim y, si se activa, un proveedor de rutas — convertir direcciones en ubicaciones y calcular distancias.",
+  "Stripe, Inc. — cobro de los planes de Delywa con tarjeta. Stripe recibe la tarjeta, el correo y el nombre de quien paga; Delywa no ve ni guarda el número de la tarjeta.",
+  "Resend, Inc. — envío de los correos de la plataforma (códigos, avisos de cuenta y de cobro).",
 ];
 
 const DOCUMENTOS: Documento[] = [
@@ -45,8 +47,17 @@ const DOCUMENTOS: Documento[] = [
         "Gestión de repartidores, rutas y pagos a repartidores; gestión de empleados, asistencia y nómina.",
         "Las respuestas del bot se generan con inteligencia artificial y pueden contener errores. El Negocio debe revisar y confirmar cada pedido, precio y monto antes de entregarlo o cobrarlo.",
       ] },
-      { titulo: "4. Planes y pagos", parrafos: [
-        "Los planes, sus límites y precios vigentes son los que se muestran en la plataforma. El período de prueba, si existe, dura lo que indique el plan de prueba. Los cambios de precio se avisan con al menos 30 días de anticipación. Si un pago no se recibe, el negocio entra en un período de gracia y luego puede suspenderse hasta que se ponga al día.",
+      { titulo: "4. Planes, cobros y cancelación", parrafos: [
+        "Los planes, lo que incluye cada uno, sus límites y sus precios vigentes son los que se muestran en la página de inicio y en Configuración → Mi plan. Los precios son en dólares de Estados Unidos (US$) e incluyen lo que cobra Delywa; tu banco puede cobrarte comisiones por pagos en otra moneda. Delywa no cobra comisión por pedido.",
+      ], lista: [
+        "Prueba gratis: al registrarte tienes un período de prueba con todas las funciones, sin tarjeta, por los días que indique el plan de prueba. Al terminar no se cobra nada solo: para seguir debes elegir un plan.",
+        "Cobro y renovación automática: el plan se paga con tarjeta por Stripe, por adelantado, cada mes o cada año según elijas. Se renueva solo al final de cada período y se cobra a la misma tarjeta hasta que lo canceles. El recibo te llega por correo y queda en «Cambiar tarjeta o ver facturas».",
+        "Cambio de plan: puedes subir o bajar de plan cuando quieras. La diferencia de los días que faltan del período se cobra o se abona en el próximo cobro (prorrateo).",
+        "Cancelación: puedes cancelar cuando quieras desde Configuración → Mi plan, sin penalidad. Sigues usando tu plan hasta el final del período que ya pagaste y no se te vuelve a cobrar.",
+        "Reembolsos: lo pagado por un período que ya empezó no se devuelve, tampoco la parte no usada de un plan anual. Si se te cobró por error o dos veces, te devolvemos ese cobro completo: escríbenos a " + CONTACTO + " dentro de los 30 días siguientes.",
+        "Pago fallido: si un cobro no pasa, te avisamos y Stripe lo vuelve a intentar durante unos días; mientras tanto todo sigue funcionando. Si no se logra cobrar, el plan termina.",
+        "Fin del plan: cuando termina la prueba o lo pagado tienes 3 días de gracia con todo funcionando. Después el negocio queda en modo limitado: el panel abre, pero la tienda, el chat, el bot y el mostrador no reciben pedidos nuevos hasta que elijas un plan. Ningún dato se borra por esto.",
+        "Cambios de precio: se avisan con al menos 30 días de anticipación y aplican desde el siguiente período. Si no estás de acuerdo, puedes cancelar antes.",
       ] },
       { titulo: "5. Obligaciones del Negocio", lista: [
         "Cumplir las leyes dominicanas aplicables, incluidas la Ley 358-05 de protección al consumidor, las normas fiscales y sanitarias, y la Ley 172-13 de protección de datos personales.",
@@ -65,7 +76,7 @@ const DOCUMENTOS: Documento[] = [
         "En la medida en que la ley lo permita, Delywa no responde por la calidad de los productos que vende el Negocio, por las entregas, por pérdidas de ventas o ganancias, ni por fallas de servicios de terceros. La responsabilidad total de Delywa frente al Negocio no superará lo que el Negocio pagó a Delywa en los 3 meses anteriores al hecho que la origine.",
       ] },
       { titulo: "9. Suspensión y cancelación", parrafos: [
-        "Puedes dejar de usar Delywa cuando quieras escribiendo a " + CONTACTO + ". Podemos suspender o cancelar una cuenta que incumpla estos términos o la ley. Al cancelar, puedes pedir una copia de tus datos dentro de los 30 días siguientes; después se eliminan según la Política de privacidad.",
+        "Puedes dejar de usar Delywa cuando quieras: cancela tu plan en Configuración → Mi plan o escríbenos a " + CONTACTO + ". Podemos suspender o cancelar una cuenta que incumpla estos términos o la ley. Al cancelar, puedes pedir una copia de tus datos dentro de los 30 días siguientes; después se eliminan según la Política de privacidad.",
       ] },
       { titulo: "10. Cambios, ley aplicable y contacto", parrafos: [
         "Podemos actualizar estos términos; te avisaremos en la plataforma y el uso continuado significa que aceptas la nueva versión. Estos términos se rigen por las leyes de la República Dominicana y cualquier conflicto se someterá a los tribunales de Santo Domingo. Contacto: " + CONTACTO + ".",
@@ -82,7 +93,7 @@ const DOCUMENTOS: Documento[] = [
       ] },
       { titulo: "2. Datos que recogemos", lista: [
         "Del dueño y del personal: nombre, correo, teléfono, contraseña (guardada cifrada, nunca en texto), rol, asistencia y datos de nómina que el negocio registre.",
-        "Del negocio: nombre, dirección, ubicación, horario, menú, fotos, logo, plan y pagos.",
+        "Del negocio: nombre, dirección, ubicación, horario, menú, fotos, logo, plan y pagos. El pago del plan lo procesa Stripe: Delywa guarda el plan, las fechas y los montos, nunca el número de la tarjeta.",
         "De los clientes del negocio: número de WhatsApp, nombre, dirección y ubicación de entrega, mensajes y notas de voz, pedidos, método de pago y comprobantes de transferencia.",
         "De los repartidores: nombre, teléfono, ubicación GPS mientras están en turno, entregas y cuadres de efectivo.",
         "Técnicos: dirección IP, navegador, fecha y hora de acceso, y registros de seguridad (por ejemplo, intentos de inicio de sesión).",

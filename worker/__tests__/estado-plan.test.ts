@@ -7,6 +7,7 @@ import { createTestApp } from "./helpers";
 import { createUser } from "../storage/users";
 import { DIAS_GRACIA, estadoSegunFecha, revisarPlanes } from "../lib/estado-plan";
 import { sincronizarSus } from "../lib/stripe";
+import { procesarAviso } from "../routes/webhooks";
 
 const DIA = 86400000;
 let t: Awaited<ReturnType<typeof createTestApp>>;
@@ -141,6 +142,15 @@ describe("cortesía", () => {
   it("al quitarla vuelve a su plan y su fecha", async () => {
     await admin.request("PATCH", `/api/colmados/${negocio.id}`, { cortesia: false });
     expect(await estadoDe(negocio.id)).toBe("suspendida");
+  });
+
+  it("en modo limitado el bot de WhatsApp no atiende y contesta una vez al día", async () => {
+    await t.db.update(colmados).set({ whatsappPhoneNumberId: "pn_vence" }).where(eq(colmados.id, negocio.id));
+    const aviso = { tipo: "meta" as const, body: { entry: [{ changes: [{ value: { metadata: { phone_number_id: "pn_vence" }, messages: [{ from: "18095550123", id: "wamid.1", type: "text", text: { body: "dame un pan" } }] } }] }] } };
+    await procesarAviso(t.env, aviso, [0, 0]);
+    await procesarAviso(t.env, aviso, [0, 0]);
+    const claves = await t.db.select().from(avisosEnviados).where(like(avisosEnviados.clave, `wa-limitado:${negocio.id}:18095550123:%`));
+    expect(claves.length).toBe(1);
   });
 });
 

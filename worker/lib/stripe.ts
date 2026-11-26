@@ -18,7 +18,23 @@ export class ErrorStripe extends Error {
   constructor(mensaje: string, public estado = 502) { super(mensaje); }
 }
 
-export type ConfigStripe = { key: string; webhook: string; modo: Modo; ambiente: Modo; listo: boolean };
+export type ConfigStripe = { key: string; webhook: string; modo: Modo; ambiente: Modo; listo: boolean; sumarComision: boolean };
+
+/** Comisión de Stripe para tarjetas: 2.9 % + US$0.30. */
+export const COMISION_STRIPE = { porcentaje: 0.029, fijo: 0.3 };
+
+/** Lo que se cobra para que, después de la comisión de Stripe, quede el precio del plan (como FoodPOS). */
+export function precioCobro(base: string | number | null | undefined, sumar: boolean): number {
+  const b = Number(base ?? 0);
+  if (!sumar || b <= 0) return Math.round(b * 100) / 100;
+  return Math.ceil(((b + COMISION_STRIPE.fijo) / (1 - COMISION_STRIPE.porcentaje)) * 100) / 100;
+}
+
+/** El plan con lo que de verdad se cobra (precioCobro y precioCobroAnual), para mostrarlo. */
+export function conPrecioCobro<T extends { precioMensual: string; precioAnual: string | null }>(env: Env, p: T) {
+  const sumar = cfgStripe(env).sumarComision;
+  return { ...p, precioCobro: precioCobro(p.precioMensual, sumar).toFixed(2), precioCobroAnual: p.precioAnual ? precioCobro(p.precioAnual, sumar).toFixed(2) : null };
+}
 
 /** Configuración de un ambiente (o del activo). Lee lo guardado en Integraciones (env ya resuelto con envEfectivo). */
 export function cfgStripe(env: Env, modo?: Modo): ConfigStripe {
@@ -27,7 +43,7 @@ export function cfgStripe(env: Env, modo?: Modo): ConfigStripe {
   const m = modo ?? ambiente;
   const key = (m === "real" ? v.stripe_key_real : v.stripe_key) || "";
   const webhook = (m === "real" ? v.stripe_webhook_real : v.stripe_webhook) || "";
-  return { key, webhook, modo: m, ambiente, listo: !!key };
+  return { key, webhook, modo: m, ambiente, listo: !!key, sumarComision: v.stripe_sumar_comision === "true" };
 }
 
 // ---------- API de Stripe (formulario a[b][0][c]=x) ----------
@@ -93,8 +109,8 @@ export async function stripePlan(env: Env, db: Db, planId: number, modo?: Modo) 
       product: producto, currency: "usd", unit_amount: monto, recurring: { interval: intervalo }, metadata: { app: "delywa", plan_id: p.id },
     })).id;
   };
-  const mes = await asegurar(ids.mes, centavos(p.precioMensual), "month");
-  const anio = await asegurar(ids.anio, centavos(p.precioAnual), "year");
+  const mes = await asegurar(ids.mes, centavos(precioCobro(p.precioMensual, C.sumarComision)), "month");
+  const anio = await asegurar(ids.anio, p.precioAnual ? centavos(precioCobro(p.precioAnual, C.sumarComision)) : 0, "year");
   await db.update(planes).set(C.modo === "real"
     ? { stripeProductoReal: producto, stripePrecioReal: mes, stripePrecioAnualReal: anio }
     : { stripeProducto: producto, stripePrecio: mes, stripePrecioAnual: anio }).where(eq(planes.id, p.id));

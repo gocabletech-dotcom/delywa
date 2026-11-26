@@ -4,7 +4,7 @@ import { ArrowRight, Check, Menu, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { FUNCIONES_PLAN, precioPlan } from "@shared/funciones-plan";
-import type { PlanPublico } from "@/lib/plan";
+import { cobroAnual, cobroMensual, type PlanPublico } from "@/lib/plan";
 import { RegistroNegocioForm } from "@/components/RegistroNegocioForm";
 import ComoPide from "@/components/landing/ComoPide";
 import AsistentePagina from "@/components/landing/AsistentePagina";
@@ -283,8 +283,8 @@ export default function Home() {
                 <div key={p.id} className="bg-white text-[#1F2420] rounded-[28px] p-7 grid gap-2 content-start">
                   <span style={TITULO} className="font-bold text-[28px]">{p.nombre}</span>
                   {p.descripcionCorta && <span className="text-[15px] text-[#4A524E]">{p.descripcionCorta}</span>}
-                  <span style={TITULO} className="font-bold text-[44px] leading-none text-[#17804F] mt-2">{precioPlan(p.precioMensual, p.moneda)}<span className="text-[17px] text-[#6B736F]"> /mes</span></span>
-                  {p.precioAnual && <span className="text-[15px] font-bold text-[#17804F]">o {precioPlan(p.precioAnual, p.moneda)} al año · 1 mes gratis</span>}
+                  <span style={TITULO} className="font-bold text-[44px] leading-none text-[#17804F] mt-2">{precioPlan(cobroMensual(p), p.moneda)}<span className="text-[17px] text-[#6B736F]"> /mes</span></span>
+                  {p.precioAnual && <span className="text-[15px] font-bold text-[#17804F]">o {precioPlan(cobroAnual(p), p.moneda)} al año · 1 mes gratis</span>}
                   <ul className="mt-3 grid gap-1.5 text-[15px]">
                     {[p.limiteDeliveries ? `Hasta ${p.limiteDeliveries} repartidores` : "Repartidores sin límite", p.limitePedidosDiarios ? `Hasta ${p.limitePedidosDiarios} pedidos al día` : "Pedidos sin límite"].map((t) => <li key={t} className="flex gap-2"><Check size={18} className="text-[#17804F] shrink-0 mt-0.5" />{t}</li>)}
                     {FUNCIONES_PLAN.filter((f) => (p.funciones ?? []).includes(f.clave)).map((f) => (

@@ -1,7 +1,8 @@
+import { cfgStripe, precioCobro } from "../lib/stripe";
 import { Hono, type Context } from "hono";
 import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { asistenteConversaciones, asistenteMensajes, asistenteRespuestas, planes } from "@shared/schema";
-import type { AppEnv } from "../env";
+import type { AppEnv, Env } from "../env";
 import { getDb, type Db } from "../db";
 import { requireAdmin, requireAuth } from "../lib/auth";
 import { permitirEvento } from "../lib/rate-limit";
@@ -20,10 +21,11 @@ const nuevoToken = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b)
 const texto = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
 /** Planes activos tal como están en la base (precios y días de prueba en vivo). */
-async function planesPublicos(db: Db): Promise<PlanPublico[]> {
+async function planesPublicos(db: Db, env: Env): Promise<PlanPublico[]> {
+  const sumar = cfgStripe(env).sumarComision;
   const filas = (await db.select().from(planes).where(eq(planes.activo, true)).orderBy(planes.orden)).filter((p) => p.visible);
   return filas.map((p) => ({
-    nombre: p.nombre, precio: Number(p.precioMensual || 0), moneda: p.moneda || "USD", trial: p.esTrial, dias: p.duracionDias,
+    nombre: p.nombre, precio: precioCobro(p.precioMensual, sumar), moneda: p.moneda || "USD", trial: p.esTrial, dias: p.duracionDias,
     descripcion: p.descripcionCorta, caracteristicas: (p.caracteristicas ?? []).slice(0, 5),
   }));
 }
@@ -54,7 +56,7 @@ asistenteRoutes.post("/api/asistente", async (c) => {
   const escrito = texto(body.texto, 500);
   if (!tema && !escrito) return c.json({ error: "Escribe tu pregunta." }, 400);
 
-  const listaPlanes = await planesPublicos(db);
+  const listaPlanes = await planesPublicos(db, c.env);
   let r: Respuesta | null = tema ? respuestaDeTema(tema, listaPlanes) : null;
   if (!r) {
     const aprendidas = await db.select({ id: asistenteRespuestas.id, pregunta: asistenteRespuestas.pregunta, respuesta: asistenteRespuestas.respuesta })

@@ -11,7 +11,8 @@ import {
 import { graphUrl, http, versionGraphValida } from "../lib/whatsapp";
 import { verificarTurnstile } from "../lib/turnstile";
 import { correoListo, enviarCorreo, plantillaCorreo } from "../lib/correo";
-import { cfgStripe, stripeApi } from "../lib/stripe";
+import { cfgStripe, sincronizarPlanEnStripe, stripeApi } from "../lib/stripe";
+import { planes } from "@shared/schema";
 
 // Panel de plataforma → Integraciones: llaves de OpenAI, Meta y Turnstile.
 // Solo platform_admin. Los secretos nunca se devuelven completos.
@@ -56,6 +57,8 @@ function validar(campo: NombreCampo, valor: string): string | null {
     case "stripe_webhook":
     case "stripe_webhook_real":
       return /^whsec_[\w]{10,}$/.test(valor) ? null : "debe empezar con whsec_";
+    case "stripe_sumar_comision":
+      return valor === "true" || valor === "false" ? null : "debe ser true o false";
     case "stripe_ambiente":
       return valor === "prueba" || valor === "real" ? null : "debe ser prueba o real";
     default:
@@ -107,6 +110,7 @@ async function estado(c: Context<AppEnv>) {
     stripe: {
       webhookUrl: `${urlPublica}/api/stripe/webhook`,
       eventos: EVENTOS_STRIPE,
+      sumarComision: datos.valores.stripe_sumar_comision === "true",
       ambiente: datos.valores.stripe_ambiente === "real" ? "real" : "prueba",
     },
     turnstile: { activo: datos.valores.turnstile_activo === "true", siteKey: efectivo.__integraciones?.valores.turnstile_site_key ?? null },
@@ -161,6 +165,12 @@ integracionRoutes.put("/api/admin/integraciones", async (c) => {
   c.set("bitacoraDetalle", `Cambió: ${cambios.map(([campo, v]) => `${CAMPOS[campo].etiqueta}${v === null ? " (quitada)" : ""}`).join(", ")}`);
   if (hayTurnstile) await guardar(db, crudo(c), `${PREFIJO}turnstile_activo`, false, null, CAMPOS.turnstile_activo.etiqueta);
   olvidarCache(c.env);
+  // Se prendió o apagó «sumar la comisión»: los precios de Stripe de cada plan se ponen al día (los pagos nuevos usan el nuevo).
+  if (cambios.some(([campo]) => campo === "stripe_sumar_comision")) {
+    const env = await envEfectivo(crudo(c));
+    const db = getDb(env.DB);
+    for (const p of await db.select({ id: planes.id }).from(planes)) await sincronizarPlanEnStripe(env, db, p.id);
+  }
   return c.json(await estado(c));
 });
 
