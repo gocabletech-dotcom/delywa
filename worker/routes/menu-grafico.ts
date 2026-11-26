@@ -1,3 +1,4 @@
+import { enModoLimitado } from "../lib/estado-plan";
 import { Hono, type Context } from "hono";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { subdominioDeSlug } from "@shared/subdominio";
@@ -176,7 +177,7 @@ menuGraficoRoutes.post("/api/menu-grafico/pedido", async (c) => {
   }
   const colmado = await getColmado(db, colmadoId);
   if (!colmado) return c.json({ error: "Negocio no encontrado" }, 404);
-  if (colmado.estado !== "activo" || colmado.estadoSuscripcion === "suspendida") {
+  if (colmado.estado !== "activo" || (await enModoLimitado(db, colmado))) {
     return c.json({ error: "Este negocio no está recibiendo pedidos en este momento." }, 409);
   }
 

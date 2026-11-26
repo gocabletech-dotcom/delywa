@@ -31,12 +31,12 @@ export async function avisosFinDePrueba(env: Env): Promise<number> {
     const nueva = await db.insert(avisosEnviados).values({ clave }).onConflictDoNothing().returning();
     if (!nueva.length) continue;
     const hola = f.dueno ? ` ${escHtml(String(f.dueno).split(" ")[0])}` : "";
-    const asunto = tipo === "fin" ? `Tu prueba gratis de DelyWa terminó · ${f.nombre}` : `Tu prueba gratis de DelyWa termina en ${dias} día${dias === 1 ? "" : "s"} · ${f.nombre}`;
+    const asunto = tipo === "fin" ? `Tu prueba gratis de Delywa terminó · ${f.nombre}` : `Tu prueba gratis de Delywa termina en ${dias} día${dias === 1 ? "" : "s"} · ${f.nombre}`;
     const cuerpo = tipo === "fin"
-      ? `<p>Hola${hola},</p><p>La prueba gratis de <b>${escHtml(f.nombre)}</b> en DelyWa terminó. Para seguir recibiendo pedidos sin interrupción, escríbenos y te activamos tu plan. Toda tu información se queda igual.</p>`
-      : `<p>Hola${hola},</p><p>A la prueba gratis de <b>${escHtml(f.nombre)}</b> le quedan <b>${dias} día${dias === 1 ? "" : "s"}</b>. Para seguir sin interrupciones, escríbenos antes de que termine y te activamos tu plan. Toda tu información se queda igual.</p>`;
+      ? `<p>Hola${hola},</p><p>La prueba gratis de <b>${escHtml(f.nombre)}</b> en Delywa terminó. Todo sigue funcionando 3 días más; para seguir recibiendo pedidos sin interrupción, elige tu plan en <b>Configuración → Mi plan</b> y paga con tu tarjeta. Toda tu información se queda igual.</p>`
+      : `<p>Hola${hola},</p><p>A la prueba gratis de <b>${escHtml(f.nombre)}</b> le quedan <b>${dias} día${dias === 1 ? "" : "s"}</b>. Para seguir sin interrupciones, elige tu plan en <b>Configuración → Mi plan</b> antes de que termine: Colmado por US$9.99 al mes o Full por US$29.99. Toda tu información se queda igual.</p>`;
     try {
-      await enviarCorreo(env, { para: f.email, asunto, html: plantillaCorreo(asunto, cuerpo + boton("Entrar a mi panel", `${base}/login`)), responder: SOPORTE });
+      await enviarCorreo(env, { para: f.email, asunto, html: plantillaCorreo(asunto, cuerpo + boton("Elegir mi plan", `${base}/negocio/settings?seccion=plan`)), responder: SOPORTE });
       enviados++;
     } catch (err) {
       console.error("[avisos] Fin de prueba no enviado:", err instanceof Error ? err.message : err);

@@ -6,6 +6,7 @@ import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAuth, requireBusinessAccess } from "../lib/auth";
 import { requierePlan, respuestaSinFuncion, planDe } from "../lib/plan";
+import { enModoLimitado } from "../lib/estado-plan";
 import { OPERADORES, nombreUsuario } from "../lib/permisos";
 import { descontarInventario, estadoInventario } from "../lib/inventario";
 import { rangoDiaLocal } from "../lib/fechas";
@@ -33,6 +34,8 @@ const redondeo = (n: number) => Math.round(n * 100) / 100;
 
 mostradorRoutes.post(`${base}/mostrador`, async (c) => {
   const db = getDb(c.env.DB);
+  const negocio = await getColmado(db, Number(c.req.param("id")));
+  if (negocio && (await enModoLimitado(db, negocio))) return c.json({ error: "Tu plan terminó: el mostrador no registra ventas nuevas. Elige tu plan en Configuración → Mi plan.", planVencido: true }, 402);
   const colmadoId = Number(c.req.param("id"));
   const colmado = await getColmado(db, colmadoId);
   if (!colmado) return c.json({ error: "Negocio no encontrado" }, 404);

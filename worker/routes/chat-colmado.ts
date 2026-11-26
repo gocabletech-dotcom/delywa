@@ -9,6 +9,7 @@ import { permitirEvento } from "../lib/rate-limit";
 import { mismoTelefono, soloDigitos } from "../lib/telefono";
 import { ia } from "../chat/adaptador";
 import { anotarNotaDeVoz, atenderChat, type Entrada } from "../bot/motor";
+import { enModoLimitado, MENSAJE_LIMITADO } from "../lib/estado-plan";
 import { CupoAgotado, iaDisponible, transcribir } from "../bot/ia";
 import { tieneFuncion } from "../lib/plan";
 import { avisarAlNegocio } from "../lib/push";
@@ -52,9 +53,10 @@ chatColmadoRoutes.get("/api/chat-colmado/:codigo/info", async (c) => {
   const colmado = await getColmadoByCodigo(db, c.req.param("codigo"));
   if (!colmado || colmado.estado !== "activo") return c.json({ error: "Negocio no encontrado" }, 404);
   const pais = colmado.paisId ? await getPais(db, colmado.paisId) : undefined;
+  const limitado = await enModoLimitado(db, colmado);
   return c.json({
     id: colmado.id, nombre: colmado.nombre, logo: colmado.logo, colorPrimario: colmado.colorPrimario,
-    direccion: colmado.direccion, estaAbierto: colmado.estaAbiertoManual !== false, mensajeCerrado: colmado.mensajeCerrado,
+    direccion: colmado.direccion, estaAbierto: !limitado && colmado.estaAbiertoManual !== false, mensajeCerrado: limitado ? MENSAJE_LIMITADO : colmado.mensajeCerrado,
     prefijoTelefono: pais?.prefijoCelular ?? "1809", codigoPais: pais?.codigo ?? "DO",
     ofertas: await ofertasVigentes(db, [colmado.id, ...(colmado.negocioPrincipalId ? [colmado.negocioPrincipalId] : [])]).catch(() => []),
   });
@@ -243,7 +245,10 @@ function atender(c: Context<AppEnv>, s: SesionAbierta, entrada: Entrada) {
         .where(and(eq(chatWebSesiones.colmadoId, s.colmado.id), mismoTelefono(chatWebSesiones.clienteWhatsapp, s.sesion.clienteWhatsapp!), eq(chatWebSesiones.aparato, s.sesion.aparato), ne(chatWebSesiones.id, s.sesion.id)))
         .limit(1)).length > 0
       : false;
-    const respuestas = await atenderChat({ env: c.env, db, colmado: s.colmado, sesion: fresca ?? s.sesion, respuestasPrevias: previas, aparatoConocido }, entrada);
+    // Plan vencido (modo limitado): el bot no toma pedidos nuevos.
+    const respuestas = (await enModoLimitado(db, s.colmado))
+      ? [{ texto: MENSAJE_LIMITADO, opciones: undefined }]
+      : await atenderChat({ env: c.env, db, colmado: s.colmado, sesion: fresca ?? s.sesion, respuestasPrevias: previas, aparatoConocido }, entrada);
     await dormir(previas < tiempos.primerasRespuestas ? tiempos.rapidoMs : tiempos.normalMs);
     for (const [i, r] of respuestas.entries()) {
       if (i > 0) await dormir(tiempos.entreMensajesMs);

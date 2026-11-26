@@ -3,7 +3,8 @@
 // o lo cancela al final del período. Y el webhook que mantiene todo al día. Adaptado de FoodPOS.
 import { Hono, type Context } from "hono";
 import { and, eq } from "drizzle-orm";
-import { planes, stripeEventos, type Plan } from "@shared/schema";
+import { planes, stripeEventos, stripeFacturas, type Plan } from "@shared/schema";
+import { avisarCobroFallido } from "../lib/estado-plan";
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { requireAuth, requireBusinessAccess } from "../lib/auth";
@@ -172,6 +173,10 @@ planPagoRoutes.post("/api/stripe/webhook", async (c) => {
     }
     // Toda factura que cambia queda guardada para Ingresos (también los reembolsos).
     if (/^invoice\./.test(ev.type)) await guardarFactura(C.key, db, o, modo);
+    if (ev.type === "invoice.payment_failed") {
+      const [f] = await db.select().from(stripeFacturas).where(eq(stripeFacturas.id, o.id));
+      if (f?.colmadoId) await avisarCobroFallido(c.env, db, f.colmadoId, o.id, f.pendiente !== "0.00" ? f.pendiente : f.total, f.error);
+    }
     if (ev.type === "charge.refunded" && o.invoice) await guardarFactura(C.key, db, { id: typeof o.invoice === "string" ? o.invoice : o.invoice.id }, modo);
   } catch (e) {
     console.error("[stripe] webhook", ev.type, e instanceof Error ? e.message : e);

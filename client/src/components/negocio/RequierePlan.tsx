@@ -21,3 +21,22 @@ export function SinFuncionEnPlan({ colmadoId, funcion, compacto }: { colmadoId: 
     </div>
   );
 }
+
+/** Modo limitado: el plan terminó y pasaron los 3 días de gracia. Nada se borró. */
+export function PlanTerminado({ esDueno }: { esDueno: boolean }) {
+  return (
+    <div className="max-w-lg mx-auto my-10 rounded-2xl border border-amber-300 bg-white p-6 text-center grid gap-3 justify-items-center" data-testid="plan-terminado">
+      <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-700 grid place-items-center"><Lock size={26} /></div>
+      <p className="text-lg font-extrabold text-slate-900">Tu plan terminó</p>
+      <p className="text-slate-600">
+        Por ahora la tienda, el chat y el mostrador no reciben pedidos nuevos. Toda tu información está guardada y vuelve al instante
+        {esDueno ? " cuando eliges tu plan." : " cuando el dueño elija un plan. Avísale."}
+      </p>
+      {esDueno && (
+        <Link href="/negocio/settings?seccion=plan" className="inline-flex items-center justify-center min-h-[44px] px-5 rounded-full bg-primary text-primary-foreground font-bold" data-testid="link-elegir-plan">
+          Elegir mi plan
+        </Link>
+      )}
+    </div>
+  );
+}

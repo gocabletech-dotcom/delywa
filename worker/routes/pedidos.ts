@@ -1,3 +1,4 @@
+import { planDe } from "../lib/plan";
 import { codigoSeguimientoValido } from "../lib/seguimiento";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -317,7 +318,8 @@ pedidoRoutes.post("/api/pedidos/:id/confirmar", requireAuth, async (c) => {
   if (!colmado) return c.json({ error: "Colmado no encontrado" }, 404);
   const simbolo = await moneda(db, colmado);
 
-  const plan = await getPlan(db, colmado.planId);
+  const vigente = await planDe(db, colmado.id); // plan del principal; la cortesía no tiene límite
+  const plan = vigente?.cortesia ? null : vigente?.plan;
   if (plan?.limitePedidosDiarios) {
     const confirmadosHoy = await contarConfirmadosHoy(db, colmado.id, await getColmadoTimezone(db, colmado), pedido.id);
     if (confirmadosHoy >= plan.limitePedidosDiarios) {

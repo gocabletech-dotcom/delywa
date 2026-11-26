@@ -1,5 +1,5 @@
 import { useSuscripcion, tiene } from "@/lib/plan";
-import { SinFuncionEnPlan } from "@/components/negocio/RequierePlan";
+import { PlanTerminado, SinFuncionEnPlan } from "@/components/negocio/RequierePlan";
 import type { ClaveFuncion } from "@shared/funciones-plan";
 import { useState, ReactNode } from "react";
 import { CambiarClave } from "@/components/CambiarClave";
@@ -105,6 +105,8 @@ export default function NegocioLayout({
   };
   const bloqueada = (nav: ActiveNav) => { const f = FUNCION_DE[nav]; return !!f && !tiene(suscripcionData, f); };
   const funcionActual = FUNCION_DE[activeNav];
+  // Plan vencido (después de los 3 días de gracia): el panel solo abre Configuración para elegir plan.
+  const modoLimitado = suscripcionData?.estadoSuscripcion === "suspendida" && !suscripcionData?.vigente?.cortesia;
 
   const { data: sucursalesData } = useQuery<{ sucursales: Array<{ id: number; nombre: string }>; sucursalActivaId: number }>({
     queryKey: ["sucursales"],
@@ -369,7 +371,8 @@ export default function NegocioLayout({
           )}
           <AvisoConfirmarCorreo />
           <AvisoActivar colmadoId={colmadoId} />
-          {funcionActual && bloqueada(activeNav) ? <div className="p-4"><SinFuncionEnPlan colmadoId={colmadoId} funcion={funcionActual} /></div> : children}
+          {modoLimitado && activeNav !== "settings" ? <div className="p-4"><PlanTerminado esDueno={esDueno || roleData?.role === "platform_admin"} /></div>
+            : funcionActual && bloqueada(activeNav) ? <div className="p-4"><SinFuncionEnPlan colmadoId={colmadoId} funcion={funcionActual} /></div> : children}
         </div>
       </div>
 

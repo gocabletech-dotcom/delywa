@@ -80,7 +80,9 @@ async function repartidorAdministrable(db: Db, user: User, id: number) {
 }
 
 async function limiteDePlan(db: Db, colmado: Colmado) {
-  const plan = colmado.planId ? await getPlan(db, colmado.planId) : undefined;
+  // Plan del negocio principal; la cortesía no tiene límites.
+  const vigente = await planDe(db, colmado.id);
+  const plan = vigente?.cortesia ? null : vigente?.plan;
   return plan?.limiteDeliveries ? { nombre: plan.nombre, limite: plan.limiteDeliveries } : null;
 }
 

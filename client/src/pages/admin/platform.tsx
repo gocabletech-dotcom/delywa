@@ -22,6 +22,7 @@ import { JergaAprendidaPanel } from "@/components/admin/JergaAprendidaPanel";
 import { JergaSimple } from "@/components/admin/JergaSimple";
 import { BotChatPanel } from "@/components/admin/BotChatPanel";
 import { SaludSection } from "@/components/admin/SaludSection";
+import { IngresosSection } from "@/components/admin/IngresosSection";
 import promoVideo1 from "@assets/generated_videos/complete_delivery_flow_sequence.mp4";
 import promoVideo2 from "@assets/generated_videos/delywa_logo_with_slogan.mp4";
 import promoVideoFull1 from "@assets/generated_videos/customer_types_order_ai_responds.mp4";
@@ -60,6 +61,7 @@ interface Negocio {
   fechaInicioPlan: string | null;
   fechaVencimiento: string | null;
   estadoSuscripcion: string;
+  cortesia?: boolean;
   diaCorte: number;
   diasGracia: number;
   paisId: number | null;
@@ -204,7 +206,7 @@ function whatsappPlaceholder(pais: { codigo: string; prefijoCelular: string } | 
   return `Ej: ${prefix}${getPhoneExample(pais.codigo)}`;
 }
 
-type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones" | "solicitudes" | "seguridad" | "facturacion" | "asistente-pagina" | "salud";
+type SectionType = "tipos-negocio" | "plantillas-menu" | "planes" | "negocios" | "jerga" | "system-prompt" | "datos-conocimiento" | "delivery-prompt" | "productos-restringidos" | "paises" | "zip-alert-template" | "integraciones" | "solicitudes" | "seguridad" | "facturacion" | "asistente-pagina" | "salud" | "ingresos";
 
 const tiposNegocioLocal = [
   { value: "colmado", label: "Colmado" },
@@ -326,6 +328,7 @@ export default function PlatformAdminPage() {
     diasGracia: number;
     fechaVencimiento: string | null;
     estadoSuscripcion: string;
+    cortesia: boolean;
     paisId: number | null;
     codigoPostal: string | null;
   } | null>(null);
@@ -468,7 +471,7 @@ export default function PlatformAdminPage() {
           diaCorte: data.diaCorte,
           diasGracia: data.diasGracia,
           fechaVencimiento: data.fechaVencimiento,
-          estadoSuscripcion: data.estadoSuscripcion,
+          cortesia: data.cortesia,
           paisId: data.paisId,
           codigoPostal: data.codigoPostal || null,
         }),
@@ -1380,6 +1383,7 @@ export default function PlatformAdminPage() {
       diasGracia: negocio.diasGracia || 6,
       fechaVencimiento: negocio.fechaVencimiento ? new Date(negocio.fechaVencimiento).toISOString().split('T')[0] : null,
       estadoSuscripcion: negocio.estadoSuscripcion || "activa",
+      cortesia: !!negocio.cortesia,
       paisId: negocio.paisId ?? null,
       codigoPostal: negocio.codigoPostal ?? null,
     });
@@ -1924,7 +1928,7 @@ export default function PlatformAdminPage() {
                               : "bg-red-100 text-red-700"
                           }
                         >
-                          {negocio.estadoSuscripcion === "activa" ? "Activo" : negocio.estadoSuscripcion === "en_gracia" ? "En Gracia" : "Suspendido"}
+                          {negocio.cortesia ? "Cortesía" : negocio.estadoSuscripcion === "activa" ? "Activo" : negocio.estadoSuscripcion === "en_gracia" ? "En gracia" : "Modo limitado"}
                         </Badge>
                         )}
                         {plan && (
@@ -3365,6 +3369,7 @@ export default function PlatformAdminPage() {
     { id: "paises" as SectionType, label: "Países", icon: Globe },
     { id: "planes" as SectionType, label: "Planes", icon: Crown },
     { id: "salud" as SectionType, label: "Salud", icon: Activity },
+    { id: "ingresos" as SectionType, label: "Ingresos", icon: DollarSign },
     { id: "solicitudes" as SectionType, label: "Solicitudes", icon: Check },
     { id: "asistente-pagina" as SectionType, label: "Asistente de la página", icon: MessageSquare },
     { id: "negocios" as SectionType, label: "Negocios", icon: Store },
@@ -3477,6 +3482,7 @@ export default function PlatformAdminPage() {
               {activeSection === "seguridad" && <SeguridadSection />}
               {activeSection === "asistente-pagina" && <AsistentePaginaSection />}
               {activeSection === "salud" && <SaludSection />}
+              {activeSection === "ingresos" && <IngresosSection />}
             </>
           )}
         </main>
@@ -4147,19 +4153,22 @@ export default function PlatformAdminPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-estadoSuscripcion">Estado Suscripción</Label>
-                  <select
-                    id="edit-estadoSuscripcion"
-                    value={editNegocio.estadoSuscripcion}
-                    onChange={(e) => setEditNegocio({ ...editNegocio, estadoSuscripcion: e.target.value })}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    data-testid="select-edit-negocio-estado-suscripcion"
-                  >
-                    <option value="activa">Activa</option>
-                    <option value="en_gracia">En Gracia</option>
-                    <option value="suspendida">Suspendida</option>
-                  </select>
+                  <Label>Estado del plan</Label>
+                  <p className="text-sm text-slate-700 min-h-10 flex items-center" data-testid="text-edit-negocio-estado-plan">
+                    {editNegocio.cortesia ? "Cortesía (no vence)" : editNegocio.estadoSuscripcion === "activa" ? "Activo" : editNegocio.estadoSuscripcion === "en_gracia" ? "En sus 3 días de gracia" : "Modo limitado (no recibe pedidos)"}
+                  </p>
+                  <p className="text-xs text-slate-500">Se calcula solo con la fecha de vencimiento.</p>
                 </div>
+                <label className="col-span-2 flex items-start gap-2 rounded-lg border p-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4"
+                    checked={editNegocio.cortesia}
+                    onChange={(e) => setEditNegocio({ ...editNegocio, cortesia: e.target.checked })}
+                    data-testid="check-edit-negocio-cortesia"
+                  />
+                  <span className="text-sm"><b>Cortesía</b>: todo incluido, sin límites y sin vencer. No se le cobra. Al quitarla vuelve a su plan y su fecha.</span>
+                </label>
                 {paises.length > 0 && (
                   <div className="col-span-2 space-y-2">
                     <Label htmlFor="edit-paisId" className="flex items-center gap-1">

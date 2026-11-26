@@ -20,6 +20,7 @@ import { createOrUpdateMetodosPago, getAllPlanes, getMetodosPago, getPlatformSta
 
 const TIPOS_SIN_MENU = ["colmado", "colmadon"];
 const ESTADOS_NEGOCIO = ["activo", "inactivo", "suspendido", "pendiente_revision", "rechazado"];
+import { revisarPlanes } from "../lib/estado-plan";
 const ESTADOS_SUSCRIPCION = ["activa", "en_gracia", "suspendida"];
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
@@ -236,6 +237,11 @@ negocioRoutes.patch("/api/colmados/:id", requireAuth, async (c) => {
     if (body.diaCorte !== undefined) updateData.diaCorte = parseInt(body.diaCorte);
     if (body.diasGracia !== undefined) updateData.diasGracia = parseInt(body.diasGracia);
     if (body.tecnologiasHabilitadas !== undefined) updateData.tecnologiasHabilitadas = body.tecnologiasHabilitadas;
+    // Cortesía: todo incluido, sin límites y sin vencer (no se cobra). Al quitarla vuelve a su plan y su fecha.
+    if (body.cortesia !== undefined) {
+      updateData.cortesia = body.cortesia === true;
+      if (body.cortesia === true) updateData.estadoSuscripcion = "activa";
+    }
   }
   for (const key of ["fechaInicioPlan", "fechaVencimiento"] as const) {
     const value = updateData[key];
@@ -254,8 +260,13 @@ negocioRoutes.patch("/api/colmados/:id", requireAuth, async (c) => {
 
   if (Object.keys(updateData).length === 0) return c.json({ error: "Se requiere al menos un campo para actualizar" }, 400);
   try {
-    const updated = await updateColmado(db, id, updateData);
+    let updated = await updateColmado(db, id, updateData);
     if (!updated) return c.json({ error: "Colmado no encontrado" }, 404);
+    // Cambió el plan, su fecha o la cortesía: el estado (activa, gracia, limitado) se pone al día ya.
+    if (esAdmin && ["planId", "fechaInicioPlan", "fechaVencimiento", "cortesia"].some((k) => k in updateData) && !("estadoSuscripcion" in body)) {
+      await revisarPlanes(c.env, db);
+      updated = (await getColmado(db, id)) ?? updated;
+    }
     return c.json(await enrichColmadoWithMoneda(db, toSafeColmado(updated, true)));
   } catch (error) {
     if (isUniqueViolation(error)) return c.json({ error: "Este número de WhatsApp ya está registrado" }, 409);
@@ -387,25 +398,7 @@ negocioRoutes.put("/api/colmados/:id/metodos-pago", requireAuth, requireBusiness
 negocioRoutes.get("/api/admin/stats", requireAuth, requireAdmin, async (c) => c.json(await getPlatformStats(getDb(c.env.DB))));
 
 negocioRoutes.post("/api/admin/check-subscriptions", requireAuth, requireAdmin, async (c) => {
-  const db = getDb(c.env.DB);
-  const updates: unknown[] = [];
-  const hoy = new Date();
-  for (const colmado of await getAllColmados(db)) {
-    const diaCorte = colmado.diaCorte || 28;
-    const diasGracia = colmado.diasGracia || 6;
-    let fechaVencimiento = colmado.fechaVencimiento ? new Date(colmado.fechaVencimiento) : null;
-    if (!fechaVencimiento) {
-      const mes = hoy.getUTCDate() <= diaCorte ? hoy.getUTCMonth() : hoy.getUTCMonth() + 1;
-      fechaVencimiento = new Date(Date.UTC(hoy.getUTCFullYear(), mes, diaCorte, 23, 59, 59));
-    }
-    const fechaSuspension = new Date(fechaVencimiento.getTime() + diasGracia * 24 * 60 * 60 * 1000);
-    const nuevoEstado = hoy <= fechaVencimiento ? "activa" : hoy <= fechaSuspension ? "en_gracia" : "suspendida";
-    if (colmado.estadoSuscripcion !== nuevoEstado || !colmado.fechaVencimiento) {
-      await updateColmado(db, colmado.id, { estadoSuscripcion: nuevoEstado, fechaVencimiento });
-      updates.push({
-        colmadoId: colmado.id, nombre: colmado.nombre, estadoAnterior: colmado.estadoSuscripcion, nuevoEstado, fechaVencimiento,
-      });
-    }
-  }
-  return c.json({ success: true, actualizados: updates.length, detalles: updates });
+  // Mismo cálculo que el cron de cada hora: activa → 3 días de gracia → modo limitado.
+  const cambios = await revisarPlanes(c.env, getDb(c.env.DB));
+  return c.json({ success: true, actualizados: cambios.length, detalles: cambios });
 });

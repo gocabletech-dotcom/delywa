@@ -6,6 +6,7 @@ import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
 import { colmados, planes, stripeFacturas, suscripciones, users, type Plan } from "@shared/schema";
 import type { Env } from "../env";
 import type { Db } from "../db";
+import { estadoSegunFecha } from "./estado-plan";
 
 export type Modo = "prueba" | "real";
 export const sufijo = (modo: Modo) => (modo === "real" ? "_real" : "");
@@ -149,7 +150,10 @@ export async function sincronizarSus(db: Db, sub: any, modo?: Modo): Promise<num
   if (!plan) return null;
   const finS = sub.current_period_end ?? item?.current_period_end;
   const inicioS = sub.current_period_start ?? item?.current_period_start ?? sub.start_date;
-  const fin = finS ? new Date(finS * 1000) : new Date(Date.now() + 30 * 86400000);
+  let fin = finS ? new Date(finS * 1000) : new Date(Date.now() + 30 * 86400000);
+  // Cancelada: termina cuando Stripe la cerró (si fue por no pagar, ya). Impaga (se acabaron los reintentos): desde hoy.
+  if (sub.status === "canceled" && sub.ended_at) fin = new Date(sub.ended_at * 1000);
+  if (sub.status === "unpaid") fin = new Date(Math.min(fin.getTime(), Date.now()));
   const anual = item?.price?.recurring?.interval === "year";
   const estado = ESTADO_STRIPE[sub.status] ?? "pendiente";
   const datos = {
@@ -163,10 +167,14 @@ export async function sincronizarSus(db: Db, sub: any, modo?: Modo): Promise<num
   else await db.insert(suscripciones).values(datos);
   // El negocio queda con el plan pagado hasta el fin del período. Cancelada: conserva lo pagado hasta esa fecha.
   if (estado === "activa" || estado === "atrasada" || estado === "cancelada") {
+    const [c] = await db.select({ cortesia: colmados.cortesia }).from(colmados).where(eq(colmados.id, colmadoId));
+    const nuevoEstado = estadoSegunFecha(fin, !!c?.cortesia);
     await db.update(colmados).set({
-      planId: plan.id, fechaVencimiento: fin, cortesia: false,
-      ...(estado === "cancelada" ? {} : { estadoSuscripcion: "activa", fechaInicioPlan: datos.fechaInicio ?? new Date() }),
+      planId: plan.id, fechaVencimiento: fin, estadoSuscripcion: nuevoEstado,
+      ...(estado === "cancelada" ? {} : { fechaInicioPlan: datos.fechaInicio ?? new Date() }),
     }).where(eq(colmados.id, colmadoId));
+    // Las sucursales siguen al principal al instante (pagar saca del modo limitado sin esperar al cron).
+    await db.update(colmados).set({ estadoSuscripcion: nuevoEstado }).where(eq(colmados.negocioPrincipalId, colmadoId));
   }
   return colmadoId;
 }

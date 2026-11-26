@@ -35,8 +35,10 @@ import { fiadoRoutes } from "./routes/fiado";
 import { pushRoutes } from "./routes/push";
 import { comprasRoutes } from "./routes/compras";
 import { planPagoRoutes } from "./routes/plan-pago";
+import { ingresosRoutes } from "./routes/ingresos";
 import { avisarAlRepartidor, repartirOfertas } from "./lib/push";
 import { cerrarPeriodosVencidos } from "./lib/ganancias-delivery";
+import { revisarPlanes } from "./lib/estado-plan";
 import { getColmado, getColmadoTimezone } from "./storage/colmados";
 import { enlaceChat } from "@shared/subdominio";
 import { urlPublica } from "./lib/mensajeria";
@@ -108,6 +110,7 @@ app.route("/", fiadoRoutes);
 app.route("/", pushRoutes);
 app.route("/", comprasRoutes);
 app.route("/", planPagoRoutes);
+app.route("/", ingresosRoutes);
 app.route("/", asistenteRoutes);
 app.route("/", tiempoRealRoutes);
 
@@ -145,6 +148,8 @@ export default {
           return avisarAlRepartidor(env, db, d.id, { titulo: "🧾 Tu pago está listo", texto: `Cerró tu período: RD$${monto.toLocaleString("es-DO")}. El colmado te lo paga pronto.`, url: `/repartidor/${col?.slug ?? ""}`, etiqueta: `pago-${pagoId}` });
         });
       }
+      // Cada hora: estado del plan de cada negocio (gracia de 3 días y modo limitado).
+      if (primeraVuelta) await revisarPlanes(env, getDb(env.DB));
       // 14:00 UTC (10:00 a.m. en RD): aviso de fin de prueba gratis.
       if (hora === 14 && primeraVuelta) await avisosFinDePrueba(env);
     })().catch((err) => console.error("[cron] Tarea diaria falló:", err instanceof Error ? err.message : err)));
