@@ -11,6 +11,7 @@ import {
 import { graphUrl, http, versionGraphValida } from "../lib/whatsapp";
 import { verificarTurnstile } from "../lib/turnstile";
 import { correoListo, enviarCorreo, plantillaCorreo } from "../lib/correo";
+import { cfgStripe, stripeApi } from "../lib/stripe";
 
 // Panel de plataforma → Integraciones: llaves de OpenAI, Meta y Turnstile.
 // Solo platform_admin. Los secretos nunca se devuelven completos.
@@ -48,6 +49,15 @@ function validar(campo: NombreCampo, valor: string): string | null {
         ? null : "debe ser un correo, por ejemplo: DelyWa <no-responder@delywa.com>";
     case "turnstile_activo":
       return "se activa con el botón «Probar y activar»";
+    case "stripe_key":
+      return /^(sk|rk)_test_[\w]{10,}$/.test(valor) ? null : "debe ser la llave secreta de prueba (empieza con sk_test_)";
+    case "stripe_key_real":
+      return /^(sk|rk)_live_[\w]{10,}$/.test(valor) ? null : "debe ser la llave secreta real (empieza con sk_live_)";
+    case "stripe_webhook":
+    case "stripe_webhook_real":
+      return /^whsec_[\w]{10,}$/.test(valor) ? null : "debe empezar con whsec_";
+    case "stripe_ambiente":
+      return valor === "prueba" || valor === "real" ? null : "debe ser prueba o real";
     default:
       return valor.length >= 8 ? null : "es demasiado corto";
   }
@@ -94,6 +104,11 @@ async function estado(c: Context<AppEnv>) {
       verifyToken: efectivo.WHATSAPP_VERIFY_TOKEN ?? null,
       eliminacionDatosUrl: `${urlPublica}/api/webhook/data-deletion`,
     },
+    stripe: {
+      webhookUrl: `${urlPublica}/api/stripe/webhook`,
+      eventos: EVENTOS_STRIPE,
+      ambiente: datos.valores.stripe_ambiente === "real" ? "real" : "prueba",
+    },
     turnstile: { activo: datos.valores.turnstile_activo === "true", siteKey: efectivo.__integraciones?.valores.turnstile_site_key ?? null },
     negociosConLlavePropia: Object.keys(datos.openaiPorNegocio).length,
   };
@@ -126,6 +141,12 @@ integracionRoutes.put("/api/admin/integraciones", async (c) => {
     }
     cambios.push([campo, valor || null]);
   }
+  // Cobrar en real solo con la llave real guardada (o guardándola en el mismo cambio).
+  const pasaAReal = cambios.find(([campo, v]) => campo === "stripe_ambiente" && v === "real");
+  if (pasaAReal) {
+    const llaveReal = cambios.find(([campo]) => campo === "stripe_key_real")?.[1] ?? (await leerIntegraciones(crudo(c))).valores.stripe_key_real;
+    if (!llaveReal) return c.json({ error: "Para cobrar de verdad primero guarda la llave secreta real de Stripe (sk_live_…)." }, 400);
+  }
   const hayTurnstile = cambios.some(([campo]) => campo === "turnstile_site_key" || campo === "turnstile_secret_key");
   const db = getDb(c.env.DB);
   try {
@@ -144,6 +165,34 @@ integracionRoutes.put("/api/admin/integraciones", async (c) => {
 });
 
 // ---------- Pruebas (no gastan saldo) ----------
+
+/** Avisos que hay que marcar al crear el destino del webhook en Stripe. */
+export const EVENTOS_STRIPE = [
+  "checkout.session.completed", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted",
+  "invoice.paid", "invoice.payment_failed", "invoice.finalized", "charge.refunded",
+];
+
+integracionRoutes.post("/api/admin/integraciones/probar-stripe", async (c) => {
+  const env = await envEfectivo(crudo(c));
+  const resultados: string[] = [];
+  let ok = false;
+  for (const modo of ["prueba", "real"] as const) {
+    const C = cfgStripe(env, modo);
+    if (!C.key) continue;
+    try {
+      // Leer el saldo no cobra nada.
+      const saldo = await stripeApi<any>(C.key, "GET", "/balance");
+      const usd = (saldo.available ?? []).find((b: any) => b.currency === "usd");
+      resultados.push(`${modo === "real" ? "Real" : "Prueba"}: la llave funciona${usd ? ` (disponible US$${(usd.amount / 100).toFixed(2)})` : ""}${C.webhook ? "" : ", pero falta la firma del webhook"}.`);
+      ok = true;
+    } catch (e) {
+      resultados.push(`${modo === "real" ? "Real" : "Prueba"}: Stripe rechazó la llave (${e instanceof Error ? e.message : e}).`);
+    }
+  }
+  if (!resultados.length) return c.json({ ok: false, mensaje: "No hay llaves de Stripe guardadas." });
+  const env2 = env;
+  return c.json({ ok, mensaje: `${resultados.join(" ")} Cobra el ambiente de ${cfgStripe(env2).ambiente === "real" ? "dinero real" : "prueba"}.` });
+});
 
 async function probarOpenAI(apiKey: string | undefined, gateway: string | undefined) {
   if (!apiKey) return { ok: false, mensaje: "No hay llave de OpenAI configurada." };

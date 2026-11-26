@@ -4,7 +4,16 @@ import type { ClaveFuncion } from "@shared/funciones-plan";
 
 export type PlanPublico = Omit<Plan, "stripeProducto" | "stripePrecio" | "stripePrecioAnual" | "stripeProductoReal" | "stripePrecioReal" | "stripePrecioAnualReal">;
 
+export type DatosPago = {
+  activo: boolean;
+  modo: "prueba" | "real" | null;
+  puedePagar: boolean;
+  esSucursal: boolean;
+  suscripcion: { planId: number; estado: string; periodo: "mes" | "anio" | string; cancelaAlFinal: boolean; fechaFin: string; conTarjeta: boolean } | null;
+};
+
 export type DatosSuscripcion = {
+  pago?: DatosPago;
   plan: PlanPublico | null;
   vigente: { nombre: string; funciones: ClaveFuncion[]; todo: boolean; cortesia: boolean } | null;
   planes: PlanPublico[];

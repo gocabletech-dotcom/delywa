@@ -3,6 +3,8 @@ import { fromZodError } from "zod-validation-error";
 import { insertPlanSchema, type Plan } from "@shared/schema";
 import { esClaveFuncion } from "@shared/funciones-plan";
 import { planDe } from "../lib/plan";
+import { cfgStripe, sincronizarPlanEnStripe, suscripcionDe } from "../lib/stripe";
+import { PUEDEN_PAGAR } from "./plan-pago";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAdmin, requireAuth, requireBusinessAccess } from "../lib/auth";
@@ -86,8 +88,12 @@ catalogoRoutes.patch("/api/planes/:id", requireAuth, async (c) => {
   if (!result.success) return c.json({ error: fromZodError(result.error).message }, 400);
   if (Object.keys(result.data).length === 0) return c.json({ error: "Se requiere al menos un campo" }, 400);
   try {
-    const plan = await updatePlan(getDb(c.env.DB), Number(c.req.param("id")), limpiarPlan(result.data) as Partial<InsertPlan>);
-    return plan ? c.json(plan) : c.json({ error: "Plan no encontrado" }, 404);
+    const db = getDb(c.env.DB);
+    const plan = await updatePlan(db, Number(c.req.param("id")), limpiarPlan(result.data) as Partial<InsertPlan>);
+    if (!plan) return c.json({ error: "Plan no encontrado" }, 404);
+    // Si cambió el precio o el nombre, Stripe también: se crea el precio nuevo y el viejo se archiva.
+    const avisoStripe = await sincronizarPlanEnStripe(c.env, db, plan.id);
+    return c.json({ ...planPublico((await getPlan(db, plan.id)) ?? plan), avisoStripe });
   } catch (error) {
     if (isUniqueViolation(error)) return c.json({ error: "Ya existe un plan con ese identificador" }, 409);
     throw error;
@@ -121,7 +127,23 @@ catalogoRoutes.get("/api/colmados/:colmadoId/suscripcion", requireAuth, requireB
 
   const vigente = await planDe(db, colmado.id);
   const disponibles = (await getPlanesActivos(db)).filter((p) => p.visible).map(planPublico);
+  // Pago con Stripe (Mi plan): si está activo, la suscripción del ambiente que cobra y si este usuario puede pagar.
+  const C = cfgStripe(c.env);
+  const principalId = colmado.negocioPrincipalId ?? colmado.id;
+  const sus = C.key ? await suscripcionDe(db, principalId) : null;
+  const susDelAmbiente = sus && sus.modo === C.modo ? sus : null;
+  const pago = {
+    activo: C.listo,
+    modo: C.listo ? C.modo : null,
+    puedePagar: PUEDEN_PAGAR.includes(c.var.user.role ?? "") && !colmado.negocioPrincipalId,
+    esSucursal: !!colmado.negocioPrincipalId,
+    suscripcion: susDelAmbiente ? {
+      planId: susDelAmbiente.planId, estado: susDelAmbiente.estado, periodo: susDelAmbiente.periodo,
+      cancelaAlFinal: susDelAmbiente.cancelaAlFinal, fechaFin: susDelAmbiente.fechaFin, conTarjeta: !!susDelAmbiente.stripeCliente,
+    } : null,
+  };
   return c.json({
+    pago,
     suscripcion: { fechaInicio: colmado.fechaInicioPlan || colmado.fechaSuscripcion, fechaFin: colmado.fechaVencimiento },
     plan: plan ? planPublico(plan) : null,
     /** Lo que de verdad puede usar (la prueba y la cortesía lo incluyen todo). */

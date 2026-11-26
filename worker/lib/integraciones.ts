@@ -30,6 +30,11 @@ export const CAMPOS = {
   turnstile_activo: { secreto: false, etiqueta: "Turnstile activo en el login" },
   resend_clave: { secreto: true, etiqueta: "Clave de Resend (API key)" },
   correo_desde: { secreto: false, etiqueta: "Remitente de los correos" },
+  stripe_key: { secreto: true, etiqueta: "Llave secreta de Stripe · prueba (sk_test_…)" },
+  stripe_webhook: { secreto: true, etiqueta: "Firma del webhook de Stripe · prueba (whsec_…)" },
+  stripe_key_real: { secreto: true, etiqueta: "Llave secreta de Stripe · real (sk_live_…)" },
+  stripe_webhook_real: { secreto: true, etiqueta: "Firma del webhook de Stripe · real (whsec_…)" },
+  stripe_ambiente: { secreto: false, etiqueta: "Ambiente de Stripe que cobra" },
 } satisfies Record<string, Campo>;
 
 export type NombreCampo = keyof typeof CAMPOS;

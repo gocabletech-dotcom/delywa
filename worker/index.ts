@@ -34,6 +34,7 @@ import { mostradorRoutes } from "./routes/mostrador";
 import { fiadoRoutes } from "./routes/fiado";
 import { pushRoutes } from "./routes/push";
 import { comprasRoutes } from "./routes/compras";
+import { planPagoRoutes } from "./routes/plan-pago";
 import { avisarAlRepartidor, repartirOfertas } from "./lib/push";
 import { cerrarPeriodosVencidos } from "./lib/ganancias-delivery";
 import { getColmado, getColmadoTimezone } from "./storage/colmados";
@@ -106,6 +107,7 @@ app.route("/", mostradorRoutes);
 app.route("/", fiadoRoutes);
 app.route("/", pushRoutes);
 app.route("/", comprasRoutes);
+app.route("/", planPagoRoutes);
 app.route("/", asistenteRoutes);
 app.route("/", tiempoRealRoutes);
 

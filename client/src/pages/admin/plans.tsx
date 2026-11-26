@@ -102,9 +102,11 @@ export default function PlansAdminPage() {
       if (!res.ok) throw new Error("Error al actualizar plan");
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (r: { avisoStripe?: string | null }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/planes"] });
-      toast({ title: "Plan actualizado exitosamente" });
+      toast(r?.avisoStripe
+        ? { title: "Plan guardado, pero falta Stripe", description: r.avisoStripe, variant: "destructive" }
+        : { title: "Plan actualizado exitosamente" });
       setEditingPlan(null);
       setIsEditOpen(false);
       resetForm();

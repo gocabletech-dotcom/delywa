@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Brain, Check, Copy, Loader2, Mail, MessageSquare, Save, ShieldCheck } from "lucide-react";
+import { AlertCircle, Brain, Check, Copy, CreditCard, Loader2, Mail, MessageSquare, Save, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 
@@ -26,6 +26,7 @@ type Estado = {
   claveMaestra: boolean;
   campos: Campo[];
   meta: { webhookUrl: string; verifyToken: string | null; eliminacionDatosUrl: string };
+  stripe: { webhookUrl: string; eventos: string[]; ambiente: "prueba" | "real" };
   turnstile: { activo: boolean; siteKey: string | null };
   negociosConLlavePropia: number;
 };
@@ -70,6 +71,13 @@ const GRUPOS: Array<{ titulo: string; descripcion: string; icono: typeof Brain; 
     prueba: "probar-correo",
   },
   {
+    titulo: "Cobro de los planes (Stripe)",
+    descripcion: "Los colmados pagan su plan en dólares con tarjeta desde Configuración → Mi plan. Guarda las llaves de prueba y las reales; el interruptor de abajo dice cuál cobra. Stripe cobra 2.9 % + US$0.30 por pago.",
+    icono: CreditCard,
+    campos: ["stripe_key", "stripe_webhook", "stripe_key_real", "stripe_webhook_real"],
+    prueba: "probar-stripe",
+  },
+  {
     titulo: "Protección del login (Cloudflare Turnstile)",
     descripcion: "Pide la verificación «¿eres una persona?» después de 3 intentos fallidos de entrar, y al registrar un negocio. Solo se activa después de una prueba exitosa, para que nadie quede fuera por un error en las claves.",
     icono: ShieldCheck,
@@ -89,6 +97,10 @@ const AYUDA: Record<string, string> = {
   resend_clave: "resend.com → API Keys → Create API Key (permiso «Sending access»). Empieza con re_.",
   correo_desde: "Debe ser de un dominio verificado en Resend, por ejemplo: DelyWa <no-responder@delywa.com>",
   turnstile_site_key: "Cloudflare → Turnstile → tu widget → Clave del sitio.",
+  stripe_key: "Stripe → modo de prueba → Desarrolladores → Claves de API → Clave secreta. Empieza con sk_test_.",
+  stripe_webhook: "Stripe (modo de prueba) → Desarrolladores → Webhooks → tu destino → Secreto de firma. Empieza con whsec_.",
+  stripe_key_real: "Lo mismo, con el modo de prueba apagado. Empieza con sk_live_.",
+  stripe_webhook_real: "El secreto de firma del destino creado con el modo de prueba apagado.",
   turnstile_secret_key: "En el mismo widget → Clave secreta.",
 };
 
@@ -240,6 +252,34 @@ export function IntegracionesSection() {
                   </div>
                 );
               })}
+
+              {grupo.titulo.startsWith("Cobro") && (
+                <div className="bg-slate-50 rounded-lg p-3 space-y-3 border" data-testid="stripe-webhook">
+                  <p className="text-sm font-medium">Datos para crear el destino del webhook en Stripe (Desarrolladores → Webhooks → Agregar destino), uno en prueba y otro en real:</p>
+                  <Copiable etiqueta="URL del destino" valor={data.stripe.webhookUrl} testId="text-stripe-webhook-url" />
+                  <p className="text-xs text-gray-600">Eventos que hay que marcar: {data.stripe.eventos.map((e) => <code key={e} className="mr-1.5 whitespace-nowrap">{e}</code>)}</p>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <span className="text-sm">Cobra ahora:</span>
+                    <Badge className={data.stripe.ambiente === "real" ? "bg-emerald-600" : "bg-amber-500"} data-testid="badge-stripe-ambiente">
+                      {data.stripe.ambiente === "real" ? "Dinero real" : "Prueba (no cobra de verdad)"}
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={guardar.isPending}
+                      onClick={() => {
+                        const real = data.stripe.ambiente !== "real";
+                        if (window.confirm(real ? "¿Empezar a cobrar de verdad? Los colmados pagarán con su tarjeta real." : "¿Volver al modo de prueba? Nadie podrá pagar de verdad mientras tanto.")) {
+                          guardar.mutate({ stripe_ambiente: real ? "real" : "prueba" });
+                        }
+                      }}
+                      data-testid="button-stripe-ambiente"
+                    >
+                      {data.stripe.ambiente === "real" ? "Volver a prueba" : "Cobrar de verdad"}
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {grupo.titulo.startsWith("WhatsApp") && (
                 <div className="bg-slate-50 rounded-lg p-3 space-y-3 border">

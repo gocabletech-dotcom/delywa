@@ -42,7 +42,7 @@ export const mismoOrigen: MiddlewareHandler<AppEnv> = async (c, next) => {
 
 /** Rutas que cambian cosas pero no hace falta anotar (ruido o ya se anotan aparte). */
 const SIN_BITACORA = [
-  /^\/api\/auth\//, /^\/api\/chat-colmado\//, /^\/api\/webhook/, /^\/api\/uploads\/archivo\//,
+  /^\/api\/auth\//, /^\/api\/chat-colmado\//, /^\/api\/webhook/, /^\/api\/stripe\/webhook/, /^\/api\/uploads\/archivo\//,
   /^\/api\/portal-repartidor\/heartbeat/, /^\/api\/deliveries\/\d+\/ubicacion/, /^\/api\/conversaciones\/\d+\/read/,
   /^\/api\/menu-grafico\//, /^\/api\/registro-negocio/, /^\/api\/empleado\/portal\//,
 ];
