@@ -1,6 +1,6 @@
 // Delywa · Manual interactivo (mismo modelo que el de FoodPOS): capturas reales con puntos,
 // recorrido guiado, paso a paso, consejos, preguntas, progreso por aparato y buscador.
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link } from "wouter";
 import {
   ArrowLeft, Bike, BookOpen, Building2, Check, ChefHat, ClipboardList, Contact, CreditCard, DollarSign, Eye, History,
@@ -9,7 +9,8 @@ import {
   type LucideIcon,
   Receipt, Lock, MessageCircleQuestion,
 } from "lucide-react";
-import { GUIA, type ClaveManual, type Icono, type Manual, type Modulo } from "@/manual/guia";
+import { GUIA as GUIA_ES, type ClaveManual, type Icono, type Manual, type Modulo } from "@/manual/guia";
+import { GUIA_EN } from "@/manual/guia-en";
 import capturasJson from "@/manual/capturas.json";
 
 type Punto = { x: number; y: number; bx: number; by: number; bw: number; bh: number } | null;
@@ -36,7 +37,40 @@ const LS = {
   set(k: string, v: unknown) { try { localStorage.setItem("delywa_man_" + k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } },
 };
 
-const CLAVES = Object.keys(GUIA) as ClaveManual[];
+const CLAVES = Object.keys(GUIA_ES) as ClaveManual[];
+
+// ---------- idioma (español por defecto; ?lang=en o el botón EN) ----------
+type Idioma = "es" | "en";
+const TEXTOS = {
+  es: {
+    noEncuentras: "¿No encuentras lo que buscas? Escríbenos a", manual: "Manual", manuales: "Manuales", buscar: "Buscar en el manual…",
+    nada: "No encontramos nada. Prueba con otra palabra, por ejemplo «devuelta», «ruta» o «QR».", aprendidos: "aprendidos", empieza: "Empieza aquí",
+    aprendido: "Aprendido", tocaTema: "Toca un tema para ver la pantalla real con sus puntos explicados, el paso a paso y los consejos. Tu progreso se guarda en este aparato.",
+    abrirPantalla: "Abrir esta pantalla", pantalla: "Pantalla", punto: "Punto", de: "de", recorrido: "Recorrido",
+    tocaNumeros: "Toca los números de la pantalla, o inicia el recorrido guiado.", anterior: "Anterior", iniciar: "Iniciar", terminar: "Terminar",
+    siguiente: "Siguiente", queHay: "Qué hay en esta pantalla", reducir: "Reducir", ampliar: "Ampliar", pasoAPaso: "Paso a paso",
+    consejos: "Consejos", preguntas: "Preguntas frecuentes", marcarAprendido: "Marcar como aprendido", idioma: "Idioma",
+  },
+  en: {
+    noEncuentras: "Can't find what you're looking for? Write to us at", manual: "Manual", manuales: "Manuals", buscar: "Search the manual…",
+    nada: "Nothing found. Try another word, for example «change», «route» or «QR».", aprendidos: "learned", empieza: "Start here",
+    aprendido: "Learned", tocaTema: "Tap a topic to see the real screen with its points explained, the step by step and the tips. Your progress is saved on this device. The app itself is in Spanish: button names are shown «in Spanish» with their meaning.",
+    abrirPantalla: "Open this screen", pantalla: "Screen", punto: "Point", de: "of", recorrido: "Tour",
+    tocaNumeros: "Tap the numbers on the screen, or start the guided tour.", anterior: "Previous", iniciar: "Start", terminar: "Finish",
+    siguiente: "Next", queHay: "What's on this screen", reducir: "Shrink", ampliar: "Enlarge", pasoAPaso: "Step by step",
+    consejos: "Tips", preguntas: "FAQ", marcarAprendido: "Mark as learned", idioma: "Language",
+  },
+} satisfies Record<Idioma, Record<string, string>>;
+type Textos = (typeof TEXTOS)["es"];
+const Ctx = createContext<{ idioma: Idioma; G: Record<ClaveManual, Manual>; T: Textos; cambiar: (i: Idioma) => void }>({
+  idioma: "es", G: GUIA_ES, T: TEXTOS.es, cambiar: () => {},
+});
+const useManual = () => useContext(Ctx);
+function idiomaInicial(): Idioma {
+  const q = new URLSearchParams(window.location.search).get("lang");
+  if (q === "en" || q === "es") return q;
+  try { return localStorage.getItem("delywa_man_idioma") === "en" ? "en" : "es"; } catch { return "es"; }
+}
 
 /** En el teléfono se muestran las fotos tomadas en celular ("@cel"), que se entienden mejor que las de computadora encogidas. */
 function useEnCelular(): boolean {
@@ -73,6 +107,10 @@ export default function ManualInteractivo({ embebido = false, porDefecto = "nego
     return CLAVES.includes(s as ClaveManual) ? (s as ClaveManual) : null;
   }, []);
   const [{ man, id }, setRuta] = useState(() => leerHash(solo, porDefecto));
+  const [idioma, setIdioma] = useState<Idioma>(idiomaInicial);
+  const GUIA = idioma === "en" ? GUIA_EN : GUIA_ES;
+  const T = TEXTOS[idioma];
+  const cambiar = (i: Idioma) => { setIdioma(i); try { localStorage.setItem("delywa_man_idioma", i); } catch { /* sin almacenamiento */ } };
   const [, refrescar] = useState(0);
   useEffect(() => {
     const cambio = () => setRuta(leerHash(solo, porDefecto));
@@ -92,20 +130,23 @@ export default function ManualInteractivo({ embebido = false, porDefecto = "nego
   const estilo = { "--c": M.color } as CSSProperties;
 
   return (
-    <div className="min-h-full bg-slate-50 text-slate-900" style={estilo} data-testid="manual">
+    <Ctx.Provider value={{ idioma, G: GUIA, T, cambiar }}>
+    <div className="min-h-full bg-slate-50 text-slate-900" style={estilo} data-testid="manual" lang={idioma}>
       <Barra man={man} solo={solo} embebido={embebido} />
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pb-12">
         {modulo ? <VistaModulo man={man} M={M} m={modulo} embebido={embebido} alCambiar={() => refrescar((x) => x + 1)} /> : <VistaInicio man={man} M={M} />}
       </main>
       <footer className="max-w-6xl mx-auto px-4 sm:px-6 pb-10 text-center text-sm text-slate-500">
-        ¿No encuentras lo que buscas? Escríbenos a <a className="font-medium underline" href="mailto:soporte@delywa.com">soporte@delywa.com</a>
+        {T.noEncuentras} <a className="font-medium underline" href="mailto:soporte@delywa.com">soporte@delywa.com</a>
       </footer>
     </div>
+    </Ctx.Provider>
   );
 }
 
 // ---------- barra superior: manuales y buscador ----------
 function Barra({ man, solo, embebido }: { man: ClaveManual; solo: ClaveManual | null; embebido: boolean }) {
+  const { G: GUIA, T, idioma, cambiar } = useManual();
   const lista = solo ? [] : CLAVES;
   return (
     <header className={`${embebido ? "" : "md:sticky md:top-0"} z-20 bg-white/95 backdrop-blur border-b border-slate-200`}>
@@ -113,11 +154,11 @@ function Barra({ man, solo, embebido }: { man: ClaveManual; solo: ClaveManual | 
         {!embebido && (
           <a href={solo ? `#${solo}` : "/"} className="flex items-center gap-2 font-bold text-lg mr-2" data-testid="manual-logo">
             <span className="w-9 h-9 rounded-xl bg-[#17804F] text-white flex items-center justify-center"><BookOpen className="w-5 h-5" /></span>
-            Delywa <small className="text-slate-500 font-medium text-sm">Manual</small>
+            Delywa <small className="text-slate-500 font-medium text-sm">{T.manual}</small>
           </a>
         )}
         {lista.length > 0 && (
-          <nav className="w-full sm:w-auto grid grid-cols-3 sm:flex gap-1.5" aria-label="Manuales" data-testid="manual-switch">
+          <nav className="w-full sm:w-auto grid grid-cols-3 sm:flex gap-1.5" aria-label={T.manuales} data-testid="manual-switch">
             {lista.map((k) => {
               const on = k === man;
               return (
@@ -136,18 +177,27 @@ function Barra({ man, solo, embebido }: { man: ClaveManual; solo: ClaveManual | 
           </nav>
         )}
         <Buscador solo={solo} />
+        <div className="flex rounded-full border border-slate-200 bg-white p-0.5 text-sm font-semibold" role="group" aria-label={T.idioma} data-testid="manual-idioma">
+          {(["es", "en"] as Idioma[]).map((i) => (
+            <button key={i} type="button" onClick={() => cambiar(i)} aria-pressed={idioma === i}
+              className={`h-9 px-3 rounded-full ${idioma === i ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`} data-testid={`manual-idioma-${i}`}>
+              {i.toUpperCase()}
+            </button>
+          ))}
+        </div>
       </div>
     </header>
   );
 }
 
 function Buscador({ solo }: { solo: ClaveManual | null }) {
+  const { G: GUIA, T } = useManual();
   const [q, setQ] = useState("");
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
   const indice = useMemo(() => CLAVES.filter((k) => !solo || k === solo).flatMap((man) => GUIA[man].modulos.map((m) => ({
     man, m, txt: [m.titulo, m.que, ...m.spots.map((s) => s[1]), ...(m.pasos ?? []), ...(m.tips ?? []), ...(m.faq ?? []).flat()].join(" "),
-  }))), [solo]);
+  }))), [solo, GUIA]);
   useEffect(() => {
     const fuera = (e: MouseEvent) => { if (caja.current && !caja.current.contains(e.target as Node)) setAbierto(false); };
     document.addEventListener("click", fuera);
@@ -175,15 +225,15 @@ function Buscador({ solo }: { solo: ClaveManual | null }) {
           if (e.key === "Enter" && resultados[0]) ir(`${resultados[0].man}/${resultados[0].m.id}`);
           if (e.key === "Escape") { setAbierto(false); (e.target as HTMLInputElement).blur(); }
         }}
-        placeholder="Buscar en el manual…"
-        aria-label="Buscar en el manual"
+        placeholder={T.buscar}
+        aria-label={T.buscar}
         className="w-full h-10 rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-[color:var(--c)]"
         data-testid="manual-buscar"
       />
       {abierto && termino.length >= 2 && (
         <div className="absolute right-0 left-0 sm:left-auto sm:w-[26rem] mt-2 max-h-[70vh] overflow-auto rounded-2xl border border-slate-200 bg-white shadow-xl z-30" data-testid="manual-resultados">
           {resultados.length === 0 ? (
-            <p className="p-4 text-sm text-slate-500">No encontramos nada. Prueba con otra palabra, por ejemplo «devuelta», «ruta» o «QR».</p>
+            <p className="p-4 text-sm text-slate-500">{T.nada}</p>
           ) : resultados.map((x) => (
             <button key={`${x.man}.${x.m.id}`} type="button" onClick={() => ir(`${x.man}/${x.m.id}`)} className="block w-full text-left px-4 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50">
               <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: GUIA[x.man].color }}>{GUIA[x.man].corto}</span>
@@ -199,6 +249,7 @@ function Buscador({ solo }: { solo: ClaveManual | null }) {
 
 // ---------- inicio de un manual ----------
 function VistaInicio({ man, M }: { man: ClaveManual; M: Manual }) {
+  const { T } = useManual();
   const ok = LS.get<string[]>("ok_" + man, []).filter((x) => M.modulos.some((m) => m.id === x));
   const pct = Math.round((ok.length / M.modulos.length) * 100);
   const mod = (id: string) => M.modulos.find((m) => m.id === id);
@@ -212,13 +263,13 @@ function VistaInicio({ man, M }: { man: ClaveManual; M: Manual }) {
         </div>
         <div className="w-32 h-32 rounded-full grid place-items-center shrink-0" style={{ background: `conic-gradient(${M.color} ${pct * 3.6}deg, #e2e8f0 0)` }} data-testid="manual-progreso">
           <div className="w-24 h-24 rounded-full bg-white grid place-items-center text-center">
-            <div><b className="text-2xl">{ok.length}/{M.modulos.length}</b><small className="block text-xs text-slate-500">aprendidos</small></div>
+            <div><b className="text-2xl">{ok.length}/{M.modulos.length}</b><small className="block text-xs text-slate-500">{T.aprendidos}</small></div>
           </div>
         </div>
       </section>
 
       <section className="rounded-3xl bg-white border border-slate-200 p-5 sm:p-6">
-        <h2 className="font-bold text-lg flex items-center gap-2"><Play className="w-5 h-5" style={{ color: M.color }} /> Empieza aquí</h2>
+        <h2 className="font-bold text-lg flex items-center gap-2"><Play className="w-5 h-5" style={{ color: M.color }} /> {T.empieza}</h2>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {M.empieza.map((id, i) => {
             const m = mod(id); if (!m) return null;
@@ -247,20 +298,21 @@ function VistaInicio({ man, M }: { man: ClaveManual; M: Manual }) {
                   <span className="w-10 h-10 rounded-xl grid place-items-center text-white mb-3" style={{ background: M.color }}><Ic n={m.icono} /></span>
                   <b className="block text-[16px] leading-tight">{m.titulo}</b>
                   <p className="text-sm text-slate-600 mt-1.5 line-clamp-3">{m.que}</p>
-                  {ok.includes(mid) && <span className="absolute top-3 right-3 w-6 h-6 rounded-full grid place-items-center text-white text-xs" style={{ background: M.color }} aria-label="Aprendido">✓</span>}
+                  {ok.includes(mid) && <span className="absolute top-3 right-3 w-6 h-6 rounded-full grid place-items-center text-white text-xs" style={{ background: M.color }} aria-label={T.aprendido}>✓</span>}
                 </a>
               );
             })}
           </div>
         </section>
       ))}
-      <p className="text-sm text-slate-500 mt-8">Toca un tema para ver la pantalla real con sus puntos explicados, el paso a paso y los consejos. Tu progreso se guarda en este aparato.</p>
+      <p className="text-sm text-slate-500 mt-8">{T.tocaTema}</p>
     </div>
   );
 }
 
 // ---------- un tema ----------
 function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: Manual; m: Modulo; embebido: boolean; alCambiar: () => void }) {
+  const { T } = useManual();
   const i = M.modulos.findIndex((x) => x.id === m.id);
   const prev = M.modulos[i - 1], next = M.modulos[i + 1];
   const enCelular = useEnCelular();
@@ -336,7 +388,7 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
             <p className="text-slate-600 text-[17px] mt-1.5 max-w-3xl">{m.que}</p>
             {embebido && man === "negocio" && m.ruta && (
               <Link href={`/negocio/${m.ruta}`} className="inline-flex items-center gap-2 mt-3 h-10 px-4 rounded-xl text-white text-sm font-semibold" style={{ background: M.color }} data-testid="manual-abrir-pantalla">
-                <Play className="w-4 h-4" /> Abrir esta pantalla
+                <Play className="w-4 h-4" /> {T.abrirPantalla}
               </Link>
             )}
           </div>
@@ -353,7 +405,7 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
                   </div>
                 )}
                 <div className="relative" data-testid="manual-captura">
-                  <img src={`/manual/img/${cap.img}`} alt={`Pantalla: ${m.titulo}`} className="block w-full h-auto" loading="lazy" />
+                  <img src={`/manual/img/${cap.img}`} alt={`${T.pantalla}: ${m.titulo}`} className="block w-full h-auto" loading="lazy" />
                   {foco && (
                     <div
                       className="absolute rounded-lg pointer-events-none transition-all duration-300"
@@ -368,7 +420,7 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
                       onClick={() => enfocar(k === actual ? -1 : k)}
                       className={`absolute -translate-x-1/2 -translate-y-1/2 ${movil ? "w-6 h-6 text-xs" : "w-7 h-7 text-sm"} rounded-full text-white font-bold grid place-items-center shadow-lg ring-2 ring-white transition-transform ${k === actual ? "scale-125" : "hover:scale-110"} ${actual < 0 ? "animate-[pulse_2.4s_ease-in-out_infinite]" : ""}`}
                       style={{ left: `${x.s.x}%`, top: `${x.s.y}%`, background: M.color }}
-                      aria-label={`Punto ${k + 1}: ${x.t}`}
+                      aria-label={`${T.punto} ${k + 1}: ${x.t}`}
                       data-testid={`manual-punto-${k + 1}`}
                     >
                       {k + 1}
@@ -378,12 +430,12 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
               </div>
               {spots.length > 0 && (
                 <div className={`mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-white border border-slate-200 p-2.5 shadow-sm ${actual >= 0 ? "sticky bottom-3 z-10" : ""}`} data-testid="manual-recorrido">
-                  <span className="text-xs font-bold px-2 py-1 rounded-lg text-white shrink-0" style={{ background: M.color }}>{actual >= 0 ? `${actual + 1} de ${spots.length}` : "Recorrido"}</span>
-                  <p className="flex-1 basis-48 text-sm leading-snug min-w-0">{foco ? foco.t : "Toca los números de la pantalla, o inicia el recorrido guiado."}</p>
+                  <span className="text-xs font-bold px-2 py-1 rounded-lg text-white shrink-0" style={{ background: M.color }}>{actual >= 0 ? `${actual + 1} ${T.de} ${spots.length}` : T.recorrido}</span>
+                  <p className="flex-1 basis-48 text-sm leading-snug min-w-0">{foco ? foco.t : T.tocaNumeros}</p>
                   <span className="ml-auto flex gap-2 shrink-0">
-                  <button type="button" onClick={() => enfocar(Math.max(-1, actual - 1))} className="w-10 h-10 rounded-xl border border-slate-300 shrink-0" aria-label="Anterior">‹</button>
+                  <button type="button" onClick={() => enfocar(Math.max(-1, actual - 1))} className="w-10 h-10 rounded-xl border border-slate-300 shrink-0" aria-label={T.anterior}>‹</button>
                   <button type="button" onClick={() => enfocar(actual >= spots.length - 1 ? -1 : actual + 1)} className="h-10 px-3 rounded-xl text-white text-sm font-semibold shrink-0 flex items-center gap-1.5" style={{ background: M.color }} data-testid="manual-siguiente">
-                    {actual < 0 ? <><Play className="w-4 h-4" /> Iniciar</> : actual === spots.length - 1 ? "Terminar" : "Siguiente ›"}
+                    {actual < 0 ? <><Play className="w-4 h-4" /> {T.iniciar}</> : actual === spots.length - 1 ? T.terminar : `${T.siguiente} ›`}
                   </button>
                   </span>
                 </div>
@@ -391,10 +443,10 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
             </div>
             <div>
               <h3 className="flex items-center justify-between font-bold mb-2">
-                <span>Qué hay en esta pantalla</span>
+                <span>{T.queHay}</span>
                 {!movil && (
                   <button type="button" className="hidden xl:flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900" onClick={() => { LS.set("ancho", !ancho); setAncho(!ancho); }}>
-                    {ancho ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />} {ancho ? "Reducir" : "Ampliar"}
+                    {ancho ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />} {ancho ? T.reducir : T.ampliar}
                   </button>
                 )}
               </h3>
@@ -412,7 +464,7 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
 
         {m.pasos && m.pasos.length > 0 && (
           <section className="mt-8">
-            <h2 className="flex items-center gap-2 font-bold text-xl mb-3"><ListChecks className="w-5 h-5" style={{ color: M.color }} /> Paso a paso</h2>
+            <h2 className="flex items-center gap-2 font-bold text-xl mb-3"><ListChecks className="w-5 h-5" style={{ color: M.color }} /> {T.pasoAPaso}</h2>
             <div className="space-y-2" data-testid="manual-pasos">
               {m.pasos.map((p, k) => {
                 const hecho = pasos.includes(k);
@@ -429,7 +481,7 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
 
         {m.tips && m.tips.length > 0 && (
           <section className="mt-8">
-            <h2 className="flex items-center gap-2 font-bold text-xl mb-3"><Lightbulb className="w-5 h-5" style={{ color: M.color }} /> Consejos</h2>
+            <h2 className="flex items-center gap-2 font-bold text-xl mb-3"><Lightbulb className="w-5 h-5" style={{ color: M.color }} /> {T.consejos}</h2>
             <div className="grid gap-2 sm:grid-cols-2">
               {m.tips.map((t, k) => (
                 <div key={k} className="flex gap-2.5 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-[15px] leading-snug"><b className="text-amber-500">★</b><span>{t}</span></div>
@@ -440,7 +492,7 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
 
         {m.faq && m.faq.length > 0 && (
           <section className="mt-8">
-            <h2 className="flex items-center gap-2 font-bold text-xl mb-3"><HelpCircle className="w-5 h-5" style={{ color: M.color }} /> Preguntas frecuentes</h2>
+            <h2 className="flex items-center gap-2 font-bold text-xl mb-3"><HelpCircle className="w-5 h-5" style={{ color: M.color }} /> {T.preguntas}</h2>
             {m.faq.map(([q, a], k) => (
               <details key={k} className="rounded-xl bg-white border border-slate-200 px-4 py-3 mb-2 group">
                 <summary className="font-semibold cursor-pointer">{q}</summary>
@@ -451,11 +503,11 @@ function VistaModulo({ man, M, m, embebido, alCambiar }: { man: ClaveManual; M: 
         )}
 
         <div className="mt-10 grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-slate-200 pt-5">
-          {prev ? <a href={`#${man}/${prev.id}`} className="text-sm"><small className="block text-slate-500">‹ Anterior</small><b>{prev.titulo}</b></a> : <span />}
+          {prev ? <a href={`#${man}/${prev.id}`} className="text-sm"><small className="block text-slate-500">‹ {T.anterior}</small><b>{prev.titulo}</b></a> : <span />}
           <button type="button" onClick={() => marcar(!aprendido)} className={`h-11 px-5 rounded-xl font-semibold text-sm border ${aprendido ? "text-white border-transparent" : "bg-white border-slate-300"}`} style={aprendido ? { background: M.color } : undefined} data-testid="manual-aprendido">
-            {aprendido ? "✓ Aprendido" : "Marcar como aprendido"}
+            {aprendido ? `✓ ${T.aprendido}` : T.marcarAprendido}
           </button>
-          {next ? <a href={`#${man}/${next.id}`} className="text-sm text-right"><small className="block text-slate-500">Siguiente ›</small><b>{next.titulo}</b></a> : <span />}
+          {next ? <a href={`#${man}/${next.id}`} className="text-sm text-right"><small className="block text-slate-500">{T.siguiente} ›</small><b>{next.titulo}</b></a> : <span />}
         </div>
       </article>
     </div>

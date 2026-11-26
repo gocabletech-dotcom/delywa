@@ -71,3 +71,41 @@ describe("manual interactivo", () => {
     expect(screen.getByTestId("manual-inicio-repartidor")).toBeTruthy();
   });
 });
+
+describe("manual en inglés", () => {
+  beforeEach(() => { localStorage.clear(); window.history.replaceState(null, "", "/manual"); });
+  afterEach(() => cleanup());
+
+  it("cada tema tiene su traducción con los mismos puntos, pasos, consejos y preguntas", async () => {
+    const { EN } = await import("@/manual/guia-en");
+    for (const [clave, M] of Object.entries(GUIA) as Array<[keyof typeof EN, (typeof GUIA)[keyof typeof GUIA]]>) {
+      expect(EN[clave].grupos).toHaveLength(M.grupos.length);
+      for (const m of M.modulos) {
+        const t = EN[clave].modulos[m.id];
+        expect(t, `${clave}.${m.id}`).toBeTruthy();
+        expect(t.spots, `${clave}.${m.id} spots`).toHaveLength(m.spots.length);
+        expect(t.pasos?.length ?? 0, `${clave}.${m.id} pasos`).toBe(m.pasos?.length ?? 0);
+        expect(t.tips?.length ?? 0, `${clave}.${m.id} tips`).toBe(m.tips?.length ?? 0);
+        expect(t.faq?.length ?? 0, `${clave}.${m.id} faq`).toBe(m.faq?.length ?? 0);
+      }
+    }
+  });
+
+  it("el botón EN cambia el manual a inglés y se recuerda", async () => {
+    render(<ManualInteractivo />);
+    fireEvent.click(screen.getByTestId("manual-idioma-en"));
+    expect(screen.getByText("Business manual")).toBeTruthy();
+    expect(localStorage.getItem("delywa_man_idioma")).toBe("en");
+    cleanup();
+    render(<ManualInteractivo />);
+    expect(screen.getByText("Business manual")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("manual-idioma-es"));
+    expect(screen.getByText("Manual del negocio")).toBeTruthy();
+  });
+
+  it("?lang=en abre el manual en inglés", () => {
+    window.history.replaceState(null, "", "/manual?solo=repartidor&lang=en");
+    render(<ManualInteractivo />);
+    expect(screen.getByText("Delivery manual")).toBeTruthy();
+  });
+});
