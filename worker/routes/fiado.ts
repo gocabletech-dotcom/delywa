@@ -4,6 +4,7 @@ import { fiadoCuentas, fiadoMovimientos, type FiadoCuenta } from "@shared/schema
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { requireAuth, requireBusinessAccess } from "../lib/auth";
+import { requierePlan } from "../lib/plan";
 import { ADMINISTRADORES, OPERADORES, nombreUsuario } from "../lib/permisos";
 
 // Fiado (mejora 5): la libreta del colmado. Cada sucursal tiene sus cuentas; el saldo es lo que debe
@@ -18,7 +19,7 @@ for (const r of [base, `${base}/*`]) {
   fiadoRoutes.use(r, requireAuth, requireBusinessAccess(), async (c, next) => {
     if (!OPERADORES.includes(c.var.user.role ?? "")) return c.json({ error: "No tienes permiso para el fiado de esta sucursal." }, 403);
     await next();
-  });
+  }, requierePlan("fiado"));
 }
 
 const redondeo = (n: number) => Math.round(n * 100) / 100;

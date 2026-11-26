@@ -36,6 +36,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ReportesVentasTab from "@/components/negocio/delivery/ReportesVentasTab";
 import ConfiguracionPagoTab from "@/components/negocio/delivery/ConfiguracionPagoTab";
+import { SinFuncionEnPlan } from "@/components/negocio/RequierePlan";
+import { tiene, useSuscripcion } from "@/lib/plan";
 import MapaFlotaTab from "@/components/negocio/delivery/MapaFlotaTab";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -73,6 +75,7 @@ export default function DeliveriesPage() {
   });
 
   const colmadoId = roleData?.colmadoId;
+  const { data: suscripcion } = useSuscripcion(colmadoId);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -651,7 +654,9 @@ export default function DeliveriesPage() {
             </TabsContent>
 
             <TabsContent value="configuracion">
-              <ConfiguracionPagoTab deliveries={deliveries || []} colmadoId={colmadoId} />
+              {tiene(suscripcion, "nomina_delivery")
+                ? <ConfiguracionPagoTab deliveries={deliveries || []} colmadoId={colmadoId} />
+                : <SinFuncionEnPlan colmadoId={colmadoId} funcion="nomina_delivery" compacto />}
             </TabsContent>
           </Tabs>
         </main>

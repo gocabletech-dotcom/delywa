@@ -5,6 +5,7 @@ import type { Env } from "../env";
 import type { Db } from "../db";
 import { getConfiguracion, upsertConfiguracion } from "../storage/catalogos";
 import { cifrar, descifrar } from "./integraciones";
+import { tieneFuncion } from "./plan";
 import { mismoTelefono } from "./telefono";
 
 // Notificaciones del navegador (Web Push), gratis: no pasan por WhatsApp ni cuestan por mensaje.
@@ -96,6 +97,8 @@ export async function repartirOfertas(env: Env, db: Db, urlDe: (c: Colmado) => s
   if (!oferta) return 0;
   if (oferta.hasta.getTime() < Date.now()) { await db.update(ofertas).set({ aviso: "enviado" }).where(eq(ofertas.id, oferta.id)); return 0; }
   const [colmado] = await db.select().from(colmados).where(eq(colmados.id, oferta.colmadoId));
+  // Si el plan ya no incluye ofertas, no se reparte.
+  if (!(await tieneFuncion(db, oferta.colmadoId, "ofertas"))) { await db.update(ofertas).set({ aviso: "enviado" }).where(eq(ofertas.id, oferta.id)); return 0; }
   const subs = await db.select().from(pushSuscripciones)
     .where(and(eq(pushSuscripciones.tipo, "cliente"), eq(pushSuscripciones.colmadoId, oferta.colmadoId), eq(pushSuscripciones.ofertas, true), gt(pushSuscripciones.id, oferta.avisoCursor)))
     .orderBy(pushSuscripciones.id).limit(40);

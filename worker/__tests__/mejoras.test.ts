@@ -32,11 +32,11 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await t?.dispose(); });
 
-describe("plan de prueba de 1 mes", () => {
-  it("la migración 0024 deja el Trial en 30 días", async () => {
+describe("plan de prueba", () => {
+  it("la migración 0032 deja la prueba en 14 días con todo incluido (antes 0024 la puso en 30)", async () => {
     const [trial] = await t.db.select().from(planes).where(eq(planes.esTrial, true));
-    expect(trial.duracionDias).toBe(30);
-    expect(trial.descripcionCorta).toBe("Prueba gratis por 1 mes");
+    expect(trial.duracionDias).toBe(14);
+    expect(trial.nombre).toBe("Gratis");
   });
 });
 

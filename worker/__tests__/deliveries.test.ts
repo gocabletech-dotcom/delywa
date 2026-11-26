@@ -2,6 +2,7 @@
 // Pruebas con D1 local en memoria y datos inventados: nunca tocan la base real.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq, inArray } from "drizzle-orm";
+import { CLAVES_FUNCIONES } from "@shared/funciones-plan";
 import { colmados, cuadres, deliveries, paradasRuta, pedidos, planes, rutas, saldosDelivery, users } from "@shared/schema";
 
 vi.mock("../lib/routeOptimizer", async (original) => ({
@@ -43,6 +44,8 @@ const portalLogin = (c: Client, numero: string, codigo: string) =>
 beforeAll(async () => {
   t = await createTestApp();
   const [basico] = await t.db.select().from(planes).where(eq(planes.slug, "basico"));
+  // Se prueba con el límite de repartidores del plan Colmado y con la nómina del delivery (que es de Full).
+  await t.db.update(planes).set({ funciones: [...CLAVES_FUNCIONES] }).where(eq(planes.id, basico.id));
   [negocio] = await t.db.insert(colmados).values({
     nombre: "Colmado Prueba", slug: "colmado-prueba", whatsappNumero: "18093330001", direccion: "Av. Prueba 1", planId: basico.id,
     latitud: "18.48", longitud: "-69.93", horaApertura: "00:00", horaCierre: "23:59",

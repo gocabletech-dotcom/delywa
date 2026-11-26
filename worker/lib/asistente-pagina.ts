@@ -12,7 +12,7 @@ export const normal = (t: unknown) => String(t ?? "").toLowerCase().normalize("N
 export type Accion = "registro" | "precio" | "soporte" | "manual" | "legal" | "chat_demo";
 type Tema = { tema: string; k: string[]; texto: string; solo?: boolean; acciones?: Accion[]; planes?: boolean; soporte?: boolean };
 
-export type PlanPublico = { nombre: string; precio: number; trial: boolean; dias: number; descripcion: string | null; caracteristicas: string[] };
+export type PlanPublico = { nombre: string; precio: number; moneda: string; trial: boolean; dias: number; descripcion: string | null; caracteristicas: string[] };
 
 /** {DIAS} se cambia por los días de prueba del plan Trial de la base. */
 const TEMAS: Tema[] = [
@@ -21,7 +21,7 @@ const TEMAS: Tema[] = [
   { tema: "gracias", solo: true, k: ["gracias", "perfecto", "excelente", "ok gracias", "dale", "chevere", "nitido"],
     texto: "¡Con gusto! Puedes probar Delywa gratis {DIAS}, sin tarjeta. ¿Algo más en lo que te ayude?", acciones: ["registro"] },
   { tema: "precio", planes: true, k: ["precio", "precios", "cuanto cuesta", "cuanto vale", "cuanto es", "costo", "plan", "planes", "mensualidad", "pagar al mes", "suscripcion", "barato", "tarifa", "cuanto cobran"],
-    texto: "Estos son los planes, en pesos dominicanos. **No cobramos comisión por pedido.** Todos empiezan con la prueba gratis de {DIAS}, sin tarjeta:", acciones: ["registro", "precio"] },
+    texto: "Estos son los planes, en dólares (US$). **No cobramos comisión por pedido.** Todos empiezan con la prueba gratis de {DIAS}, sin tarjeta:", acciones: ["registro", "precio"] },
   { tema: "prueba", k: ["gratis", "prueba", "probar", "demo", "sin tarjeta", "mes gratis", "trial"],
     texto: "Sí: la prueba es de **{DIAS} gratis, sin tarjeta y sin contrato**. Usas todo Delywa con tus clientes de verdad: el chat de pedidos, el panel, el portal del delivery y los cuadres. Al terminar eliges el plan que te conviene.", acciones: ["registro"] },
   { tema: "comision", k: ["comision", "porcentaje", "por pedido", "me cobran por venta", "cobran por cada pedido"],

@@ -218,6 +218,20 @@
       "when": 1795442018861,
       "tag": "0030_adelantos_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1795709924417,
+      "tag": "0031_planes_stripe",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1795709944005,
+      "tag": "0032_planes_usd_funciones",
+      "breakpoints": true
     }
   ]
 }

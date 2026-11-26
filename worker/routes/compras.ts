@@ -4,6 +4,7 @@ import { compraLineas, compraPagos, compras, pedidos, productoCostos, suplidores
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { requireAuth, requireBusinessAccess } from "../lib/auth";
+import { requierePlan } from "../lib/plan";
 import { ADMINISTRADORES, nombreUsuario } from "../lib/permisos";
 import { negocioPrincipalId } from "../lib/certificacion";
 import { anularCompra, claveDescripcion, CompraInvalida, FORMAS_PAGO, pagarCompra, registrarCompra, validarLineas, type FormaPago } from "../lib/compras";
@@ -20,7 +21,7 @@ for (const r of ["/api/colmados/:id/compras", "/api/colmados/:id/compras/*", "/a
   comprasRoutes.use(r, requireAuth, requireBusinessAccess(), async (c, next) => {
     if (!ADMINISTRADORES.includes(c.var.user.role ?? "")) return c.json({ error: "Solo el dueño o el colmadero registran compras." }, 403);
     await next();
-  });
+  }, requierePlan("compras"));
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;

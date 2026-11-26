@@ -1,3 +1,4 @@
+import { precioPlan } from "@shared/funciones-plan";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,6 +23,7 @@ type Plan = {
   id: number;
   nombre: string;
   precioMensual: string;
+  moneda?: string;
 };
 
 type TipoNegocio = {
@@ -363,7 +365,7 @@ export default function NegocioNuevoPage() {
                 >
                   {planes?.map((plan) => (
                     <option key={plan.id} value={plan.id}>
-                      {plan.nombre} - {parseFloat(plan.precioMensual) === 0 ? "Gratis" : `RD$${parseFloat(plan.precioMensual).toLocaleString()}/mes`}
+                      {plan.nombre} - {parseFloat(plan.precioMensual) === 0 ? "Gratis" : `${precioPlan(plan.precioMensual, plan.moneda)}/mes`}
                     </option>
                   ))}
                 </select>

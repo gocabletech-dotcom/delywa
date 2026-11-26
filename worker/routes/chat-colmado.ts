@@ -10,6 +10,7 @@ import { mismoTelefono, soloDigitos } from "../lib/telefono";
 import { ia } from "../chat/adaptador";
 import { anotarNotaDeVoz, atenderChat, type Entrada } from "../bot/motor";
 import { CupoAgotado, iaDisponible, transcribir } from "../bot/ia";
+import { tieneFuncion } from "../lib/plan";
 import { avisarAlNegocio } from "../lib/push";
 import { guardarSuscripcion, leerSuscripcion, ofertasVigentes } from "./push";
 import { inicioDiaLocal } from "../lib/fechas";
@@ -327,7 +328,10 @@ chatColmadoRoutes.post("/api/chat-colmado/sesion/:sessionId/voz", async (c) => {
   let texto = "";
   let sinCupo = false;
   try {
-    if (iaDisponible(c.env)) {
+    if (!(await tieneFuncion(db, s.colmado.id, "ia"))) {
+      // El plan del colmado no incluye notas de voz: el colmadero igual la escucha.
+      sinCupo = true;
+    } else if (iaDisponible(c.env)) {
       // Whisper de Cloudflare (Workers AI): gratis dentro del cupo diario.
       // Los productos del menú de este colmado ayudan a que Whisper oiga bien las marcas.
       const delMenu = await db.select({ nombre: menuProductos.nombre }).from(menuProductos)

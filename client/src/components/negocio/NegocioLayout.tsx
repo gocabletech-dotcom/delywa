@@ -1,3 +1,6 @@
+import { useSuscripcion, tiene } from "@/lib/plan";
+import { SinFuncionEnPlan } from "@/components/negocio/RequierePlan";
+import type { ClaveFuncion } from "@shared/funciones-plan";
 import { useState, ReactNode } from "react";
 import { CambiarClave } from "@/components/CambiarClave";
 import { formatDominicanDateTime } from "@/lib/date-utils";
@@ -8,7 +11,7 @@ import {
   MessageCircle, Truck, Package, DollarSign, TrendingUp,
   Menu, X, LogOut, Settings, Users, BookOpen, UtensilsCrossed,
    Smartphone, ClipboardList, MoreHorizontal, ChevronRight, Building2,
-  Home, BarChart3, UserCog, Contact, FileCheck2, ShoppingCart, NotebookPen, Flame } from "lucide-react";
+  Home, BarChart3, UserCog, Contact, FileCheck2, ShoppingCart, NotebookPen, Flame, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import AvisoConfirmarCorreo from "./AvisoConfirmarCorreo";
@@ -95,15 +98,13 @@ export default function NegocioLayout({
 
   useSonidoPedidoNuevo(pedidosData ? pedidosData.filter((p) => p.estado === "pendiente_confirmacion").length : undefined);
 
-  const { data: suscripcionData } = useQuery<{ plan: { nombre: string } }>({
-    queryKey: ["suscripcion", colmadoId],
-    queryFn: async () => {
-      const res = await fetch(`/api/colmados/${colmadoId}/suscripcion`);
-      if (!res.ok) throw new Error("Error al cargar suscripción");
-      return res.json();
-    },
-    enabled: !!colmadoId,
-  });
+  const { data: suscripcionData } = useSuscripcion(colmadoId);
+  // Partes que van según el plan: con candado en el menú y, al abrirlas, la pantalla de «Ver los planes».
+  const FUNCION_DE: Partial<Record<ActiveNav, ClaveFuncion>> = {
+    mostrador: "mostrador", fiado: "fiado", ofertas: "ofertas", compras: "compras", empleados: "empleados", facturacion: "facturacion_electronica",
+  };
+  const bloqueada = (nav: ActiveNav) => { const f = FUNCION_DE[nav]; return !!f && !tiene(suscripcionData, f); };
+  const funcionActual = FUNCION_DE[activeNav];
 
   const { data: sucursalesData } = useQuery<{ sucursales: Array<{ id: number; nombre: string }>; sucursalActivaId: number }>({
     queryKey: ["sucursales"],
@@ -161,6 +162,7 @@ export default function NegocioLayout({
       >
         <Icon size={19} className={isActive ? "" : "text-slate-500"} />
         <span className="flex-1 truncate">{label}</span>
+        {bloqueada(nav) && <Lock size={14} className="text-slate-400 shrink-0" aria-label="No incluido en tu plan" />}
         {badge && badge > 0 ? (
           <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${isActive ? "bg-primary text-primary-foreground" : "bg-slate-200 text-slate-800"}`}>{badge > 99 ? "99+" : badge}</span>
         ) : null}
@@ -194,6 +196,7 @@ export default function NegocioLayout({
           <Icon size={21} />
         </div>
         <span className={`text-xs font-semibold text-center leading-tight ${isActive ? "text-primary" : "text-slate-700"}`}>{label}</span>
+        {bloqueada(nav) && <Lock size={12} className="absolute top-2 left-2 text-slate-400" aria-label="No incluido en tu plan" />}
         {badge && badge > 0 ? (
           <span className="absolute top-2 right-2 bg-primary text-primary-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
             {badge > 9 ? "9+" : badge}
@@ -366,7 +369,7 @@ export default function NegocioLayout({
           )}
           <AvisoConfirmarCorreo />
           <AvisoActivar colmadoId={colmadoId} />
-          {children}
+          {funcionActual && bloqueada(activeNav) ? <div className="p-4"><SinFuncionEnPlan colmadoId={colmadoId} funcion={funcionActual} /></div> : children}
         </div>
       </div>
 

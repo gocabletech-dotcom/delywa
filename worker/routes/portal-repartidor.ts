@@ -6,6 +6,7 @@ import { deliveryAdelantos, pagosDelivery, pedidos, type Delivery } from "@share
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { guardarSuscripcion, leerSuscripcion } from "./push";
 import { avisarNegocio } from "../lib/tiempo-real";
+import { planDe, tieneFuncion } from "../lib/plan";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { sesionPortalVencida, turnoTerminadoHoy, ventanaDeGracia } from "../lib/turno-repartidor";
@@ -147,8 +148,21 @@ portalRepartidorRoutes.get("/api/portal-repartidor/me", requirePortal, async (c)
     } : null,
     fueraDeHorario: gracia.enGracia,
     horaFinTurno: gracia.terminaEn ? new Date(gracia.terminaEn).toISOString() : null,
+    /** El plan del colmado incluye «Ganancias» (nómina, adelantos y sus números). */
+    ganancias: await tieneFuncion(db, delivery.colmadoId, "nomina_delivery"),
   });
 });
+
+// Ganancias, adelantos, sus números, «Recibí mi pago» y la propina van según el plan del colmado.
+for (const ruta of ["/api/portal-repartidor/ganancias", "/api/portal-repartidor/adelantos", "/api/portal-repartidor/adelantos/*",
+  "/api/portal-repartidor/estadisticas", "/api/portal-repartidor/pagos/*", "/api/portal-repartidor/pedidos/:pedidoId/propina"]) {
+  portalRepartidorRoutes.use(ruta, requirePortal, async (c, next) => {
+    const db = getDb(c.env.DB);
+    const vigente = await planDe(db, c.var.repartidor.colmadoId);
+    if (!vigente?.funciones.includes("nomina_delivery")) return c.json({ error: "Esta parte no está incluida en el plan del colmado.", planFalta: "nomina_delivery" }, 403);
+    await next();
+  });
+}
 
 /**
  * «Ganancias»: lo que lleva ganado hoy y en el período, sus pagos y lo que debe de los cuadres.

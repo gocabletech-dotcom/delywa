@@ -1,3 +1,4 @@
+import { precioPlan } from "@shared/funciones-plan";
 import { prepararLogo } from "@/lib/imagen";
 import { CambiarClave } from "@/components/CambiarClave";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -70,6 +71,7 @@ interface Plan {
   id: number;
   nombre: string;
   slug: string;
+  moneda?: string;
   precioMensual: string;
   duracionDias: number;
   esTrial: boolean;
@@ -1581,7 +1583,7 @@ export default function PlatformAdminPage() {
               </div>
 
               <div className="text-2xl font-bold text-emerald-600 mb-2">
-                {parseFloat(plan.precioMensual) === 0 ? "Gratis" : `RD$${parseFloat(plan.precioMensual).toLocaleString()}`}
+                {parseFloat(plan.precioMensual) === 0 ? "Gratis" : precioPlan(plan.precioMensual, plan.moneda)}
                 {parseFloat(plan.precioMensual) > 0 && <span className="text-sm font-normal text-slate-500">/mes</span>}
               </div>
 
@@ -3840,7 +3842,7 @@ export default function PlatformAdminPage() {
                 >
                   {planes?.map((plan) => (
                     <option key={plan.id} value={plan.id}>
-                      {plan.nombre} - {parseFloat(plan.precioMensual) === 0 ? "Gratis" : `RD$${parseFloat(plan.precioMensual).toLocaleString()}/mes`}
+                      {plan.nombre} - {parseFloat(plan.precioMensual) === 0 ? "Gratis" : `${precioPlan(plan.precioMensual, plan.moneda)}/mes`}
                     </option>
                   ))}
                 </select>
@@ -4105,7 +4107,7 @@ export default function PlatformAdminPage() {
                   >
                     {planes?.map((plan) => (
                       <option key={plan.id} value={plan.id}>
-                        {plan.nombre} - {parseFloat(plan.precioMensual) === 0 ? "Gratis" : `RD$${parseFloat(plan.precioMensual).toLocaleString()}/mes`}
+                        {plan.nombre} - {parseFloat(plan.precioMensual) === 0 ? "Gratis" : `${precioPlan(plan.precioMensual, plan.moneda)}/mes`}
                       </option>
                     ))}
                   </select>

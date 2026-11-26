@@ -1,0 +1,42 @@
+import { useQuery } from "@tanstack/react-query";
+import type { Plan } from "@shared/schema";
+import type { ClaveFuncion } from "@shared/funciones-plan";
+
+export type PlanPublico = Omit<Plan, "stripeProducto" | "stripePrecio" | "stripePrecioAnual" | "stripeProductoReal" | "stripePrecioReal" | "stripePrecioAnualReal">;
+
+export type DatosSuscripcion = {
+  plan: PlanPublico | null;
+  vigente: { nombre: string; funciones: ClaveFuncion[]; todo: boolean; cortesia: boolean } | null;
+  planes: PlanPublico[];
+  diasRestantes: number;
+  proximoAVencer: boolean;
+  expirado: boolean;
+  estadoSuscripcion: string;
+  fechaVencimiento: string | null;
+};
+
+/** Plan del negocio (comparte la caché con el resto del panel). */
+export function useSuscripcion(colmadoId: number | null | undefined) {
+  return useQuery<DatosSuscripcion>({
+    queryKey: ["suscripcion", colmadoId],
+    queryFn: async () => {
+      const res = await fetch(`/api/colmados/${colmadoId}/suscripcion`);
+      if (!res.ok) throw new Error("Error al cargar suscripción");
+      return res.json();
+    },
+    enabled: !!colmadoId,
+  });
+}
+
+/** ¿El plan incluye esta función? Mientras carga se da por sí para no mostrar candados de más. */
+export function tiene(datos: DatosSuscripcion | undefined, funcion: ClaveFuncion): boolean {
+  if (!datos?.vigente) return true;
+  return datos.vigente.funciones.includes(funcion);
+}
+
+/** El plan más barato (pagado) que trae la función. */
+export function planQueLaTrae(datos: DatosSuscripcion | undefined, funcion: ClaveFuncion): PlanPublico | undefined {
+  return (datos?.planes ?? [])
+    .filter((p) => !p.esTrial && (p.funciones ?? []).includes(funcion))
+    .sort((a, b) => Number(a.precioMensual) - Number(b.precioMensual))[0];
+}

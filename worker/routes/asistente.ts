@@ -21,9 +21,9 @@ const texto = (v: unknown, max: number) => (typeof v === "string" ? v.trim().sli
 
 /** Planes activos tal como están en la base (precios y días de prueba en vivo). */
 async function planesPublicos(db: Db): Promise<PlanPublico[]> {
-  const filas = await db.select().from(planes).where(eq(planes.activo, true)).orderBy(planes.orden);
+  const filas = (await db.select().from(planes).where(eq(planes.activo, true)).orderBy(planes.orden)).filter((p) => p.visible);
   return filas.map((p) => ({
-    nombre: p.nombre, precio: Number(p.precioMensual || 0), trial: p.esTrial, dias: p.duracionDias,
+    nombre: p.nombre, precio: Number(p.precioMensual || 0), moneda: p.moneda || "USD", trial: p.esTrial, dias: p.duracionDias,
     descripcion: p.descripcionCorta, caracteristicas: (p.caracteristicas ?? []).slice(0, 5),
   }));
 }

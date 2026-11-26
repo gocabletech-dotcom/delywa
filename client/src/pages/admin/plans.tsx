@@ -33,6 +33,7 @@ import {
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import type { Plan, InsertPlan } from "@shared/schema";
+import { FUNCIONES_PLAN, INCLUIDO_SIEMPRE, precioPlan } from "@shared/funciones-plan";
 
 export default function PlansAdminPage() {
   const [, setLocation] = useLocation();
@@ -55,6 +56,10 @@ export default function PlansAdminPage() {
     soportePrioritario: false,
     activo: true,
     orden: 0,
+    funciones: [],
+    moneda: "USD",
+    precioAnual: null,
+    visible: true,
   });
   const [caracteristicasText, setCaracteristicasText] = useState("");
 
@@ -138,6 +143,10 @@ export default function PlansAdminPage() {
       soportePrioritario: false,
       activo: true,
       orden: 0,
+      funciones: [],
+      moneda: "USD",
+      precioAnual: null,
+      visible: true,
     });
     setCaracteristicasText("");
   };
@@ -158,6 +167,10 @@ export default function PlansAdminPage() {
       soportePrioritario: plan.soportePrioritario,
       activo: plan.activo,
       orden: plan.orden,
+      funciones: plan.funciones ?? [],
+      moneda: plan.moneda || "USD",
+      precioAnual: plan.precioAnual,
+      visible: plan.visible,
     });
     setCaracteristicasText((plan.caracteristicas as string[] || []).join("\n"));
   };
@@ -180,11 +193,7 @@ export default function PlansAdminPage() {
     }
   };
 
-  const formatPrice = (price: string) => {
-    const num = parseFloat(price);
-    if (num === 0) return "Gratis";
-    return `RD$${num.toLocaleString()}`;
-  };
+  const formatPrice = (price: string, moneda = "USD") => (parseFloat(price) === 0 ? "Gratis" : precioPlan(price, moneda));
 
   const getPlanIcon = (plan: Plan) => {
     if (plan.esTrial) return <Zap className="text-blue-500" size={20} />;
@@ -304,9 +313,10 @@ export default function PlansAdminPage() {
               <CardContent>
                 <div className="space-y-4">
                   <div>
-                    <p className="text-2xl font-bold">{formatPrice(plan.precioMensual)}</p>
+                    <p className="text-2xl font-bold">{formatPrice(plan.precioMensual, plan.moneda)}</p>
                     <p className="text-sm text-gray-500">
-                      {plan.esTrial ? `${plan.duracionDias} días gratis` : "por mes"}
+                      {plan.esTrial ? `${plan.duracionDias} días gratis · todo incluido` : "por mes"}
+                      {plan.precioAnual ? ` · ${precioPlan(plan.precioAnual, plan.moneda)} al año` : ""}
                     </p>
                   </div>
 
@@ -326,6 +336,14 @@ export default function PlansAdminPage() {
                     </div>
                   </div>
 
+                  {!plan.esTrial && (
+                    <div className="flex flex-wrap gap-1" data-testid={`funciones-plan-${plan.id}`}>
+                      {FUNCIONES_PLAN.filter((f) => (plan.funciones ?? []).includes(f.clave)).map((f) => (
+                        <Badge key={f.clave} variant="outline" className="text-xs font-normal">{f.nombre}{"enProceso" in f && f.enProceso ? " · en proceso" : ""}</Badge>
+                      ))}
+                    </div>
+                  )}
+                  {!plan.visible && <Badge variant="secondary" className="text-xs">No se muestra en la página</Badge>}
                   {plan.soportePrioritario && (
                     <Badge variant="secondary" className="text-xs">
                       Soporte Prioritario
@@ -428,12 +446,23 @@ function PlanForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Precio Mensual (RD$)</Label>
+          <Label>Precio mensual (US$)</Label>
           <Input
             type="number"
             value={formData.precioMensual || "0"}
             onChange={(e) => setFormData((f) => ({ ...f, precioMensual: e.target.value }))}
             data-testid="input-plan-precio"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Precio anual (US$, vacío = sin plan anual)</Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={formData.precioAnual ?? ""}
+            onChange={(e) => setFormData((f) => ({ ...f, precioAnual: e.target.value || null }))}
+            placeholder={formData.precioMensual && Number(formData.precioMensual) > 0 ? `1 mes gratis: ${(Number(formData.precioMensual) * 11).toFixed(2)}` : "Sin plan anual"}
+            data-testid="input-plan-precio-anual"
           />
         </div>
         <div className="space-y-2">
@@ -493,6 +522,32 @@ function PlanForm({
       </div>
 
       <div className="space-y-2">
+        <Label>Funciones que incluye</Label>
+        {formData.esTrial ? (
+          <p className="text-sm text-slate-600">El plan de prueba siempre incluye todas las funciones.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-2 rounded-lg border p-3" data-testid="funciones-plan">
+            {FUNCIONES_PLAN.map((f) => {
+              const marcada = (formData.funciones ?? []).includes(f.clave);
+              return (
+                <label key={f.clave} className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    checked={marcada}
+                    onChange={(e) => setFormData((d) => ({ ...d, funciones: e.target.checked ? [...(d.funciones ?? []), f.clave] : (d.funciones ?? []).filter((x) => x !== f.clave) }))}
+                    data-testid={`check-funcion-${f.clave}`}
+                  />
+                  <span>{f.nombre}{"enProceso" in f && f.enProceso ? <span className="text-amber-700"> (en proceso)</span> : null}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+        <p className="text-xs text-slate-500">Siempre incluidos: {INCLUIDO_SIEMPRE.join(", ")}.</p>
+      </div>
+
+      <div className="space-y-2">
         <Label>Características (una por línea)</Label>
         <Textarea
           value={caracteristicasText}
@@ -504,7 +559,7 @@ function PlanForm({
       </div>
 
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-6">
           <div className="flex items-center gap-2">
             <Switch
               checked={formData.esTrial || false}
@@ -530,6 +585,14 @@ function PlanForm({
               data-testid="switch-plan-activo"
             />
             <Label>Activo</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={formData.visible !== false}
+              onCheckedChange={(checked) => setFormData((f) => ({ ...f, visible: checked }))}
+              data-testid="switch-plan-visible"
+            />
+            <Label>Se muestra en la página</Label>
           </div>
         </div>
       </div>

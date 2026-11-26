@@ -292,9 +292,8 @@ function lineasProductos(productos: any[], simbolo: string): string {
 
 function recomendacionPlan(nombre: string): string {
   const n = nombre.toLowerCase();
-  if (n.includes("trial") || n.includes("prueba")) return "Te recomendamos el plan Básico para continuar operando sin límites.";
-  if (n.includes("básico") || n.includes("basico")) return "Te recomendamos el plan Profesional para más pedidos diarios.";
-  return "Contacta a soporte para aumentar tu límite de pedidos.";
+  if (n.includes("full")) return "Escríbenos a soporte@delywa.com para aumentar tu límite de pedidos.";
+  return "Con el plan Full no tienes límite de pedidos. Cámbialo en Configuración → Mi plan.";
 }
 
 /**

@@ -4,6 +4,7 @@ import { ofertas, pushSuscripciones } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
 import { requireAuth, requireBusinessAccess } from "../lib/auth";
+import { requierePlan, tieneFuncion } from "../lib/plan";
 import { canUserAccessColmado } from "../storage/users";
 import { ADMINISTRADORES, OPERADORES, nombreUsuario } from "../lib/permisos";
 import { enviarPush, llavesVapid } from "../lib/push";
@@ -69,7 +70,7 @@ for (const r of [base, `${base}/*`]) {
   pushRoutes.use(r, requireAuth, requireBusinessAccess(), async (c, next) => {
     if (!ADMINISTRADORES.includes(c.var.user.role ?? "")) return c.json({ error: "Solo el dueño o el colmadero publican ofertas." }, 403);
     await next();
-  });
+  }, requierePlan("ofertas"));
 }
 
 async function lista(db: Db, colmadoId: number) {
@@ -112,6 +113,7 @@ pushRoutes.patch(`${base}/:oid`, async (c) => {
 
 /** Ofertas vigentes de un colmado (para su chat). */
 export async function ofertasVigentes(db: Db, colmadoIds: number[]) {
+  if (!colmadoIds.length || !(await tieneFuncion(db, colmadoIds[0], "ofertas"))) return [];
   const filas = await db.select({ id: ofertas.id, texto: ofertas.texto, hasta: ofertas.hasta }).from(ofertas)
     .where(and(inArray(ofertas.colmadoId, colmadoIds), eq(ofertas.activa, true), gte(ofertas.hasta, new Date()))).orderBy(desc(ofertas.id)).limit(3);
   return filas;

@@ -1,12 +1,13 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MessageCircle, RotateCcw, Send, X } from "lucide-react";
+import { precioPlan } from "@shared/funciones-plan";
 
 // Asistente del chat de la página principal (como el de FoodPOS): contesta al instante, sin IA.
 // La conversación se guarda en esta pestaña y se olvida 2 minutos después de cerrar el chat.
 
 type Accion = "registro" | "precio" | "soporte" | "manual" | "legal" | "chat_demo";
-type Plan = { nombre: string; precio: number; descripcion: string | null; caracteristicas: string[] };
+type Plan = { nombre: string; precio: number; moneda?: string; descripcion: string | null; caracteristicas: string[] };
 type Respuesta = { tema: string | null; texto: string; acciones: Accion[]; soporte: boolean; planes?: Plan[]; sugerir?: { tema: string; titulo: string } };
 type Mensaje = { de: "persona" | "asistente"; texto: string; r?: Respuesta; formulario?: boolean };
 
@@ -33,7 +34,6 @@ function conFormato(t: string): ReactNode {
     </Fragment>
   ));
 }
-const pesos = (n: number) => `RD$${Math.round(n).toLocaleString("es-DO")}`;
 
 function leer(): { conv: string | null; mensajes: Mensaje[] } {
   try {
@@ -160,7 +160,7 @@ export default function AsistentePagina() {
                             <div key={p.nombre} className="rounded-2xl bg-white border-2 border-[#E7F2EC] px-3.5 py-3" data-testid="asistente-plan">
                               <div className="flex items-baseline justify-between gap-2">
                                 <span className="font-['Fredoka',sans-serif] font-semibold text-[17px] text-[#0F5C39]">{p.nombre}</span>
-                                <span className="font-extrabold text-[#1F2420]">{pesos(p.precio)}<span className="text-[13px] font-semibold text-[#6B736F]">/mes</span></span>
+                                <span className="font-extrabold text-[#1F2420]">{precioPlan(p.precio, p.moneda || "USD")}<span className="text-[13px] font-semibold text-[#6B736F]">/mes</span></span>
                               </div>
                               {p.descripcion && <div className="text-[14px] text-[#4A524E] mt-0.5">{p.descripcion}</div>}
                               {p.caracteristicas.length > 0 && <ul className="mt-1.5 text-[14px] text-[#1F2420] space-y-0.5">{p.caracteristicas.map((c) => <li key={c}>✓ {c}</li>)}</ul>}

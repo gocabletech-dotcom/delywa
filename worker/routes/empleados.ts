@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { eq } from "drizzle-orm";
 import { colmados } from "@shared/schema";
 import { z } from "zod";
+import { planDe, respuestaSinFuncion, tieneFuncion } from "../lib/plan";
 import type { NominaReglas, User } from "@shared/schema";
 import type { AppEnv } from "../env";
 import { getDb, type Db } from "../db";
@@ -45,6 +46,19 @@ async function gestor(db: Db, user: User): Promise<{ negocioId: number; sucursal
   const accesibles = await Promise.all((await getAccessibleColmadoIds(db, user)).map((id) => getColmado(db, id)));
   // Solo sucursales del mismo negocio (el original no lo verificaba al asignar).
   return { negocioId, sucursales: accesibles.filter((s) => s && raizDe(s) === negocioId).map((s) => s!.id) };
+}
+
+// Empleados, asistencia y nómina van según el plan del negocio.
+for (const ruta of ["/api/negocio/empleados", "/api/negocio/empleados/*", "/api/negocio/asistencias", "/api/negocio/asistencias/*", "/api/negocio/nominas", "/api/negocio/nominas/*"]) {
+  empleadoRoutes.use(ruta, requireAuth, async (c, next) => {
+    const db = getDb(c.env.DB);
+    const g = await gestor(db, c.var.user);
+    if (g) {
+      const vigente = await planDe(db, g.negocioId);
+      if (!vigente?.funciones.includes("empleados")) return respuestaSinFuncion(c, db, vigente, "empleados");
+    }
+    await next();
+  });
 }
 
 // ---------- Empleados ----------
@@ -138,6 +152,9 @@ empleadoRoutes.post("/api/empleado/portal/login", async (c) => {
   if (!slug) return c.json({ error: "Este enlace ya no sirve. Pídele a tu encargado el enlace nuevo de asistencia.", reason: "enlace_viejo" }, 400);
   const [negocio] = await db.select({ id: colmados.id, principal: colmados.negocioPrincipalId }).from(colmados).where(eq(colmados.slug, slug)).limit(1);
   const negocioId = negocio ? negocio.principal || negocio.id : 0;
+  if (negocioId && !(await tieneFuncion(db, negocioId, "empleados"))) {
+    return c.json({ error: "La asistencia no está incluida en el plan de este negocio. Avísale a tu encargado.", planFalta: "empleados" }, 403);
+  }
 
   // Se limita por conexión y negocio para que no se pueda adivinar.
   const ip = c.req.header("CF-Connecting-IP");

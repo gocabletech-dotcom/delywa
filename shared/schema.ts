@@ -105,6 +105,21 @@ export const planes = sqliteTable("planes", {
   soportePrioritario: integer("soporte_prioritario", { mode: "boolean" }).notNull().default(false),
   activo: integer("activo", { mode: "boolean" }).notNull().default(true),
   orden: integer("orden").notNull().default(0),
+  /** Funciones que incluye (claves de shared/funciones-plan.ts). El plan de prueba siempre lo incluye todo. */
+  funciones: text("funciones", { mode: "json" }).$type<string[]>().default([]),
+  /** Los planes se cobran en dólares (USD). */
+  moneda: text("moneda").notNull().default("USD"),
+  /** Precio por año; vacío = sin plan anual. */
+  precioAnual: numeric("precio_anual"),
+  /** Se muestra en la página de precios y en «Mi plan». */
+  visible: integer("visible", { mode: "boolean" }).notNull().default(true),
+  // Producto y precios en Stripe, en el ambiente de prueba y en el real (se llenan solos).
+  stripeProducto: text("stripe_producto"),
+  stripePrecio: text("stripe_precio"),
+  stripePrecioAnual: text("stripe_precio_anual"),
+  stripeProductoReal: text("stripe_producto_real"),
+  stripePrecioReal: text("stripe_precio_real"),
+  stripePrecioAnualReal: text("stripe_precio_anual_real"),
   fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 });
 
@@ -117,6 +132,12 @@ export const suscripciones = sqliteTable("suscripciones", {
   estado: text("estado").notNull().default("activa"), // activa, expirada, cancelada
   renovacionAutomatica: integer("renovacion_automatica", { mode: "boolean" }).notNull().default(false),
   ultimaFacturacion: integer("ultima_facturacion", { mode: "timestamp_ms" }),
+  // Suscripción de Stripe (fase 2): cliente, suscripción, ambiente, mes o año y si se cancela al final del período.
+  stripeCliente: text("stripe_cliente"),
+  stripeSuscripcion: text("stripe_suscripcion"),
+  modo: text("modo").notNull().default("prueba"),
+  periodo: text("periodo").notNull().default("mes"),
+  cancelaAlFinal: integer("cancela_al_final", { mode: "boolean" }).notNull().default(false),
   fechaCreacion: integer("fecha_creacion", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
 }, (t) => [
   index("suscripciones_colmado_idx").on(t.colmadoId),
@@ -136,6 +157,42 @@ export type Plan = typeof planes.$inferSelect;
 export type InsertPlan = z.infer<typeof insertPlanSchema>;
 export type Suscripcion = typeof suscripciones.$inferSelect;
 export type InsertSuscripcion = z.infer<typeof insertSuscripcionSchema>;
+
+/** Avisos de Stripe ya procesados (para no aplicar dos veces el mismo). */
+export const stripeEventos = sqliteTable("stripe_eventos", {
+  id: text("id").primaryKey(),
+  tipo: text("tipo"),
+  modo: text("modo"),
+  creado: integer("creado", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+});
+
+/** Facturas de Stripe de las membresías: lo cobrado, la comisión y lo neto (sección Ingresos). */
+export const stripeFacturas = sqliteTable("stripe_facturas", {
+  id: text("id").primaryKey(),
+  colmadoId: integer("colmado_id"),
+  numero: text("numero"),
+  estado: text("estado"),
+  motivo: text("motivo"),
+  plan: text("plan"),
+  moneda: text("moneda").notNull().default("usd"),
+  total: numeric("total").notNull().default("0"),
+  pagado: numeric("pagado").notNull().default("0"),
+  pendiente: numeric("pendiente").notNull().default("0"),
+  comision: numeric("comision"),
+  neto: numeric("neto"),
+  reembolsado: numeric("reembolsado").notNull().default("0"),
+  periodoInicio: integer("periodo_inicio", { mode: "timestamp_ms" }),
+  periodoFin: integer("periodo_fin", { mode: "timestamp_ms" }),
+  creada: integer("creada", { mode: "timestamp_ms" }),
+  pagadaEn: integer("pagada_en", { mode: "timestamp_ms" }),
+  intentos: integer("intentos").notNull().default(0),
+  error: text("error"),
+  correo: text("correo"),
+  url: text("url"),
+  pdf: text("pdf"),
+  modo: text("modo").notNull().default("prueba"),
+  actualizado: integer("actualizado", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsec') * 1000 as integer))`).notNull(),
+}, (t) => [index("stripe_facturas_colmado_idx").on(t.colmadoId), index("stripe_facturas_creada_idx").on(t.creada)]);
 
 // ============ NEGOCIOS ============
 
@@ -206,6 +263,8 @@ export const colmados = sqliteTable("colmados", {
   botPromptCustom: text("bot_prompt_custom"),
   // Parent business for multi-branch accounts. NULL identifies the legacy/main branch.
   negocioPrincipalId: integer("negocio_principal_id"),
+  /** Cortesía: la plataforma le da todo sin cobrar ni vencer. */
+  cortesia: integer("cortesia", { mode: "boolean" }).notNull().default(false),
 }, (t) => [
   index("colmados_negocio_principal_idx").on(t.negocioPrincipalId),
   index("colmados_owner_idx").on(t.ownerUserId),

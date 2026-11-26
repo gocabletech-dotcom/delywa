@@ -17,6 +17,7 @@ import { and as andD, desc as descD, eq, eq as eqD } from "drizzle-orm";
 import { AjusteInvalido, agregarAjuste, ajustesDe, quitarAjuste, resumenDe, saldoDeCuadres } from "../lib/ganancias-delivery";
 import { inicioDiaLocal, rangoDiaLocal } from "../lib/fechas";
 import { avisarAlRepartidor } from "../lib/push";
+import { planDe, respuestaSinFuncion } from "../lib/plan";
 import { getAccessibleColmadoIds, updateUserRole } from "../storage/users";
 import { getConfiguracion, getPlan, upsertConfiguracion } from "../storage/catalogos";
 import { getPedidoById, getPedidosByColmado } from "../storage/pedidos";
@@ -29,6 +30,29 @@ import {
 } from "../storage/deliveries";
 
 export const deliveryRoutes = new Hono<AppEnv>();
+
+// Nómina, ganancias y adelantos de los repartidores: van según el plan (los cuadres de efectivo no).
+type ColmadoDe = (db: Db, id: number) => Promise<number | undefined>;
+const deEsteDelivery: ColmadoDe = async (db, id) => (await getDeliveryById(db, id))?.colmadoId;
+const deEstePago: ColmadoDe = async (db, id) => (await db.select({ c: pagosDelivery.colmadoId }).from(pagosDelivery).where(eq(pagosDelivery.id, id)))[0]?.c;
+const deEsteAdelanto: ColmadoDe = async (db, id) => (await db.select({ c: deliveryAdelantos.colmadoId }).from(deliveryAdelantos).where(eq(deliveryAdelantos.id, id)))[0]?.c;
+const deEsteColmado: ColmadoDe = async (_db, id) => id;
+for (const [ruta, colmadoDe] of [
+  ["/api/deliveries/:id/config-pago", deEsteDelivery], ["/api/deliveries/:id/pagos", deEsteDelivery], ["/api/deliveries/:id/pagos/*", deEsteDelivery],
+  ["/api/pagos-delivery/:id", deEstePago], ["/api/pagos-delivery/:id/*", deEstePago],
+  ["/api/adelantos/:id/*", deEsteAdelanto], ["/api/colmados/:id/adelantos", deEsteColmado], ["/api/colmados/:id/deliveries/pagos", deEsteColmado],
+] as const) {
+  deliveryRoutes.use(ruta, requireAuth, async (c, next) => {
+    const db = getDb(c.env.DB);
+    const id = Number(c.req.param("id"));
+    const colmadoId = Number.isInteger(id) ? await colmadoDe(db, id) : undefined;
+    if (colmadoId) {
+      const vigente = await planDe(db, colmadoId);
+      if (!vigente?.funciones.includes("nomina_delivery")) return respuestaSinFuncion(c, db, vigente, "nomina_delivery");
+    }
+    await next();
+  });
+}
 
 const ESTADOS_REPARTIDOR = ["activo", "inactivo", "en_descanso"];
 const MODELOS_PAGO = ["salario", "comision", "mixto"];

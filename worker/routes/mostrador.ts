@@ -5,6 +5,7 @@ import { moverSaldo } from "./fiado";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAuth, requireBusinessAccess } from "../lib/auth";
+import { requierePlan, respuestaSinFuncion, planDe } from "../lib/plan";
 import { OPERADORES, nombreUsuario } from "../lib/permisos";
 import { descontarInventario, estadoInventario } from "../lib/inventario";
 import { rangoDiaLocal } from "../lib/fechas";
@@ -25,6 +26,7 @@ for (const r of ["/mostrador", "/mostrador/*", "/inventario/*"]) {
     await next();
   });
 }
+for (const r of ["/mostrador", "/mostrador/*"]) mostradorRoutes.use(`${base}${r}`, requierePlan("mostrador"));
 
 export const METODOS_MOSTRADOR = ["efectivo", "tarjeta", "transferencia", "fiado"] as const;
 const redondeo = (n: number) => Math.round(n * 100) / 100;
@@ -65,6 +67,8 @@ mostradorRoutes.post(`${base}/mostrador`, async (c) => {
   // Fiado: a la cuenta del cliente, sin pasar de su límite.
   let cuenta: FiadoCuenta | undefined;
   if (metodo === "fiado") {
+    const vigente = await planDe(db, colmadoId);
+    if (!vigente?.funciones.includes("fiado")) return respuestaSinFuncion(c, db, vigente, "fiado");
     [cuenta] = await db.select().from(fiadoCuentas).where(and(eq(fiadoCuentas.id, Number(body.clienteId)), eq(fiadoCuentas.colmadoId, colmadoId), eq(fiadoCuentas.activo, true)));
     if (!cuenta) return c.json({ error: "Elige el cliente al que se le fía." }, 400);
     if (cuenta.limite != null && (Number(cuenta.saldo) || 0) + total > Number(cuenta.limite) + 0.001) {

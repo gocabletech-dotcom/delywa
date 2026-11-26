@@ -289,13 +289,11 @@ export default function Dashboard() {
             <span className="font-medium text-sm sm:text-base">Tu plan ha expirado. Renueva para seguir usando DelyWa.</span>
           </div>
           <a
-            href="https://wa.me/18095551234?text=Hola,%20quiero%20renovar%20mi%20plan%20de%20DelyWa"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/negocio/settings?seccion=plan"
             className="bg-white text-red-600 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-xs sm:text-sm hover:bg-red-50 text-center shrink-0"
             data-testid="button-renovar-whatsapp"
           >
-            Renovar
+            Elegir plan
           </a>
         </div>
       )}
@@ -323,13 +321,11 @@ export default function Dashboard() {
             <span className="font-medium text-sm sm:text-base">Período de gracia. Renueva antes de que se suspenda.</span>
           </div>
           <a
-            href={`https://wa.me/19193436706?text=${encodeURIComponent("Hola, mi suscripción está en período de gracia y me gustaría renovar.")}`}
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/negocio/settings?seccion=plan"
             className="bg-white text-orange-600 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-xs sm:text-sm hover:bg-orange-50 text-center shrink-0"
             data-testid="button-renovar-gracia-whatsapp"
           >
-            Renovar
+            Elegir plan
           </a>
         </div>
       )}
@@ -342,13 +338,11 @@ export default function Dashboard() {
             </span>
           </div>
           <a
-            href="https://wa.me/18095551234?text=Hola,%20quiero%20renovar%20mi%20plan%20de%20DelyWa"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/negocio/settings?seccion=plan"
             className="bg-white text-amber-600 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-xs sm:text-sm hover:bg-amber-50 text-center shrink-0"
             data-testid="button-renovar-whatsapp"
           >
-            Renovar
+            Elegir plan
           </a>
         </div>
       )}

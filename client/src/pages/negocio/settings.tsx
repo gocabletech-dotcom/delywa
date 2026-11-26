@@ -61,6 +61,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import LocationPicker from "@/components/LocationPicker";
 import NegocioLayout from "@/components/negocio/NegocioLayout";
+import MiPlan from "@/components/negocio/MiPlan";
 
 type TecnologiasHabilitadas = {
   api_evo?: boolean;
@@ -143,7 +144,7 @@ type MetodosPago = {
   fechaModificacion: string;
 };
 
-type Seccion = "datos" | "imagen" | "ubicacion" | "horario" | "delivery" | "pagos" | "chat" | "preguntas" | "aprendido" | "impresora" | "avisos" | "mensajes" | "bot" | "canales";
+type Seccion = "plan" | "datos" | "imagen" | "ubicacion" | "horario" | "delivery" | "pagos" | "chat" | "preguntas" | "aprendido" | "impresora" | "avisos" | "mensajes" | "bot" | "canales";
 
 export default function SettingsPage() {
   const { user, isLoading: authLoading, isAuthenticated, logout } = useAuth();
@@ -181,7 +182,7 @@ export default function SettingsPage() {
     paisId: "",
   });
 
-  const [seccion, setSeccion] = useState<Seccion>("datos");
+  const [seccion, setSeccion] = useState<Seccion>(() => (new URLSearchParams(window.location.search).get("seccion") === "plan" ? "plan" : "datos"));
   const [buscarAjuste, setBuscarAjuste] = useState("");
 
   const { data: roleData } = useQuery({
@@ -424,6 +425,7 @@ export default function SettingsPage() {
   const tieneUbicacion = Boolean(formData.latitud && formData.longitud);
   const GRUPOS: Array<{ nombre: string; items: Array<{ clave: Seccion; titulo: string; palabras: string; resumen?: string; falta?: boolean; oculto?: boolean }> }> = [
     { nombre: "Mi negocio", items: [
+      { clave: "plan", titulo: "Mi plan", palabras: "plan precio pagar suscripcion tarjeta stripe colmado full gratis" },
       { clave: "datos", titulo: "Datos del negocio", palabras: "nombre whatsapp telefono pais descripcion" },
       { clave: "imagen", titulo: "Logo y facturación", palabras: "logo color rnc impuesto itbis factura imagen" },
       { clave: "ubicacion", titulo: "Ubicación", palabras: "direccion mapa gps latitud", resumen: tieneUbicacion ? "Completa" : "Falta el mapa", falta: !tieneUbicacion },
@@ -444,7 +446,7 @@ export default function SettingsPage() {
       { clave: "canales", titulo: "Canales activos", palabras: "whatsapp meta evo tecnologias", oculto: !colmado?.tecnologiasHabilitadas },
     ] },
   ];
-  const SIN_GUARDAR: Seccion[] = ["chat", "preguntas", "canales"];
+  const SIN_GUARDAR: Seccion[] = ["plan", "chat", "preguntas", "canales"];
   const ver = (clave: Seccion) => (seccion === clave ? "" : "hidden");
 
   return (
@@ -580,6 +582,9 @@ export default function SettingsPage() {
             {colmadoId && <PreguntasFrecuentes colmadoId={colmadoId} />}
           </div>
 
+          <div className={ver("plan")}>
+            <MiPlan colmadoId={colmadoId} />
+          </div>
           <div className={ver("avisos")}>
             {colmadoId && <AvisosAparato colmadoId={colmadoId} />}
           </div>

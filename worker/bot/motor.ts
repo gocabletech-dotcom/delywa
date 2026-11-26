@@ -3,6 +3,7 @@ import { mismoTelefono } from "../lib/telefono";
 import { conocimientoParaPrompt } from "../lib/conocimiento";
 import { botNoEntendidos, botRegistro, chatWebSesiones, clienteDirecciones, clientes, diccionarioJerga, menuProductos, pedidos, type ChatWebSesion, type Colmado } from "@shared/schema";
 import { textoCuentas } from "../lib/transferencia";
+import { tieneFuncion } from "../lib/plan";
 import type { Env } from "../env";
 import type { Db } from "../db";
 import { isColmadoAbierto } from "../lib/horario";
@@ -384,6 +385,8 @@ async function anotarSiHay(c: Contexto, items: Nuevo[], pre = ""): Promise<Respu
 
 /** Fase 3: la IA recibe el menú del colmado y lo que ya lleva anotado, y gasta del cupo gratis del día. */
 async function preguntarIa(c: Contexto, texto: string, paso: string) {
+  // Sin «Inteligencia artificial» en el plan, el bot sigue con sus reglas y el corrector.
+  if (!(await tieneFuncion(c.db, c.colmado.id, "ia"))) return null;
   const [conocimiento, menu] = await Promise.all([
     conocimientoParaPrompt(c.db, c.colmado, texto).catch(() => ""),
     c.db.select({ nombre: menuProductos.nombre }).from(menuProductos)

@@ -8,6 +8,7 @@ import {
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAdmin, requireAuth, requireBusinessAccess } from "../lib/auth";
+import { requierePlan } from "../lib/plan";
 import { ADMINISTRADORES } from "../lib/permisos";
 import { cifrar, SinClaveMaestra } from "../lib/integraciones";
 import { anotar } from "../lib/seguridad";
@@ -89,6 +90,8 @@ function bloqueoDgii(f: FeCertificacion | undefined) {
 const rutaNegocio = "/api/colmados/:id/facturacion-electronica";
 facturacionElectronicaRoutes.use(rutaNegocio, requireAuth, requireBusinessAccess());
 facturacionElectronicaRoutes.use(`${rutaNegocio}/*`, requireAuth, requireBusinessAccess());
+facturacionElectronicaRoutes.use(rutaNegocio, requierePlan("facturacion_electronica"));
+facturacionElectronicaRoutes.use(`${rutaNegocio}/*`, requierePlan("facturacion_electronica"));
 facturacionElectronicaRoutes.use(`${rutaNegocio}`, async (c, next) => {
   if (!ADMINISTRADORES.includes(c.var.user.role ?? "")) return c.json({ error: "Solo el dueño o el colmadero manejan la facturación electrónica." }, 403);
   await next();

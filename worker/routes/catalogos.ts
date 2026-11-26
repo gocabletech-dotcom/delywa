@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { fromZodError } from "zod-validation-error";
-import { insertPlanSchema } from "@shared/schema";
+import { insertPlanSchema, type Plan } from "@shared/schema";
+import { esClaveFuncion } from "@shared/funciones-plan";
+import { planDe } from "../lib/plan";
 import type { AppEnv } from "../env";
 import { getDb } from "../db";
 import { requireAdmin, requireAuth, requireBusinessAccess } from "../lib/auth";
@@ -33,15 +35,26 @@ catalogoRoutes.get("/api/tipos-negocio/:slug", async (c) => {
   return tipo ? c.json(tipo) : c.json({ error: "Tipo de negocio no encontrado" }, 404);
 });
 
+/** Lo que cualquiera puede ver de un plan (sin los datos de Stripe). */
+const planPublico = ({ stripeProducto, stripePrecio, stripePrecioAnual, stripeProductoReal, stripePrecioReal, stripePrecioAnualReal, ...p }: Plan) => p;
+
 catalogoRoutes.get("/api/planes", async (c) => {
   const db = getDb(c.env.DB);
-  return c.json(c.req.query("activos") === "true" ? await getPlanesActivos(db) : await getAllPlanes(db));
+  const filas = c.req.query("activos") === "true" ? await getPlanesActivos(db) : await getAllPlanes(db);
+  return c.json(filas.map(planPublico));
 });
 
 catalogoRoutes.get("/api/planes/:id", async (c) => {
   const plan = await getPlan(getDb(c.env.DB), Number(c.req.param("id")));
-  return plan ? c.json(plan) : c.json({ error: "Plan no encontrado" }, 404);
+  return plan ? c.json(planPublico(plan)) : c.json({ error: "Plan no encontrado" }, 404);
 });
+
+/** Solo claves de funciones que existen; el precio anual vacío queda sin plan anual. */
+function limpiarPlan<T extends { funciones?: unknown; precioAnual?: unknown }>(d: T): T {
+  if (d.funciones !== undefined) d.funciones = (Array.isArray(d.funciones) ? d.funciones : []).filter(esClaveFuncion);
+  if (d.precioAnual !== undefined && (d.precioAnual === "" || Number(d.precioAnual) <= 0)) d.precioAnual = null;
+  return d;
+}
 
 // ---------- Configuración del sistema (solo plataforma) ----------
 
@@ -60,7 +73,7 @@ catalogoRoutes.post("/api/planes", requireAuth, async (c) => {
   const result = insertPlanSchema.safeParse(await c.req.json().catch(() => null));
   if (!result.success) return c.json({ error: fromZodError(result.error).message }, 400);
   try {
-    return c.json(await createPlan(getDb(c.env.DB), result.data as InsertPlan), 201);
+    return c.json(await createPlan(getDb(c.env.DB), limpiarPlan(result.data) as InsertPlan), 201);
   } catch (error) {
     if (isUniqueViolation(error)) return c.json({ error: "Ya existe un plan con ese identificador" }, 409);
     throw error;
@@ -73,7 +86,7 @@ catalogoRoutes.patch("/api/planes/:id", requireAuth, async (c) => {
   if (!result.success) return c.json({ error: fromZodError(result.error).message }, 400);
   if (Object.keys(result.data).length === 0) return c.json({ error: "Se requiere al menos un campo" }, 400);
   try {
-    const plan = await updatePlan(getDb(c.env.DB), Number(c.req.param("id")), result.data as Partial<InsertPlan>);
+    const plan = await updatePlan(getDb(c.env.DB), Number(c.req.param("id")), limpiarPlan(result.data) as Partial<InsertPlan>);
     return plan ? c.json(plan) : c.json({ error: "Plan no encontrado" }, 404);
   } catch (error) {
     if (isUniqueViolation(error)) return c.json({ error: "Ya existe un plan con ese identificador" }, 409);
@@ -106,9 +119,14 @@ catalogoRoutes.get("/api/colmados/:colmadoId/suscripcion", requireAuth, requireB
   }
   const diasRestantes = fechaFin ? Math.ceil((fechaFin.getTime() - Date.now()) / DIA_MS) : 0;
 
+  const vigente = await planDe(db, colmado.id);
+  const disponibles = (await getPlanesActivos(db)).filter((p) => p.visible).map(planPublico);
   return c.json({
     suscripcion: { fechaInicio: colmado.fechaInicioPlan || colmado.fechaSuscripcion, fechaFin: colmado.fechaVencimiento },
-    plan,
+    plan: plan ? planPublico(plan) : null,
+    /** Lo que de verdad puede usar (la prueba y la cortesía lo incluyen todo). */
+    vigente: vigente ? { nombre: vigente.nombre, funciones: vigente.funciones, todo: vigente.todo, cortesia: vigente.cortesia } : null,
+    planes: disponibles,
     diasRestantes,
     proximoAVencer: fechaFin ? diasRestantes <= 5 && diasRestantes > 0 : false,
     expirado: fechaFin ? diasRestantes <= 0 : false,

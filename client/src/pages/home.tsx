@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { ArrowRight, Check, Menu, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { FUNCIONES_PLAN, precioPlan } from "@shared/funciones-plan";
+import type { PlanPublico } from "@/lib/plan";
 import { RegistroNegocioForm } from "@/components/RegistroNegocioForm";
 import ComoPide from "@/components/landing/ComoPide";
 import AsistentePagina from "@/components/landing/AsistentePagina";
@@ -46,6 +49,14 @@ function Paso({ n, titulo, texto, naranja = false }: { n: number; titulo: string
 
 export default function Home() {
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const { data: planes = [] } = useQuery<PlanPublico[]>({
+    queryKey: ["planes-publicos"],
+    queryFn: async () => { const r = await fetch("/api/planes?activos=true"); return r.ok ? r.json() : []; },
+    staleTime: 10 * 60_000,
+  });
+  const visibles = planes.filter((p) => p.visible);
+  const diasPrueba = visibles.find((p) => p.esTrial)?.duracionDias ?? 14;
+  const pagados = visibles.filter((p) => !p.esTrial);
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -253,17 +264,39 @@ export default function Home() {
       <SinEquipos />
 
       <section id="precio" className="bg-[#17804F] text-white scroll-mt-20">
-        <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-16 md:py-[88px] flex flex-wrap gap-10 items-center">
-          <div className="flex-[1_1_440px] min-w-0">
-            <h2 style={TITULO} className="m-0 font-bold text-[34px] md:text-[52px] leading-[1.08]">1 mes gratis.<br />Pruébalo con tus clientes de verdad.</h2>
-            <p className="mt-4 text-[19px] text-[#E3F3EA] max-w-[520px]">Usa todo Delywa durante el primer mes: el chat de pedidos, el panel, el portal del delivery y los cuadres. Después eliges el plan que te conviene.</p>
+        <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-16 md:py-[88px]">
+          <div className="flex flex-wrap gap-10 items-center">
+            <div className="flex-[1_1_440px] min-w-0">
+              <h2 style={TITULO} className="m-0 font-bold text-[34px] md:text-[52px] leading-[1.08]">{diasPrueba} días gratis.<br />Pruébalo con tus clientes de verdad.</h2>
+              <p className="mt-4 text-[19px] text-[#E3F3EA] max-w-[520px]">Usa todo Delywa durante la prueba: el chat de pedidos, el panel, el portal del delivery y los cuadres. Después eliges el plan que te conviene. Sin comisión por pedido.</p>
+            </div>
+            <div className="flex-[1_1_300px] min-w-0 bg-white text-[#1F2420] rounded-[28px] p-7 text-center grid gap-1.5">
+              <span className="font-extrabold text-[#6B736F] text-[15px]">Prueba gratis</span>
+              <span style={TITULO} className="font-bold text-[60px] leading-[1.1] text-[#17804F]">{diasPrueba} días</span>
+              <span className="text-[15px] text-[#4A524E]">Sin tarjeta · Sin contrato · Cancela cuando quieras</span>
+              <a href="#crear-negocio" className="mt-3 inline-flex justify-center items-center min-h-[54px] rounded-full bg-[#F28C28] hover:bg-[#E07B17] text-[#1F2420] font-extrabold text-lg">Empezar gratis</a>
+            </div>
           </div>
-          <div className="flex-[1_1_300px] min-w-0 bg-white text-[#1F2420] rounded-[28px] p-7 text-center grid gap-1.5">
-            <span className="font-extrabold text-[#6B736F] text-[15px]">Prueba gratis</span>
-            <span style={TITULO} className="font-bold text-[60px] leading-[1.1] text-[#17804F]">1 mes</span>
-            <span className="text-[15px] text-[#4A524E]">Sin tarjeta · Sin contrato · Cancela cuando quieras</span>
-            <a href="#crear-negocio" className="mt-3 inline-flex justify-center items-center min-h-[54px] rounded-full bg-[#F28C28] hover:bg-[#E07B17] text-[#1F2420] font-extrabold text-lg">Empezar gratis</a>
-          </div>
+          {pagados.length > 0 && (
+            <div className="mt-12 grid gap-5 md:grid-cols-2 max-w-[900px] mx-auto" data-testid="landing-planes">
+              {pagados.map((p) => (
+                <div key={p.id} className="bg-white text-[#1F2420] rounded-[28px] p-7 grid gap-2 content-start">
+                  <span style={TITULO} className="font-bold text-[28px]">{p.nombre}</span>
+                  {p.descripcionCorta && <span className="text-[15px] text-[#4A524E]">{p.descripcionCorta}</span>}
+                  <span style={TITULO} className="font-bold text-[44px] leading-none text-[#17804F] mt-2">{precioPlan(p.precioMensual, p.moneda)}<span className="text-[17px] text-[#6B736F]"> /mes</span></span>
+                  {p.precioAnual && <span className="text-[15px] font-bold text-[#17804F]">o {precioPlan(p.precioAnual, p.moneda)} al año · 1 mes gratis</span>}
+                  <ul className="mt-3 grid gap-1.5 text-[15px]">
+                    {[p.limiteDeliveries ? `Hasta ${p.limiteDeliveries} repartidores` : "Repartidores sin límite", p.limitePedidosDiarios ? `Hasta ${p.limitePedidosDiarios} pedidos al día` : "Pedidos sin límite"].map((t) => <li key={t} className="flex gap-2"><Check size={18} className="text-[#17804F] shrink-0 mt-0.5" />{t}</li>)}
+                    {FUNCIONES_PLAN.filter((f) => (p.funciones ?? []).includes(f.clave)).map((f) => (
+                      <li key={f.clave} className="flex gap-2"><Check size={18} className="text-[#17804F] shrink-0 mt-0.5" />{f.nombre}{"enProceso" in f && f.enProceso ? " (en proceso)" : ""}</li>
+                    ))}
+                    {p.soportePrioritario && <li className="flex gap-2"><Check size={18} className="text-[#17804F] shrink-0 mt-0.5" />Soporte prioritario</li>}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+          {pagados.length > 0 && <p className="mt-6 text-center text-[#E3F3EA]">Precios en dólares (US$). Todos los planes incluyen el chat de pedidos, el menú, los clientes y los cuadres.</p>}
         </div>
       </section>
 

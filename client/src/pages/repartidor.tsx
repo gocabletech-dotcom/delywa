@@ -195,7 +195,7 @@ export default function RepartidorPage() {
       }
       if (!res.ok) throw new Error("Error al obtener sesión");
       setScheduleEndedBanner(false);
-      return res.json() as Promise<{ delivery: DeliveryInfo; colmado: ColmadoInfo | null; fueraDeHorario?: boolean; horaFinTurno?: string | null }>;
+      return res.json() as Promise<{ delivery: DeliveryInfo; colmado: ColmadoInfo | null; fueraDeHorario?: boolean; horaFinTurno?: string | null; ganancias?: boolean }>;
     },
     retry: false,
   });
@@ -472,7 +472,7 @@ export default function RepartidorPage() {
       queryClient.invalidateQueries({ queryKey: ["portal-ganancias"] });
       toast({ title: "Pedido actualizado" });
       // Al entregar: «¿Te dieron propina?» (es suya, no entra en la caja).
-      if (vars.estado === "entregado") setPropinaDe(vars.pedidoId);
+      if (vars.estado === "entregado" && session?.ganancias !== false) setPropinaDe(vars.pedidoId);
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -1359,7 +1359,7 @@ export default function RepartidorPage() {
           ["cuadre", "Cuadre", ClipboardList, pedidosSinCuadre.length],
           ["historial", "Historial", Clock, 0],
           ["ganancias", "Ganancias", Wallet, 0],
-        ] as const).map(([clave, texto, Icono, cuenta]) => (
+        ] as const).filter(([clave]) => clave !== "ganancias" || session?.ganancias !== false).map(([clave, texto, Icono, cuenta]) => (
           <button
             key={clave}
             type="button"
